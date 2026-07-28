@@ -83,7 +83,7 @@ fn run_status(root: &Path) -> String {
         "incomplete"
     };
     format!(
-        "Geo workspace\nroot: {}\nlayout: {}\ncompiler: compiler/geo\nfrontend: compiler/geo_source\nruntime: library/geo_runtime\nstdlib: library/std\ntools: src/tools/xtask",
+        "Geo workspace\nroot: {}\nlayout: {}\ncompiler: compiler/geo\nfrontend: compiler/geo_syntax\nsource: compiler/geo_source\nruntime: library/geo_runtime\nstdlib: library/std\ntools: src/tools/xtask",
         root.display(),
         state
     )
@@ -92,6 +92,7 @@ fn run_status(root: &Path) -> String {
 fn required_paths() -> Vec<&'static str> {
     vec![
         "compiler/geo",
+        "compiler/geo_syntax",
         "compiler/geo_diagnostics",
         "compiler/geo_source",
         "library/geo_runtime",

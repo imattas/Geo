@@ -75,6 +75,8 @@ Acceptance criteria:
 - Root `cargo run -- check examples\return_42.geo` still works.
 - Compiler phase tests live next to the crates they validate.
 
+Progress: `compiler/geo_syntax` now owns the AST, token model, lexer, and parser. The CLI crate keeps compatibility re-exports while the remaining semantic and backend phases are split.
+
 ## Phase 2: Clean Core Syntax
 
 Goal: make the approved syntax canonical.

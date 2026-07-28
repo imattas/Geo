@@ -12,7 +12,7 @@ External assembler/linker tools are allowed only as temporary build-tool steps. 
 
 ### 1. Split Compiler Internals Into Smaller Crates
 
-Current state: the compiler crate is isolated at `compiler/geo`, diagnostics live in `compiler/geo_diagnostics`, and source loading lives in `compiler/geo_source`. Most syntax, semantic, IR, and backend phases still live inside the main compiler crate.
+Current state: the compiler crate is isolated at `compiler/geo`, syntax is owned by `compiler/geo_syntax`, diagnostics live in `compiler/geo_diagnostics`, and source loading lives in `compiler/geo_source`. Most semantic, IR, and backend phases still live inside the main compiler crate.
 
 Recommended split:
 

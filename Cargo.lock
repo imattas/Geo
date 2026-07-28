@@ -105,6 +105,7 @@ dependencies = [
  "clap",
  "geo-diagnostics",
  "geo-source",
+ "geo-syntax",
 ]
 
 [[package]]
@@ -117,6 +118,13 @@ version = "0.0.0"
 
 [[package]]
 name = "geo-source"
+version = "0.0.0"
+dependencies = [
+ "geo-diagnostics",
+]
+
+[[package]]
+name = "geo-syntax"
 version = "0.0.0"
 dependencies = [
  "geo-diagnostics",
