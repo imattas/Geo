@@ -249,6 +249,7 @@ Acceptance criteria:
 - Native string comparison and ordering predicates are covered by direct ELF64 and PE64 executable tests.
 - Native substring containment and prefix matching are covered by direct ELF64 and PE64 executable tests.
 - Native suffix matching is covered by direct ELF64 and PE64 executable tests.
+- Native first substring indexing is covered by direct ELF64 and PE64 executable tests.
 
 ## Phase 10: Distribution
 

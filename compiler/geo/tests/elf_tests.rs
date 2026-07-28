@@ -374,6 +374,27 @@ fn emits_direct_elf64_string_suffix_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_index_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if string_index_of("Geo compiler", "compiler") != 4 {
+                    return 1
+                }
+                if string_index_of("Geo", "Rust") != -1 {
+                    return 2
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x48, 0x89, 0xc8, 0xc3]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"
