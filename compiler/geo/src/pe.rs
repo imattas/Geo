@@ -400,6 +400,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_len");
+    let needs_string_byte_at = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_byte_at");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -427,7 +431,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     }
     code.extend_from_slice(&image.text);
     let mut helpers = PeHelperRvas::default();
-    if needs_bounds_check || needs_print || needs_string_concat || needs_string_len {
+    if needs_bounds_check
+        || needs_print
+        || needs_string_concat
+        || needs_string_len
+        || needs_string_byte_at
+    {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
             code.push(0xcc);
@@ -440,6 +449,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_len {
         helpers.string_len = Some(layout.text_rva + code.len() as u32);
         emit_string_len_helper(&mut code);
+    }
+    if needs_string_byte_at {
+        helpers.string_byte_at = Some(layout.text_rva + code.len() as u32);
+        emit_string_byte_at_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -502,6 +515,9 @@ fn compiled_symbol_rva(
     if symbol == "string_len" {
         return helpers.string_len;
     }
+    if symbol == "string_byte_at" {
+        return helpers.string_byte_at;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -522,6 +538,7 @@ struct PeHelperRvas {
     println: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
+    string_byte_at: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -551,6 +568,22 @@ fn emit_string_len_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x74, 0x05]);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xf5]);
+    code.push(0xc3);
+}
+
+fn emit_string_byte_at_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x49, 0x39, 0xd0]);
+    code.extend_from_slice(&[0x74, 0x0c]);
+    code.extend_from_slice(&[0x42, 0x80, 0x3c, 0x01, 0x00]);
+    code.extend_from_slice(&[0x74, 0x0f]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    code.extend_from_slice(&[0xeb, 0xef]);
+    code.extend_from_slice(&[0x42, 0x0f, 0xb6, 0x04, 0x01]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    code.extend_from_slice(&[0x74, 0x01]);
+    code.push(0xc3);
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
     code.push(0xc3);
 }
 
