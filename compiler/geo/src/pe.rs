@@ -420,6 +420,30 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_ends_with");
+    let needs_string_eq = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_eq");
+    let needs_string_not_eq = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_not_eq");
+    let needs_string_less = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_less");
+    let needs_string_less_or_equal = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_less_or_equal");
+    let needs_string_greater = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_greater");
+    let needs_string_greater_or_equal = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_greater_or_equal");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -456,6 +480,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_contains
         || needs_string_starts_with
         || needs_string_ends_with
+        || needs_string_eq
+        || needs_string_not_eq
+        || needs_string_less
+        || needs_string_less_or_equal
+        || needs_string_greater
+        || needs_string_greater_or_equal
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -489,6 +519,30 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_ends_with {
         helpers.string_ends_with = Some(layout.text_rva + code.len() as u32);
         emit_string_ends_with_helper(&mut code);
+    }
+    if needs_string_eq {
+        helpers.string_eq = Some(layout.text_rva + code.len() as u32);
+        emit_string_eq_helper(&mut code);
+    }
+    if needs_string_not_eq {
+        helpers.string_not_eq = Some(layout.text_rva + code.len() as u32);
+        emit_string_not_eq_helper(&mut code);
+    }
+    if needs_string_less {
+        helpers.string_less = Some(layout.text_rva + code.len() as u32);
+        emit_string_less_helper(&mut code);
+    }
+    if needs_string_less_or_equal {
+        helpers.string_less_or_equal = Some(layout.text_rva + code.len() as u32);
+        emit_string_less_or_equal_helper(&mut code);
+    }
+    if needs_string_greater {
+        helpers.string_greater = Some(layout.text_rva + code.len() as u32);
+        emit_string_greater_helper(&mut code);
+    }
+    if needs_string_greater_or_equal {
+        helpers.string_greater_or_equal = Some(layout.text_rva + code.len() as u32);
+        emit_string_greater_or_equal_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -566,6 +620,24 @@ fn compiled_symbol_rva(
     if symbol == "string_ends_with" {
         return helpers.string_ends_with;
     }
+    if symbol == "string_eq" {
+        return helpers.string_eq;
+    }
+    if symbol == "string_not_eq" {
+        return helpers.string_not_eq;
+    }
+    if symbol == "string_less" {
+        return helpers.string_less;
+    }
+    if symbol == "string_less_or_equal" {
+        return helpers.string_less_or_equal;
+    }
+    if symbol == "string_greater" {
+        return helpers.string_greater;
+    }
+    if symbol == "string_greater_or_equal" {
+        return helpers.string_greater_or_equal;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -591,6 +663,12 @@ struct PeHelperRvas {
     string_contains: Option<u32>,
     string_starts_with: Option<u32>,
     string_ends_with: Option<u32>,
+    string_eq: Option<u32>,
+    string_not_eq: Option<u32>,
+    string_less: Option<u32>,
+    string_less_or_equal: Option<u32>,
+    string_greater: Option<u32>,
+    string_greater_or_equal: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -762,6 +840,146 @@ fn emit_string_ends_with_helper(code: &mut Vec<u8>) {
     patch_short_jump(code, suffix_too_long, false_target);
     patch_short_jump(code, matched, true_target);
     patch_short_jump(code, mismatch, false_target);
+}
+
+fn emit_string_eq_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x01]);
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x0a]);
+    code.extend_from_slice(&[0x45, 0x39, 0xc8]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, mismatch, false_target);
+    patch_short_jump(code, matched, true_target);
+}
+
+fn emit_string_not_eq_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x01]);
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x0a]);
+    code.extend_from_slice(&[0x45, 0x39, 0xc8]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+
+    patch_short_jump(code, mismatch, true_target);
+    patch_short_jump(code, matched, false_target);
+}
+
+fn emit_string_less_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x01]);
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x0a]);
+    code.extend_from_slice(&[0x45, 0x39, 0xc8]);
+    let difference = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+    let difference_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x92, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, difference, difference_target);
+    patch_short_jump(code, matched, false_target);
+}
+
+fn emit_string_less_or_equal_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x01]);
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x0a]);
+    code.extend_from_slice(&[0x45, 0x39, 0xc8]);
+    let difference = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let difference_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x96, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, difference, difference_target);
+    patch_short_jump(code, matched, true_target);
+}
+
+fn emit_string_greater_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x01]);
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x0a]);
+    code.extend_from_slice(&[0x45, 0x39, 0xc8]);
+    let difference = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+    let difference_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x97, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, difference, difference_target);
+    patch_short_jump(code, matched, false_target);
+}
+
+fn emit_string_greater_or_equal_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x01]);
+    code.extend_from_slice(&[0x44, 0x0f, 0xb6, 0x0a]);
+    code.extend_from_slice(&[0x45, 0x39, 0xc8]);
+    let difference = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let difference_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x93, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, difference, difference_target);
+    patch_short_jump(code, matched, true_target);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
