@@ -94,6 +94,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "mem_zero" => emit_mem_zero_runtime(&mut code),
             "mem_move" => emit_mem_move_runtime(&mut code),
             "string_from_byte" => emit_string_from_byte_runtime(&mut code),
+            "string_clone" => emit_string_clone_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
@@ -515,6 +516,41 @@ fn emit_string_from_byte_runtime(code: &mut Vec<u8>) {
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x18, 0xc3]);
     patch_near_jump(code, failed, failure);
+}
+
+fn emit_string_clone_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38]);
+    code.extend_from_slice(&[0x48, 0x89, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x48, 0x89, 0xfe]);
+    code.extend_from_slice(&[0x31, 0xc0]);
+    let length_loop = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x06, 0x00]);
+    let length_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    emit_short_jump_back(code, length_loop);
+    let length_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x08]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x89, 0xc6]);
+    code.extend_from_slice(&[0x31, 0xff]);
+    code.extend_from_slice(&[0xba, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xba, 0x22, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0xb8, 0x09, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x10]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x74, 0x24, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x10]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x08]);
+    code.extend_from_slice(&[0xf3, 0xa4]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x10]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    patch_short_jump(code, length_done, length_target);
+    patch_near_jump(code, allocation_failed, failure);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {

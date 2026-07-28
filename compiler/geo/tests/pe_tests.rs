@@ -1123,6 +1123,22 @@ fn emits_direct_pe64_string_from_byte_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_string_clone_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_len(string_clone("Geo")) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0x42, 0x8a, 0x1c, 0x1a, 0x43, 0x88]));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"
