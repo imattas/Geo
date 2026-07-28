@@ -444,6 +444,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_greater_or_equal");
+    let needs_string_is_empty = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_empty");
+    let needs_string_is_ascii = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_ascii");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -486,6 +494,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_less_or_equal
         || needs_string_greater
         || needs_string_greater_or_equal
+        || needs_string_is_empty
+        || needs_string_is_ascii
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -543,6 +553,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_greater_or_equal {
         helpers.string_greater_or_equal = Some(layout.text_rva + code.len() as u32);
         emit_string_greater_or_equal_helper(&mut code);
+    }
+    if needs_string_is_empty {
+        helpers.string_is_empty = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_empty_helper(&mut code);
+    }
+    if needs_string_is_ascii {
+        helpers.string_is_ascii = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_ascii_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -638,6 +656,12 @@ fn compiled_symbol_rva(
     if symbol == "string_greater_or_equal" {
         return helpers.string_greater_or_equal;
     }
+    if symbol == "string_is_empty" {
+        return helpers.string_is_empty;
+    }
+    if symbol == "string_is_ascii" {
+        return helpers.string_is_ascii;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -669,6 +693,8 @@ struct PeHelperRvas {
     string_less_or_equal: Option<u32>,
     string_greater: Option<u32>,
     string_greater_or_equal: Option<u32>,
+    string_is_empty: Option<u32>,
+    string_is_ascii: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -980,6 +1006,34 @@ fn emit_string_greater_or_equal_helper(code: &mut Vec<u8>) {
 
     patch_short_jump(code, difference, difference_target);
     patch_short_jump(code, matched, true_target);
+}
+
+fn emit_string_is_empty_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0x80, 0x39, 0x00]);
+    code.extend_from_slice(&[0x0f, 0x94, 0xc0]);
+    code.push(0xc3);
+}
+
+fn emit_string_is_ascii_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, 0x7f]);
+    let non_ascii = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, loop_start);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, end, true_target);
+    patch_short_jump(code, non_ascii, false_target);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
