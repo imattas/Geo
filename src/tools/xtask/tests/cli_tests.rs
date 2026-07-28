@@ -37,9 +37,9 @@ fn verify_includes_compiler_owned_linux_object_emission() {
     let has_emit_obj = commands.iter().any(|(program, args)| {
         *program == "cargo"
             && args.contains(&"emit-obj")
-            && args.contains(&"examples/while.geo")
+            && args.contains(&"examples/object_backend.geo")
             && args.contains(&"x86_64-linux")
-            && args.contains(&"target/xtask-while-linux.o")
+            && args.contains(&"target/xtask-object-backend-linux.o")
     });
 
     assert!(has_emit_obj);

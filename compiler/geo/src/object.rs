@@ -95,6 +95,19 @@ fn emit_function_text(
                 emit_rbp_operand(bytes, 0, frame.value_offset(*right));
                 emit_store_rax(bytes, frame.value_offset(*dst));
             }
+            Instruction::Div { dst, left, right } => {
+                emit_division(bytes, &frame, *dst, *left, *right, DivisionResult::Quotient);
+            }
+            Instruction::Rem { dst, left, right } => {
+                emit_division(
+                    bytes,
+                    &frame,
+                    *dst,
+                    *left,
+                    *right,
+                    DivisionResult::Remainder,
+                );
+            }
             Instruction::BitAnd { dst, left, right } => {
                 emit_binary_mem_op(bytes, 0x23, &frame, *dst, *left, *right);
             }
@@ -103,6 +116,12 @@ fn emit_function_text(
             }
             Instruction::BitXor { dst, left, right } => {
                 emit_binary_mem_op(bytes, 0x33, &frame, *dst, *left, *right);
+            }
+            Instruction::ShiftLeft { dst, left, right } => {
+                emit_shift(bytes, &frame, *dst, *left, *right, ShiftOp::Left);
+            }
+            Instruction::ShiftRight { dst, left, right } => {
+                emit_shift(bytes, &frame, *dst, *left, *right, ShiftOp::Right);
             }
             Instruction::Load { dst, local } => {
                 emit_load_rax(bytes, frame.local_offset(local));
@@ -159,10 +178,6 @@ fn emit_function_text(
             Instruction::StringConst { .. }
             | Instruction::And { .. }
             | Instruction::Or { .. }
-            | Instruction::ShiftLeft { .. }
-            | Instruction::ShiftRight { .. }
-            | Instruction::Div { .. }
-            | Instruction::Rem { .. }
             | Instruction::AddressOf { .. }
             | Instruction::Deref { .. }
             | Instruction::BitNot { .. }
@@ -183,6 +198,16 @@ fn emit_function_text(
 struct JumpPatch {
     displacement_offset: usize,
     label: String,
+}
+
+enum DivisionResult {
+    Quotient,
+    Remainder,
+}
+
+enum ShiftOp {
+    Left,
+    Right,
 }
 
 struct FrameLayout {
@@ -346,6 +371,41 @@ fn emit_compare(
     emit_store_rax(bytes, frame.value_offset(dst));
 }
 
+fn emit_division(
+    bytes: &mut Vec<u8>,
+    frame: &FrameLayout,
+    dst: crate::ir::ValueId,
+    left: crate::ir::ValueId,
+    right: crate::ir::ValueId,
+    result: DivisionResult,
+) {
+    emit_load_rax(bytes, frame.value_offset(left));
+    bytes.extend_from_slice(&[0x48, 0x99]);
+    bytes.extend_from_slice(&[0x48, 0xf7]);
+    emit_rbp_operand(bytes, 7, frame.value_offset(right));
+    match result {
+        DivisionResult::Quotient => emit_store_rax(bytes, frame.value_offset(dst)),
+        DivisionResult::Remainder => emit_store_rdx(bytes, frame.value_offset(dst)),
+    }
+}
+
+fn emit_shift(
+    bytes: &mut Vec<u8>,
+    frame: &FrameLayout,
+    dst: crate::ir::ValueId,
+    left: crate::ir::ValueId,
+    right: crate::ir::ValueId,
+    op: ShiftOp,
+) {
+    emit_load_rax(bytes, frame.value_offset(left));
+    emit_load_rcx(bytes, frame.value_offset(right));
+    match op {
+        ShiftOp::Left => bytes.extend_from_slice(&[0x48, 0xd3, 0xe0]),
+        ShiftOp::Right => bytes.extend_from_slice(&[0x48, 0xd3, 0xf8]),
+    }
+    emit_store_rax(bytes, frame.value_offset(dst));
+}
+
 fn setcc_opcode(op: CmpOp) -> u8 {
     match op {
         CmpOp::Equal => 0x94,
@@ -416,9 +476,19 @@ fn emit_load_rax(bytes: &mut Vec<u8>, offset: u32) {
     emit_rbp_operand(bytes, 0, offset);
 }
 
+fn emit_load_rcx(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x48, 0x8b]);
+    emit_rbp_operand(bytes, 1, offset);
+}
+
 fn emit_store_rax(bytes: &mut Vec<u8>, offset: u32) {
     bytes.extend_from_slice(&[0x48, 0x89]);
     emit_rbp_operand(bytes, 0, offset);
+}
+
+fn emit_store_rdx(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x48, 0x89]);
+    emit_rbp_operand(bytes, 2, offset);
 }
 
 fn emit_rbp_operand(bytes: &mut Vec<u8>, reg: u8, offset: u32) {

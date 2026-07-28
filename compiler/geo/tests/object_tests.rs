@@ -122,6 +122,26 @@ fn emits_machine_code_for_while_loop_backedge() {
     assert!(contains_backward_jump(text));
 }
 
+#[test]
+fn emits_machine_code_for_division_and_remainder() {
+    let object = object_for("fn main() -> int { return 25 / 4 + 25 % 4 }");
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x99]));
+    assert!(contains_bytes(text, &[0x48, 0xf7]));
+    assert!(contains_bytes(text, &[0x48, 0x89, 0x55]));
+}
+
+#[test]
+fn emits_machine_code_for_shift_operations() {
+    let object = object_for("fn main() -> int { return 1 << 3 >> 1 }");
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x8b, 0x4d]));
+    assert!(contains_bytes(text, &[0x48, 0xd3, 0xe0]));
+    assert!(contains_bytes(text, &[0x48, 0xd3, 0xf8]));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())

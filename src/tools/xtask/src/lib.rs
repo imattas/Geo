@@ -137,11 +137,11 @@ pub fn verify_commands() -> Vec<(&'static str, Vec<&'static str>)> {
                 "--quiet",
                 "--",
                 "emit-obj",
-                "examples/while.geo",
+                "examples/object_backend.geo",
                 "--target",
                 "x86_64-linux",
                 "-o",
-                "target/xtask-while-linux.o",
+                "target/xtask-object-backend-linux.o",
             ],
         ),
         (
