@@ -13,6 +13,11 @@ fn logic_mask(a: bool, b: bool) -> int {
     return 0
 }
 
+fn first_value() -> int {
+    let values: [int] = [42]
+    return values[0]
+}
+
 fn main() -> int {
     var x: int = 0
     while x < 3 {
@@ -22,5 +27,5 @@ fn main() -> int {
         let p: *int = &x
         *p = *p + 1
     }
-    return seventh(1, 2, 3, 4, 5, 6, combine((25 / 4) + (25 % 4), (1 << 3 >> 1) + x)) + logic_mask(true, false)
+    return seventh(1, 2, 3, 4, 5, 6, combine((25 / 4) + (25 % 4), (1 << 3 >> 1) + x)) + logic_mask(true, false) + first_value()
 }

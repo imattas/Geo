@@ -220,7 +220,9 @@ fn emit_function_text(
                     emit_store_rax(bytes, frame.value_offset(*dst));
                 }
             }
-            Instruction::BoundsCheck { .. } => {
+            Instruction::BoundsCheck { index, len } => {
+                emit_load_arg_register(bytes, 0, frame.value_offset(*index));
+                emit_mov_arg_imm32(bytes, 1, *len as i32);
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
                 bytes.extend_from_slice(&0_i32.to_le_bytes());
@@ -634,6 +636,19 @@ fn emit_load_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
         }
         _ => {}
     }
+}
+
+fn emit_mov_arg_imm32(bytes: &mut Vec<u8>, index: usize, value: i32) {
+    match index {
+        0 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc7]),
+        1 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc6]),
+        2 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc2]),
+        3 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc1]),
+        4 => bytes.extend_from_slice(&[0x49, 0xc7, 0xc0]),
+        5 => bytes.extend_from_slice(&[0x49, 0xc7, 0xc1]),
+        _ => return,
+    }
+    bytes.extend_from_slice(&value.to_le_bytes());
 }
 
 fn emit_store_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {

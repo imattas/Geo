@@ -154,6 +154,25 @@ fn emits_relocation_for_bounds_check_runtime_call() {
 }
 
 #[test]
+fn emits_machine_code_for_bounds_check_runtime_arguments() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                let values: [int] = [42]
+                return values[0]
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x8b, 0x7d]));
+    assert!(contains_bytes(
+        text,
+        &[0x48, 0xc7, 0xc6, 0x01, 0x00, 0x00, 0x00]
+    ));
+}
+
+#[test]
 fn emits_machine_code_for_integer_addition() {
     let object = object_for("fn main() -> int { return 40 + 2 }");
     let text = section_payload(&object, 1);
