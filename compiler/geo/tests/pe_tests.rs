@@ -1071,6 +1071,44 @@ fn emits_direct_pe64_file_write_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_append_file_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return append_file("C:\\geo-append-file-test", "Geo")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"CreateFileA"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"CloseHandle"));
+}
+
+#[test]
+fn emits_direct_pe64_touch_and_remove_as_compiled_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                let touched = touch_file("C:\\geo-touch-file-test")
+                if touched != 0 {
+                    return touched
+                }
+                return remove_file("C:\\geo-touch-file-test")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"CreateFileA"));
+    assert!(contains_bytes(&pe, b"CloseHandle"));
+    assert!(contains_bytes(&pe, b"DeleteFileA"));
+}
+
+#[test]
 fn emits_direct_pe64_read_line_as_compiled_helper() {
     let pe = pe_for(
         r#"

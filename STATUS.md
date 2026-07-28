@@ -121,6 +121,10 @@ cargo run --quiet -- build examples\mem_reorder_exit.geo --target x86_64-linux -
 cargo run --quiet -- build examples\mem_reorder_exit.geo --target x86_64-windows -o target\mem_reorder_exit.exe
 cargo run --quiet -- build examples\write_file_exit.geo --target x86_64-linux -o target\write_file_exit
 cargo run --quiet -- build examples\write_file_exit.geo --target x86_64-windows -o target\write_file_exit.exe
+cargo run --quiet -- build examples\append_file_exit.geo --target x86_64-linux -o target\append_file_exit
+cargo run --quiet -- build examples\append_file_exit.geo --target x86_64-windows -o target\append_file_exit.exe
+cargo run --quiet -- build examples\touch_remove_file_exit.geo --target x86_64-linux -o target\touch_remove_file_exit
+cargo run --quiet -- build examples\touch_remove_file_exit.geo --target x86_64-windows -o target\touch_remove_file_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -198,6 +202,8 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_equal` and `std.mem.mem_is_zero`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_reverse`
 - direct PE64 executable emission also includes compiler-owned `std.io.write_file`
+- direct ELF64 executable emission also includes compiler-owned `std.io.append_file`, `std.io.touch_file`, and `std.io.remove_file` through `openat`, `write`, `close`, and `unlink` syscalls
+- direct PE64 executable emission also includes compiler-owned `std.io.append_file`, `std.io.touch_file`, and `std.io.remove_file` through `CreateFileA`, `WriteFile`, `CloseHandle`, and `DeleteFileA`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
@@ -243,6 +249,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Formatter is minimal.
 - Distribution/install layout is not defined.
 - Direct object emission does not yet cover aggregate layout, full runtime linking from compiler-owned objects, or broad Windows COFF objects beyond the current object subset.
+- Direct file operations currently cover path-based append, touch, remove, read, and write; handle-based IO, truncation, metadata, and the remaining NASM/C-runtime fallback are still open.
 
 ## Current Priority
 

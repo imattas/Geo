@@ -147,6 +147,46 @@ fn emits_direct_elf64_file_write_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_append_file_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return append_file("/tmp/geo-elf-append-test", "Geo")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 0x01, 0x01, 0, 0]));
+    assert!(contains_bytes(&executable, &[0xb8, 1, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xb8, 3, 0, 0, 0, 0x0f, 0x05]));
+}
+
+#[test]
+fn emits_direct_elf64_touch_and_remove_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                let touched = touch_file("/tmp/geo-elf-touch-test")
+                if touched != 0 {
+                    return touched
+                }
+                return remove_file("/tmp/geo-elf-touch-test")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 0x01, 0x01, 0, 0]));
+    assert!(contains_bytes(
+        &executable,
+        &[0xb8, 87, 0, 0, 0, 0x0f, 0x05]
+    ));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

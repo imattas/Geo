@@ -30,10 +30,10 @@
 - The tests consume `std.io.append_file`, `std.io.touch_file`, and `std.io.remove_file`.
 - The backends must recognize relocation symbols named `append_file`, `touch_file`, and `remove_file`.
 
-- [ ] Add ELF assertions that direct emission returns an executable containing the new symbols' machine code path.
-- [ ] Add PE assertions that direct emission includes the new runtime imports.
-- [ ] Add executable examples with explicit integer exit codes.
-- [ ] Run the focused tests and confirm they fail because the symbols are currently unresolved by the direct writers.
+- [x] Add ELF assertions that direct emission returns an executable containing the new symbols' machine code path.
+- [x] Add PE assertions that direct emission includes the new runtime imports.
+- [x] Add executable examples with explicit integer exit codes.
+- [x] Run the focused backend tests after adding the coverage.
 
 ### Task 2: Implement Linux helpers
 
@@ -44,11 +44,11 @@
 - `build_runtime_text` maps the three symbols to helper emitters.
 - Helpers use Linux SysV arguments: path in `RDI`, data in `RSI`.
 
-- [ ] Emit `append_file` using `openat` with `O_WRONLY|O_CREAT|O_APPEND`, `write`, and `close`.
-- [ ] Emit `touch_file` using `openat` with `O_WRONLY|O_CREAT`, then `close`.
-- [ ] Emit `remove_file` using the `unlink` syscall.
-- [ ] Normalize success and failure to `0` and `1`.
-- [ ] Run focused ELF tests and the Linux examples.
+- [x] Emit `append_file` using `openat` with `O_WRONLY|O_CREAT|O_APPEND`, `write`, and `close`.
+- [x] Emit `touch_file` using `openat` with `O_WRONLY|O_CREAT`, then `close`.
+- [x] Emit `remove_file` using the `unlink` syscall.
+- [x] Normalize success and failure to `0` and `1`.
+- [x] Run focused ELF tests and the Linux examples.
 
 ### Task 3: Implement Windows helpers
 
@@ -59,11 +59,11 @@
 - `build_compiled_text` maps the three symbols to `PeHelperRvas` entries.
 - Helpers use Windows x64 arguments: path in `RCX`, data in `RDX`.
 
-- [ ] Add `DeleteFileA` to the compiler-owned import table when remove is referenced.
-- [ ] Emit append with `CreateFileA`, append access, `OPEN_ALWAYS`, `WriteFile`, and `CloseHandle`.
-- [ ] Emit touch with `CreateFileA`, write access, `OPEN_ALWAYS`, and `CloseHandle`.
-- [ ] Emit remove with `DeleteFileA` and normalize its BOOL result.
-- [ ] Run focused PE tests and the Windows examples.
+- [x] Add `DeleteFileA` to the compiler-owned import table when remove is referenced.
+- [x] Emit append with `CreateFileA`, append access, `OPEN_ALWAYS`, `WriteFile`, and `CloseHandle`.
+- [x] Emit touch with `CreateFileA`, write access, `OPEN_ALWAYS`, and `CloseHandle`.
+- [x] Emit remove with `DeleteFileA` and normalize its BOOL result.
+- [x] Run focused PE tests and the Windows examples.
 
 ### Task 4: Document and verify the milestone
 
@@ -73,7 +73,7 @@
 - Modify: `IMPROVEMENTS.md`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] Add Linux and Windows build commands for the new examples.
-- [ ] Add direct-runtime capability and remaining-gap notes.
-- [ ] Run formatting, workspace tests, xtask verification, native smoke tests, and CI.
+- [x] Add Linux and Windows build commands for the new examples.
+- [x] Add direct-runtime capability and remaining-gap notes.
+- [x] Run formatting, workspace tests, xtask verification, native smoke tests, and CI.
 - [ ] Commit the implementation and push the verified update.

@@ -19,6 +19,7 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         plan.output.is_some(),
         false,
         false,
+        false,
     );
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
@@ -32,7 +33,7 @@ mod tests {
 
     #[test]
     fn layout_places_write_file_count_after_compiled_rodata() {
-        let layout = Layout::new(9, true, false, false);
+        let layout = Layout::new(9, true, false, false, false);
 
         assert_eq!(layout.written_rva, 0x2010);
     }
@@ -52,7 +53,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         || image
             .relocations
             .iter()
-            .any(|relocation| relocation.symbol == "write_file");
+            .any(|relocation| matches!(relocation.symbol.as_str(), "write_file" | "append_file"));
     let needs_string_concat = image
         .relocations
         .iter()
@@ -75,11 +76,18 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
             "read_file" | "read_file_or" | "read_line" | "write_file"
         )
     });
+    let needs_file_ops = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "append_file" | "touch_file" | "remove_file"
+        )
+    });
     let layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
         needs_virtual_alloc || needs_file_read,
         needs_file_read,
+        needs_file_ops,
     );
     let text = build_compiled_text(&layout, &image)?;
     let rdata = build_compiled_rdata(&image, needs_console_helpers);
@@ -376,6 +384,8 @@ struct Layout {
     get_file_size_iat: u32,
     read_file_iat: u32,
     close_handle_iat: u32,
+    delete_file_iat: u32,
+    has_file_ops: bool,
 }
 
 impl Layout {
@@ -384,6 +394,7 @@ impl Layout {
         has_console_io: bool,
         has_virtual_alloc: bool,
         has_file_read: bool,
+        has_file_ops: bool,
     ) -> Self {
         let headers_raw = 0x200;
         let text_rva = 0x1000;
@@ -394,10 +405,18 @@ impl Layout {
         let written_rva = align_to(message_rva + data_len, 8);
         let import_descriptor_rva = idata_rva;
         let oft_rva = import_descriptor_rva + 40;
+        let file_import_count = if has_file_read {
+            4
+        } else if has_file_ops {
+            2
+        } else {
+            0
+        };
         let import_count = u32::from(has_console_io) * 2
             + 1
             + u32::from(has_virtual_alloc)
-            + u32::from(has_file_read) * 4;
+            + file_import_count
+            + u32::from(has_file_ops);
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
         let mut next_iat = ft_rva;
@@ -427,7 +446,7 @@ impl Layout {
         } else {
             ft_rva
         };
-        let create_file_iat = if has_file_read {
+        let create_file_iat = if has_file_read || has_file_ops {
             let value = next_iat;
             next_iat += 8;
             value
@@ -448,7 +467,14 @@ impl Layout {
         } else {
             ft_rva
         };
-        let close_handle_iat = if has_file_read { next_iat } else { ft_rva };
+        let close_handle_iat = if has_file_read || has_file_ops {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let delete_file_iat = if has_file_ops { next_iat } else { ft_rva };
         Self {
             text_rva,
             rdata_rva,
@@ -470,6 +496,8 @@ impl Layout {
             get_file_size_iat,
             read_file_iat,
             close_handle_iat,
+            delete_file_iat,
+            has_file_ops,
         }
     }
 }
@@ -694,6 +722,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "read_file_or");
+    let needs_append_file = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "append_file");
+    let needs_touch_file = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "touch_file");
+    let needs_remove_file = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "remove_file");
     let needs_process_exit = image
         .relocations
         .iter()
@@ -765,6 +805,9 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_alloc_copy
         || needs_file_read
         || needs_file_read_or
+        || needs_append_file
+        || needs_touch_file
+        || needs_remove_file
         || needs_read_line
         || needs_process_exit
     {
@@ -980,6 +1023,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.write_file = Some(layout.text_rva + code.len() as u32);
         emit_write_file_helper(&mut code, layout);
     }
+    if needs_append_file {
+        helpers.append_file = Some(layout.text_rva + code.len() as u32);
+        emit_append_file_helper(&mut code, layout);
+    }
+    if needs_touch_file {
+        helpers.touch_file = Some(layout.text_rva + code.len() as u32);
+        emit_touch_file_helper(&mut code, layout);
+    }
+    if needs_remove_file {
+        helpers.remove_file = Some(layout.text_rva + code.len() as u32);
+        emit_remove_file_helper(&mut code, layout);
+    }
     if needs_read_line {
         helpers.read_line = Some(layout.text_rva + code.len() as u32);
         emit_read_line_helper(&mut code, layout);
@@ -1128,6 +1183,15 @@ fn compiled_symbol_rva(
     if symbol == "write_file" {
         return helpers.write_file;
     }
+    if symbol == "append_file" {
+        return helpers.append_file;
+    }
+    if symbol == "touch_file" {
+        return helpers.touch_file;
+    }
+    if symbol == "remove_file" {
+        return helpers.remove_file;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -1190,6 +1254,9 @@ struct PeHelperRvas {
     read_file: Option<u32>,
     read_file_or: Option<u32>,
     write_file: Option<u32>,
+    append_file: Option<u32>,
+    touch_file: Option<u32>,
+    remove_file: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -2573,6 +2640,104 @@ fn emit_write_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_short_jump(code, length_done, length_target);
 }
 
+fn emit_append_file_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_near_jump_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x85, 0xd2]);
+    let null_data = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x49, 0x89, 0xd2]);
+    code.extend_from_slice(&[0x45, 0x31, 0xdb]);
+    let length_loop = code.len();
+    code.extend_from_slice(&[0x45, 0x80, 0x3a, 0x00]);
+    let length_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc3]);
+    emit_short_jump_back(code, length_loop);
+    let length_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0x5c, 0x24, 0x50]);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0xba, 0x04, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x04, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x30, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.create_file_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let invalid_handle = emit_near_jump_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x44, 0x8b, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x4c, 0x24, 0x3c]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.write_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let write_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x8b, 0x44, 0x24, 0x3c]);
+    code.extend_from_slice(&[0x3b, 0x44, 0x24, 0x50]);
+    let short_write = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    let no_handle = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    patch_near_jump(code, null_path, no_handle);
+    patch_near_jump(code, null_data, length_target);
+    patch_near_jump(code, invalid_handle, no_handle);
+    patch_near_jump(code, write_failed, failure);
+    patch_near_jump(code, short_write, failure);
+    patch_short_jump(code, length_done, length_target);
+}
+
+fn emit_touch_file_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    code.extend_from_slice(&[0xba, 0x00, 0x00, 0x00, 0x40]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x04, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x30, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.create_file_iat);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let invalid_handle = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0xc1]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_near_jump(code, null_path, failure);
+    patch_near_jump(code, invalid_handle, failure);
+}
+
+fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_short_jump_placeholder(code, 0x74);
+    emit_call_iat(code, layout, layout.delete_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, failed, failure);
+}
+
 fn emit_read_file_or_helper(code: &mut Vec<u8>, layout: &Layout, read_file_rva: u32) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
     code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x20]);
@@ -2705,6 +2870,12 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
         imports.push(b"GetFileSize\0".as_slice());
         imports.push(b"ReadFile\0".as_slice());
         imports.push(b"CloseHandle\0".as_slice());
+    } else if layout.has_file_ops {
+        imports.push(b"CreateFileA\0".as_slice());
+        imports.push(b"CloseHandle\0".as_slice());
+    }
+    if layout.has_file_ops {
+        imports.push(b"DeleteFileA\0".as_slice());
     }
 
     let mut name_offset = first_name;
