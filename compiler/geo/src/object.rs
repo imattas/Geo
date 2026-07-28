@@ -40,7 +40,7 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
         .functions
         .iter()
         .find(|function| function.name == "main")?;
-    let text = emit_coff_constant_return_text(main)?;
+    let text = emit_coff_text_subset(main)?;
     let section_table_offset = 20_usize;
     let text_offset = section_table_offset + 40;
     let symbol_table_offset = text_offset + text.len();
@@ -81,21 +81,22 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn emit_coff_constant_return_text(function: &IrFunction) -> Option<Vec<u8>> {
-    let [Instruction::Const { dst, value }, Instruction::Return { value: returned }] =
-        function.instructions.as_slice()
-    else {
-        return None;
-    };
-    if dst != returned {
+fn emit_coff_text_subset(function: &IrFunction) -> Option<Vec<u8>> {
+    let mut text = Vec::new();
+    let mut rodata = Vec::new();
+    let mut data_symbols = Vec::new();
+    let mut relocations = Vec::new();
+    emit_function_text(
+        function,
+        &mut text,
+        &mut rodata,
+        &mut data_symbols,
+        &mut relocations,
+    );
+    if !rodata.is_empty() || !data_symbols.is_empty() || !relocations.is_empty() {
         return None;
     }
 
-    let value = i32::try_from(*value).ok()?;
-    let mut text = Vec::new();
-    text.push(0xb8);
-    text.extend_from_slice(&value.to_le_bytes());
-    text.push(0xc3);
     Some(text)
 }
 

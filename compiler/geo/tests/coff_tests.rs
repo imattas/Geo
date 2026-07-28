@@ -20,7 +20,22 @@ fn emits_win64_coff_relocatable_with_text_and_main_symbol() {
     assert_eq!(read_u16(&object, 2), 1);
     assert!(contains_bytes(&object, b".text"));
     assert!(contains_bytes(&object, b"main"));
-    assert!(contains_bytes(&object, &[0xb8, 42, 0, 0, 0, 0xc3]));
+    assert!(contains_bytes(
+        &object,
+        &[0x48, 0xc7, 0x45, 0xf8, 42, 0, 0, 0]
+    ));
+    assert!(contains_bytes(&object, &[0xc9, 0xc3]));
+}
+
+#[test]
+fn emits_win64_coff_machine_code_for_stack_arithmetic() {
+    let object = coff_for("fn main() -> int { return 40 + 2 }");
+
+    assert_eq!(read_u16(&object, 0), 0x8664);
+    assert!(contains_bytes(&object, b".text"));
+    assert!(contains_bytes(&object, b"main"));
+    assert!(contains_bytes(&object, &[0x48, 0x03, 0x45]));
+    assert!(contains_bytes(&object, &[0xc9, 0xc3]));
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {

@@ -56,7 +56,11 @@ fn cli_emit_obj_writes_win64_coff_relocatable_without_external_assembler() {
     assert_eq!(read_u16(&bytes, 2), 1);
     assert!(contains_bytes(&bytes, b".text"));
     assert!(contains_bytes(&bytes, b"main"));
-    assert!(contains_bytes(&bytes, &[0xb8, 42, 0, 0, 0, 0xc3]));
+    assert!(contains_bytes(
+        &bytes,
+        &[0x48, 0xc7, 0x45, 0xf8, 42, 0, 0, 0]
+    ));
+    assert!(contains_bytes(&bytes, &[0xc9, 0xc3]));
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {

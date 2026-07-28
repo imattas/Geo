@@ -167,11 +167,11 @@ pub fn verify_commands() -> Vec<(&'static str, Vec<&'static str>)> {
                 "--quiet",
                 "--",
                 "emit-obj",
-                "examples/return_42.geo",
+                "examples/coff_backend.geo",
                 "--target",
                 "x86_64-windows",
                 "-o",
-                "target/xtask-return-42-windows.obj",
+                "target/xtask-coff-backend-windows.obj",
             ],
         ),
         (

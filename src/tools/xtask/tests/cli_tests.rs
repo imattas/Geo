@@ -65,9 +65,9 @@ fn verify_includes_compiler_owned_windows_object_emission() {
     let has_emit_obj = commands.iter().any(|(program, args)| {
         *program == "cargo"
             && args.contains(&"emit-obj")
-            && args.contains(&"examples/return_42.geo")
+            && args.contains(&"examples/coff_backend.geo")
             && args.contains(&"x86_64-windows")
-            && args.contains(&"target/xtask-return-42-windows.obj")
+            && args.contains(&"target/xtask-coff-backend-windows.obj")
     });
 
     assert!(has_emit_obj);
