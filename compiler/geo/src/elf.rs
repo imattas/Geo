@@ -95,6 +95,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "mem_zero" => emit_mem_zero_runtime(&mut code),
             "mem_move" => emit_mem_move_runtime(&mut code),
             "mem_fill" => emit_mem_fill_runtime(&mut code),
+            "mem_find" => emit_mem_find_runtime(&mut code),
             "string_from_byte" => emit_string_from_byte_runtime(&mut code),
             "string_clone" => emit_string_clone_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
@@ -536,6 +537,24 @@ fn emit_mem_fill_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x88, 0xd0]);
     code.extend_from_slice(&[0xf3, 0xaa]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+}
+
+fn emit_mem_find_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x85, 0xf6]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x38, 0x14, 0x07]);
+    let found = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0xff, 0xce]);
+    emit_short_jump_back(code, loop_start);
+    let found_target = code.len();
+    code.push(0xc3);
+    let not_found = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
+    patch_short_jump(code, empty, not_found);
+    patch_short_jump(code, found, found_target);
 }
 
 fn emit_string_from_byte_runtime(code: &mut Vec<u8>) {

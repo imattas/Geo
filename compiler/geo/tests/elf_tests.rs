@@ -300,6 +300,20 @@ fn emits_direct_elf64_mem_fill_runtime() {
     assert!(contains_bytes(&executable, &[0xf3, 0xaa]));
 }
 
+#[test]
+fn emits_direct_elf64_mem_find_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.mem
+            fn main() -> int {
+                let buffer: *u8 = alloc(8)
+                return mem_find(buffer, 8, 65)
+            }
+        "#,
+    );
+    assert!(contains_bytes(&executable, &[0x38, 0x14, 0x07]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }

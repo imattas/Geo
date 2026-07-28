@@ -155,6 +155,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned allocation-backed `std.string.string_clone`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.alloc_copy`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_fill`
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_find`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
