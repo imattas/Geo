@@ -213,6 +213,29 @@ fn emits_direct_elf64_handle_file_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_handle_file_read_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+            import std.string
+
+            fn main() -> int {
+                let handle = file_open("/tmp/geo-elf-handle-read-test")
+                if handle < 0 {
+                    return 1
+                }
+                let contents = file_read_to_string(handle)
+                file_close(handle)
+                return string_len(contents) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 8, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

@@ -129,6 +129,8 @@ cargo run --quiet -- build examples\file_handle_exit.geo --target x86_64-linux -
 cargo run --quiet -- build examples\file_handle_exit.geo --target x86_64-windows -o target\file_handle_exit.exe
 cargo run --quiet -- build examples\file_append_handle_exit.geo --target x86_64-linux -o target\file_append_handle_exit
 cargo run --quiet -- build examples\file_append_handle_exit.geo --target x86_64-windows -o target\file_append_handle_exit.exe
+cargo run --quiet -- build examples\file_read_handle_len_exit.geo --target x86_64-linux -o target\file_read_handle_len_exit
+cargo run --quiet -- build examples\file_read_handle_len_exit.geo --target x86_64-windows -o target\file_read_handle_len_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -209,6 +211,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 executable emission also includes compiler-owned `std.io.append_file`, `std.io.touch_file`, and `std.io.remove_file` through `openat`, `write`, `close`, and `unlink` syscalls
 - direct PE64 executable emission also includes compiler-owned `std.io.append_file`, `std.io.touch_file`, and `std.io.remove_file` through `CreateFileA`, `WriteFile`, `CloseHandle`, and `DeleteFileA`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.file_open`, `std.io.file_open_write`, `std.io.file_open_append`, `std.io.file_write`, and `std.io.file_close` through native descriptors/handles
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.file_read_to_string` through native handle reads and allocation-backed NUL-terminated strings
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
@@ -255,7 +258,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Distribution/install layout is not defined.
 - Direct object emission does not yet cover aggregate layout, full runtime linking from compiler-owned objects, or broad Windows COFF objects beyond the current object subset.
 - Direct path-based file operations cover append, touch, remove, read, and write; path metadata and the remaining NASM/C-runtime fallback are still open.
-- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, and close; handle-based reading, seeking, truncation controls, metadata, and the remaining NASM/C-runtime fallback are still open.
+- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, metadata, and the remaining NASM/C-runtime fallback are still open.
 
 ## Current Priority
 

@@ -86,6 +86,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
       - name: Build compiler-owned Linux append-handle executable
         run: cargo run --locked --quiet -- build examples/file_append_handle_exit.geo --target x86_64-linux -o target/ci-file-append-handle-linux
+      - name: Build compiler-owned Linux handle-read executable
+        run: cargo run --locked --quiet -- build examples/file_read_handle_len_exit.geo --target x86_64-linux -o target/ci-file-read-handle-linux
 
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
@@ -131,6 +133,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
         run: cargo run --locked --quiet -- build examples/file_append_handle_exit.geo --target x86_64-windows -o target/ci-file-append-handle-windows.exe
+      - name: Build compiler-owned Windows handle-read executable
+        run: cargo run --locked --quiet -- build examples/file_read_handle_len_exit.geo --target x86_64-windows -o target/ci-file-read-handle-windows.exe
 
       - name: Emit Linux object
         run: cargo run --locked --quiet -- emit-obj examples/object_backend.geo --target x86_64-linux -o target/ci-object-backend-linux.o

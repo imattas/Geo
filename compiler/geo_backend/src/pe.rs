@@ -75,7 +75,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_file_read = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "read_file" | "read_file_or" | "read_line" | "write_file"
+            "read_file" | "read_file_or" | "read_line" | "write_file" | "file_read_to_string"
         )
     });
     let needs_file_ops = image.relocations.iter().any(|relocation| {
@@ -723,10 +723,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "alloc_copy");
-    let needs_file_read = image
-        .relocations
-        .iter()
-        .any(|relocation| matches!(relocation.symbol.as_str(), "read_file" | "read_file_or"));
+    let needs_file_read = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "read_file" | "read_file_or" | "file_read_to_string"
+        )
+    });
     let needs_file_read_or = image
         .relocations
         .iter()
@@ -757,6 +759,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "file_close");
+    let needs_file_read_to_string = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "file_read_to_string");
     let needs_process_exit = image
         .relocations
         .iter()
@@ -834,6 +840,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_file_open
         || needs_file_write
         || needs_file_close
+        || needs_file_read_to_string
         || needs_read_line
         || needs_process_exit
     {
@@ -1095,6 +1102,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.file_close = Some(layout.text_rva + code.len() as u32);
         emit_file_close_helper(&mut code, layout);
     }
+    if needs_file_read_to_string {
+        helpers.file_read_to_string = Some(layout.text_rva + code.len() as u32);
+        emit_file_read_to_string_helper(&mut code, layout);
+    }
     if needs_read_line {
         helpers.read_line = Some(layout.text_rva + code.len() as u32);
         emit_read_line_helper(&mut code, layout);
@@ -1267,6 +1278,9 @@ fn compiled_symbol_rva(
     if symbol == "file_close" {
         return helpers.file_close;
     }
+    if symbol == "file_read_to_string" {
+        return helpers.file_read_to_string;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -1337,6 +1351,7 @@ struct PeHelperRvas {
     file_open_append: Option<u32>,
     file_write: Option<u32>,
     file_close: Option<u32>,
+    file_read_to_string: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -2887,6 +2902,50 @@ fn emit_file_close_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
     emit_call_iat(code, layout, layout.close_handle_iat);
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+}
+
+fn emit_file_read_to_string_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_handle = emit_near_jump_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x31, 0xd2]);
+    emit_call_iat(code, layout, layout.get_file_size_iat);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x83, 0xf8, 0xff]);
+    let size_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x89, 0xc2]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x40]);
+    code.extend_from_slice(&[0x44, 0x8b, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x4c, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0, 0, 0, 0]);
+    emit_call_iat(code, layout, layout.read_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let read_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x8b, 0x4c, 0x24, 0x48]);
+    code.extend_from_slice(&[0xc6, 0x04, 0x08, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    patch_near_jump(code, null_handle, failure);
+    patch_near_jump(code, size_failed, failure);
+    patch_near_jump(code, allocation_failed, failure);
+    patch_near_jump(code, read_failed, failure);
 }
 
 fn emit_read_file_or_helper(code: &mut Vec<u8>, layout: &Layout, read_file_rva: u32) {
