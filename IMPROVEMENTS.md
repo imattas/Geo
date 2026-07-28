@@ -157,7 +157,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 ## Backend Improvements
 
 - Expand ELF64 object writing to cover aggregate layout and linkable runtime calls.
-- Expand the Windows COFF writer beyond the current object subset and make the PE64 path handle broader runtime imports, allocation-backed strings, and external symbols through compiled machine code. The direct helper set now includes first and last substring search; next prioritize counting and allocation-backed string results.
+- Expand the Windows COFF writer beyond the current object subset and make the PE64 path handle broader runtime imports, allocation-backed strings, and external symbols through compiled machine code. The direct helper set now includes first and last substring search plus non-overlapping counting; next prioritize allocation-backed string results.
 - Add relocation tests for object writers.
 - Harden stack-passed argument support beyond the first four Windows x64 registers.
 - Add a simple register allocator after the IR and ABI boundaries are stable.

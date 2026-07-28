@@ -1620,6 +1620,29 @@ fn emits_direct_pe64_string_last_index_of_as_compiled_helper() {
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }
 
+#[test]
+fn emits_direct_pe64_string_count_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> usize {
+                return string_count("compiler.geo.compiler.geo", ".geo")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28, 0xe8]));
+    assert!(contains_bytes(&pe, b"compiler.geo.compiler.geo\0.geo\0"));
+    assert!(contains_bytes(&pe, &[0x49, 0x89, 0xc8, 0x49, 0x31, 0xc9]));
+    assert!(contains_bytes(&pe, &[0x49, 0xff, 0xc1, 0x4d, 0x89, 0xd8]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x89, 0xc8, 0xc3]));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
