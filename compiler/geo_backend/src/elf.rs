@@ -91,6 +91,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_find_byte" => emit_string_find_byte_runtime(&mut code),
             "string_contains" => emit_string_contains_runtime(&mut code),
             "string_starts_with" => emit_string_starts_with_runtime(&mut code),
+            "string_ends_with" => emit_string_ends_with_runtime(&mut code),
             "string_compare" => emit_string_compare_runtime(&mut code, StringCompareKind::Compare),
             "string_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::Equal),
             "string_not_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::NotEqual),
@@ -328,6 +329,50 @@ fn emit_string_starts_with_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, missing, false_target);
     patch_short_jump(code, matched, true_target);
     patch_short_jump(code, mismatch, false_target);
+}
+
+fn emit_string_ends_with_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let source_missing = emit_short_jump_placeholder(code, 0x74);
+    let source_length_loop = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x0f, 0x00]);
+    let source_length_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, source_length_loop);
+    let source_length_target = code.len();
+
+    code.extend_from_slice(&[0x45, 0x31, 0xc0, 0x48, 0x85, 0xf6]);
+    let suffix_missing = emit_short_jump_placeholder(code, 0x74);
+    let suffix_length_loop = code.len();
+    code.extend_from_slice(&[0x42, 0x80, 0x3c, 0x06, 0x00]);
+    let suffix_length_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, suffix_length_loop);
+    let suffix_length_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x39, 0xc1]);
+    let too_long = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x4c, 0x29, 0xc1, 0x4d, 0x31, 0xc9]);
+    let compare_loop = code.len();
+    code.extend_from_slice(&[0x4c, 0x8d, 0x14, 0x0f]);
+    code.extend_from_slice(&[0x4a, 0x8a, 0x04, 0x0e]);
+    code.extend_from_slice(&[0x4f, 0x8a, 0x1c, 0x0a]);
+    code.extend_from_slice(&[0x44, 0x38, 0xd8]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc8]);
+    let compare_next = emit_short_jump_placeholder(code, 0x75);
+    let true_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, source_missing, false_target);
+    patch_short_jump(code, source_length_done, source_length_target);
+    patch_short_jump(code, suffix_missing, true_target);
+    patch_short_jump(code, suffix_length_done, suffix_length_target);
+    patch_short_jump(code, too_long, false_target);
+    patch_short_jump(code, mismatch, false_target);
+    patch_short_jump(code, compare_next, compare_loop);
 }
 
 #[derive(Clone, Copy)]

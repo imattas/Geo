@@ -353,6 +353,27 @@ fn emits_direct_elf64_string_matching_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_suffix_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if !string_ends_with("Geo compiler", "compiler") {
+                    return 1
+                }
+                if string_ends_with("Geo", "Rust") {
+                    return 2
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x4c, 0x39, 0xc1]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"
