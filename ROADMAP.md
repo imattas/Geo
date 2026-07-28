@@ -37,7 +37,7 @@ Deliverables:
 
 - Rust-style workspace root.
 - Compiler located under `compiler/geo`.
-- Compiler-managed native runtime implementation located under `library/geo_runtime`.
+- Compiler-owned native runtime emission located under `compiler/geo_backend`.
 - Diagnostic support crate located under `compiler/geo_diagnostics`.
 - Source management crate located under `compiler/geo_source`.
 - Bootstrap model located under `src/bootstrap`.
@@ -211,14 +211,14 @@ Deliverables:
 - `geo emit-obj` CLI path for compiler-owned Linux ELF64 objects.
 - `geo emit-obj` CLI path for compiler-owned Windows AMD64 COFF objects.
 - PE64 writer support for runtime imports, local helper symbols, and external symbols.
-- NASM backend retained as the stable fallback.
+- NASM text emission remains available only for `geo emit-asm` compatibility and debugging; executable builds use compiler-owned ELF64/PE64 writers and fail explicitly when a program is outside their supported subset.
 
 Acceptance criteria:
 
 - Linux target emits valid System V calls.
 - Windows target emits valid Windows x64 calls.
 - Object writer tests cover sections, symbols, and relocations.
-- CI emits a Linux object without invoking NASM.
+- CI emits Linux and Windows objects without invoking NASM, and executable builds do not resolve a C runtime.
 
 Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, string helpers, allocation-backed `string_concat`, `std.process.exit`, `std.mem.alloc`, and `std.io.read_file` using compiler-emitted Windows helpers and imports. The read path uses the Win64 ABI directly and returns a NUL-terminated buffer for Geo string operations.
 

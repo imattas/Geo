@@ -1,6 +1,6 @@
 # Contributing To Geo
 
-Geo is organized as a Rust workspace with the compiler in `compiler/geo` and runtime support in `library/geo_runtime`.
+Geo is organized as a Rust workspace with the compiler in `compiler/geo` and native runtime emission in `compiler/geo_backend`.
 
 ## Local Verification
 
@@ -33,7 +33,7 @@ Use `cargo test --workspace --quiet` during local iteration when lockfile checki
 - `compiler/geo`: current compiler crate and CLI.
 - `compiler/geo_diagnostics`: diagnostic types and rendering.
 - `compiler/geo_source`: source loading and module path mapping.
-- `library/geo_runtime`: compiler-managed native runtime implementation.
+- `compiler/geo_backend`: compiler-owned machine-code and native runtime emission.
 - `library/std`: source-level Geo standard library package.
 - `src/bootstrap`: bootstrap stage model.
 - `src/tools/xtask`: workspace automation tool.

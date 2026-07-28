@@ -36,21 +36,11 @@ pub enum Command {
         output: Option<PathBuf>,
         #[arg(long)]
         target: Option<String>,
-        #[arg(long, default_value = "nasm")]
-        nasm: String,
-        #[arg(long)]
-        linker: Option<String>,
-        #[arg(long)]
-        keep_temps: bool,
     },
     Run {
         input: PathBuf,
         #[arg(long)]
         target: Option<String>,
-        #[arg(long, default_value = "nasm")]
-        nasm: String,
-        #[arg(long)]
-        linker: Option<String>,
         #[arg(last = true)]
         args: Vec<String>,
     },

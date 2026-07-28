@@ -31,13 +31,12 @@ Reason: self-hosting work needs stable internal boundaries. Smaller crates also 
 
 ### 2. Add A Real Standard Library Source Tree
 
-Current state: the compiler owns runtime metadata directly in `compiler/geo/src/runtime.rs`; the native runtime implementation lives in `library/geo_runtime`, and first-pass source-level standard library module declarations live in `library/std/src`.
+Current state: the compiler owns runtime metadata directly in `compiler/geo_semantic/src/runtime.rs`; native runtime emission lives in `compiler/geo_backend`, and first-pass source-level standard library module declarations live in `library/std/src`.
 
 Recommended layout:
 
 ```text
 library/
-  geo_runtime/
   std/
     io.geo
     mem.geo
@@ -66,7 +65,7 @@ Reason: a compiler project needs repeatable full-stack checks: Rust tests, Geo e
 
 ### 4. Make The Backend Target Pipeline More Explicit
 
-Current state: target support exists, including Linux and Windows x86-64 paths, NASM emission, a Linux ELF64 object writer path, and a PE writer path.
+Current state: target support exists, including Linux and Windows x86-64 paths, NASM text emission for compatibility, and compiler-owned ELF64/PE64 object and executable writers. Executable builds do not use an external assembler, linker, or C runtime.
 
 Recommended structure:
 
@@ -173,7 +172,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add `docs/runtime/` for runtime ABI and standard library design.
 - Add `tests/ui/` for diagnostic snapshot tests.
 - Add `tests/run-pass/`, `tests/check-pass/`, and `tests/check-fail/` for Geo source tests.
-- Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently rely on the assembly/C-runtime fallback.
+- Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently regress to a non-native build path.
 - Move generated `.exe` and `.asm` artifacts out of the repository root and into `target/`.
 - Add native runtime coverage for file metadata queries such as `file_size`, `file_is_file`, and `file_is_dir`.
 

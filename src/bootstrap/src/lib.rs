@@ -26,8 +26,8 @@ pub fn bootstrap_stages() -> Vec<BootstrapStage> {
         BootstrapStage {
             name: "runtime",
             kind: StageKind::Runtime,
-            path: "library/geo_runtime",
-            description: "compile and link compiler-managed native runtime symbols",
+            path: "compiler/geo_backend",
+            description: "emit compiler-owned target machine code and native runtime symbols",
         },
         BootstrapStage {
             name: "std",

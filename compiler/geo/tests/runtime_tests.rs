@@ -1,21 +1,5 @@
 use geo::ast::Type;
-use geo::runtime::{c_runtime_path, functions_for_import, native_runtime};
-
-#[test]
-fn c_runtime_source_exists() {
-    assert!(c_runtime_path().exists());
-}
-
-#[test]
-fn native_runtime_is_compiler_owned_library_artifact() {
-    let runtime = native_runtime();
-
-    assert_eq!(runtime.name, "geo_native_runtime");
-    assert!(runtime
-        .source_path
-        .ends_with("library/geo_runtime/geo_runtime.c"));
-    assert!(runtime.source_path.exists());
-}
+use geo::runtime::functions_for_import;
 
 #[test]
 fn exposes_std_io_functions() {

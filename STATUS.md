@@ -47,8 +47,6 @@ compiler/
     src/
     tests/
 library/
-  geo_runtime/
-    geo_runtime.c
   std/
     src/
     src/platform/
@@ -222,7 +220,7 @@ The exact implemented behavior is covered by the Rust test suite under `compiler
 
 Current runtime layout:
 
-- Compiler-managed native runtime implementation: `library/geo_runtime/geo_runtime.c`
+- Compiler-owned native runtime implementation: `compiler/geo_backend/src/elf.rs` and `compiler/geo_backend/src/pe.rs`
 - Source-level standard library modules: `library/std/src`
 
 The compiler owns runtime metadata in `compiler/geo/src/runtime.rs`. No separate runtime Cargo crate remains in the workspace.
@@ -240,7 +238,7 @@ Current repository-level tooling:
 
 The compiler pipeline is implemented in this repository. The active workspace has no LLVM, Cranelift, MLIR, GCCJIT, or similar compiler backend framework dependency.
 
-External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code, System V register and stack-passed parameter handling, bounds-check runtime ABI setup, branch patching, `.rodata` strings, and text relocations for the current object subset. `geo emit-obj --target x86_64-windows` emits a compiler-owned AMD64 COFF relocatable for the current object subset, including stack code, `.rdata` strings, function/data symbols, internal function calls, Windows x64 argument registers, call shadow space, and text relocations. The Linux `build` path now has a compiler-owned ELF64 executable writer for current-subset programs, with a `_start` exit wrapper, internal/data relocation patching, direct `string_len`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.io.read_file`, `std.io.read_file_or`, `std.io.write_file`, and allocation-backed `string_concat` runtime helpers. The direct PE64 path uses compiled Win64 machine code for current-subset programs, patches internal and data relocations, includes local bounds-check, string length, string byte access, byte search helpers, first and last substring-index helpers, non-overlapping substring counting, decimal string-to-integer parsing, string comparison, string containment, string prefix/suffix checks, equality and ordering string wrappers, empty and ASCII string predicates, ASCII digit/hex/alpha/lower/upper/alnum/identifier/whitespace classifiers, allocation-backed string concatenation through the compiler-owned `VirtualAlloc` import, `std.process.exit`, `std.mem.alloc`, console print helpers, `std.io.read_file`, and `std.io.read_file_or` through direct Win32 imports. Broader Linux runtime coverage and broader Windows COFF/PE object coverage remain roadmap work.
+The compiler owns executable emission for the supported subset: Linux builds write ELF64 images directly and Windows builds write PE64 images directly. `geo build` no longer invokes NASM, a platform linker, or a C runtime; unsupported programs receive an explicit native-backend diagnostic. NASM text emission remains available only through `geo emit-asm` as a compatibility/debugging output. `geo emit-obj --target x86_64-linux` exercises a compiler-owned ELF64 relocatable writer, and the Windows object path emits compiler-owned AMD64 COFF relocatables. Broader language and runtime coverage remain roadmap work.
 - The direct native paths now also provide compiler-owned `std.io.read_line` helpers with bounded buffers and newline termination, plus `std.mem.alloc_copy` for native buffer duplication.
 
 ## Documentation Status
@@ -260,8 +258,8 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Formatter is minimal.
 - Distribution/install layout is not defined.
 - Direct object emission does not yet cover aggregate layout, full runtime linking from compiler-owned objects, or broad Windows COFF objects beyond the current object subset.
-- Direct path-based file operations cover append, touch, remove, read, and write; path metadata and the remaining NASM/C-runtime fallback are still open.
-- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, metadata, and the remaining NASM/C-runtime fallback are still open.
+- Direct path-based file operations cover append, touch, remove, read, write, and existence checks; richer path metadata remains open.
+- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
 
 ## Current Priority
 

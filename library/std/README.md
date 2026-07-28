@@ -2,7 +2,7 @@
 
 This directory is the source-level standard library package for Geo code.
 
-The compiler-managed native runtime in `library/geo_runtime` owns platform ABI
+The compiler-owned native backend in `compiler/geo_backend` owns platform ABI
 glue for generated programs. Modules in `library/std/src` define the public Geo
 APIs that user code should import.
 

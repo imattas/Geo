@@ -20,7 +20,7 @@ compiler/
   geo_diagnostics/  Diagnostic types and rendering
   geo_source/       Source file loading and module path mapping
 library/
-  geo_runtime/      Compiler-managed native runtime implementation
+  geo_backend/      Compiler-owned machine-code and native runtime emission
   std/              Source-level Geo standard library modules
 src/
   bootstrap/        Bootstrap stage model

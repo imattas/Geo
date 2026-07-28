@@ -9,16 +9,13 @@ use std::process::Command as ProcessCommand;
 #[derive(Debug, Clone)]
 pub struct CompileConfig {
     pub target: Target,
-    pub nasm: String,
-    pub linker: String,
-    pub keep_temps: bool,
     pub runtime_entry: bool,
 }
 
 pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
     match cli.command {
         Command::Check { input, target } => {
-            let config = compile_config(target, "nasm".to_string(), None, false, false)?;
+            let config = compile_config(target, false)?;
             check_source_file(&input, &config)?;
             Ok(())
         }
@@ -27,7 +24,7 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
             output,
             target,
         } => {
-            let config = compile_config(target, "nasm".to_string(), None, false, false)?;
+            let config = compile_config(target, false)?;
             let asm = compile_to_asm(&input, &config)?;
             fs::write(&output, asm).map_err(|err| {
                 vec![Diagnostic::error(format!(
@@ -41,7 +38,7 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
             output,
             target,
         } => {
-            let config = compile_config(target, "nasm".to_string(), None, false, false)?;
+            let config = compile_config(target, false)?;
             let object = compile_to_object(&input, &config)?;
             fs::write(&output, object).map_err(|err| {
                 vec![Diagnostic::error(format!(
@@ -54,11 +51,8 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
             input,
             output,
             target,
-            nasm,
-            linker,
-            keep_temps,
         } => {
-            let config = compile_config(target, nasm, linker, keep_temps, true)?;
+            let config = compile_config(target, true)?;
             let output = output.unwrap_or_else(|| default_output_path(&input, &config.target));
             build_executable(&input, &output, &config)?;
             Ok(())
@@ -66,11 +60,9 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
         Command::Run {
             input,
             target,
-            nasm,
-            linker,
             args,
         } => {
-            let config = compile_config(target, nasm, linker, false, true)?;
+            let config = compile_config(target, true)?;
             let exe = temp_path(&input, "geo-run");
             build_executable(&input, &exe, &config)?;
             let status = ProcessCommand::new(&exe)
@@ -89,7 +81,7 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
             Ok(())
         }
         Command::Test { path } => {
-            let config = compile_config(None, "nasm".to_string(), None, false, false)?;
+            let config = compile_config(None, false)?;
             test_geo_path(&path, &config)?;
             Ok(())
         }
@@ -262,85 +254,22 @@ fn build_executable(
             return Ok(());
         }
     }
-    let asm = crate::x86_64::emit_nasm_for_target_with_runtime_entry(
-        &ir,
-        &config.target,
-        config.runtime_entry,
-    );
-    let asm_path = temp_path(input, "asm");
-    let obj_path = temp_path(input, "o");
-    fs::write(&asm_path, asm).map_err(|err| {
-        vec![Diagnostic::error(format!(
-            "failed to write assembly file: {err}"
-        ))]
-    })?;
-
-    run_tool(
-        &config.nasm,
-        &[
-            "-f".to_string(),
-            config.target.nasm_format.to_string(),
-            asm_path.to_string_lossy().to_string(),
-            "-o".to_string(),
-            obj_path.to_string_lossy().to_string(),
-        ],
-        "nasm",
-    )?;
-    run_tool(&config.linker, &link_args(&obj_path, output), "linker")?;
-
-    if !config.keep_temps {
-        let _ = fs::remove_file(&asm_path);
-        let _ = fs::remove_file(&obj_path);
-    }
-
-    Ok(())
-}
-
-fn run_tool(tool: &str, args: &[String], label: &str) -> Result<(), Vec<Diagnostic>> {
-    let output = ProcessCommand::new(tool)
-        .args(args)
-        .output()
-        .map_err(|err| {
-            vec![Diagnostic::error(format!(
-                "failed to run {label} '{tool}': {err}"
-            ))]
-        })?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(vec![Diagnostic::error(format!("{label} failed: {stderr}"))])
-    }
-}
-
-fn link_args(obj_path: &Path, output: &Path) -> Vec<String> {
-    vec![
-        obj_path.to_string_lossy().to_string(),
-        crate::runtime::c_runtime_path()
-            .to_string_lossy()
-            .to_string(),
-        "-o".to_string(),
-        output.to_string_lossy().to_string(),
-    ]
+    Err(vec![Diagnostic::error(format!(
+        "program is not supported by the compiler-owned {:?} backend yet; native executable emission does not use an external assembler or C runtime",
+        config.target.triple
+    ))])
 }
 
 fn compile_config(
     target: Option<String>,
-    nasm: String,
-    linker: Option<String>,
-    keep_temps: bool,
     runtime_entry: bool,
 ) -> Result<CompileConfig, Vec<Diagnostic>> {
     let target = match target {
         Some(target) => Target::parse(&target).map_err(|diagnostic| vec![diagnostic])?,
         None => Target::host(),
     };
-    let linker = linker.unwrap_or_else(|| target.default_linker.to_string());
     Ok(CompileConfig {
         target,
-        nasm,
-        linker,
-        keep_temps,
         runtime_entry,
     })
 }
