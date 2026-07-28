@@ -85,6 +85,10 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         match name {
             "__geo_bounds_check" => emit_bounds_check_runtime(&mut code),
             "string_len" => emit_string_len_runtime(&mut code),
+            "string_byte_at" => emit_string_byte_at_runtime(&mut code),
+            "string_is_empty" => emit_string_is_empty_runtime(&mut code),
+            "string_is_ascii" => emit_string_is_ascii_runtime(&mut code),
+            "string_find_byte" => emit_string_find_byte_runtime(&mut code),
             "print" => emit_print_runtime(&mut code, false),
             "println" => emit_print_runtime(&mut code, true),
             "string_concat" => emit_string_concat_runtime(&mut code),
@@ -187,6 +191,70 @@ fn emit_file_stat_runtime(code: &mut Vec<u8>, kind: FileStatKind) {
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0xa0, 0x00, 0x00, 0x00, 0xc3]);
     patch_short_jump(code, null_path, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_string_byte_at_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x85, 0xff]);
+    let null_value = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3c, 0x37, 0x00]);
+    let end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x0f, 0xb6, 0x04, 0x37, 0xc3]);
+    let end_target = code.len();
+    code.push(0xc3);
+    patch_short_jump(code, null_value, end_target);
+    patch_short_jump(code, end, end_target);
+}
+
+fn emit_string_is_empty_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_value = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3f, 0x00]);
+    let non_empty = emit_short_jump_placeholder(code, 0x75);
+    let empty_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let non_empty_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_value, empty_target);
+    patch_short_jump(code, non_empty, non_empty_target);
+}
+
+fn emit_string_is_ascii_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_value = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x80, 0x3f, 0x00]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3f, 0x7f]);
+    let invalid = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x48, 0xff, 0xc7]);
+    emit_short_jump_back(code, loop_start);
+    let done_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let invalid_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_value, done_target);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, invalid, invalid_target);
+}
+
+fn emit_string_find_byte_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x31, 0xc9, 0x48, 0x85, 0xff]);
+    let missing = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x89, 0xf0]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x0f, 0x00]);
+    let end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x44, 0x38, 0x04, 0x0f]);
+    let found = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, loop_start);
+    let missing_target = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
+    let found_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0xc8, 0xc3]);
+    patch_short_jump(code, missing, missing_target);
+    patch_short_jump(code, end, missing_target);
+    patch_short_jump(code, found, found_target);
 }
 
 fn emit_file_exists_runtime(code: &mut Vec<u8>) {

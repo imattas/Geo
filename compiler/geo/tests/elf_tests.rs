@@ -278,6 +278,30 @@ fn emits_direct_elf64_file_metadata_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_runtime_helpers() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if string_byte_at("Geo", 1) != 101 {
+                    return 1
+                }
+                if string_is_empty("Geo") || !string_is_empty("") {
+                    return 2
+                }
+                if !string_is_ascii("Geo") || string_is_ascii("G\u{00e9}o") {
+                    return 3
+                }
+                return string_find_byte("Geo", 111)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x0f, 0xb6, 0x04, 0x37]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"
