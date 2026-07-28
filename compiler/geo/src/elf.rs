@@ -86,6 +86,9 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "print" => emit_print_runtime(&mut code, false),
             "println" => emit_print_runtime(&mut code, true),
             "string_concat" => emit_string_concat_runtime(&mut code),
+            "exit_geo" => emit_exit_runtime(&mut code),
+            "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
+            "alloc_array" => emit_alloc_runtime(&mut code, true),
             _ => continue,
         }
         symbols.insert(
@@ -263,6 +266,24 @@ fn emit_string_concat_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, right_len_done, right_len_target);
     patch_short_jump(code, left_copy_done, left_copy_target);
     patch_short_jump(code, right_copy_done, done);
+}
+
+fn emit_exit_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0xb8, 60, 0, 0, 0, 0x0f, 0x05]);
+    code.push(0xc3);
+}
+
+fn emit_alloc_runtime(code: &mut Vec<u8>, array: bool) {
+    if array {
+        code.extend_from_slice(&[0x48, 0x0f, 0xaf, 0xfe]);
+    }
+    code.extend_from_slice(&[0x48, 0x89, 0xfe]);
+    code.extend_from_slice(&[0x31, 0xff]);
+    code.extend_from_slice(&[0xba, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xba, 0x22, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0xb8, 0x09, 0x00, 0x00, 0x00, 0x0f, 0x05, 0xc3]);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {

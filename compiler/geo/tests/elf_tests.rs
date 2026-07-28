@@ -92,6 +92,43 @@ fn emits_direct_elf64_string_concat_mmap_runtime() {
     assert!(contains_bytes(&executable, &[0x48, 0x83, 0xec, 0x38]));
 }
 
+#[test]
+fn emits_direct_elf64_process_exit_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                return exit(42)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(
+        &executable,
+        &[0xb8, 60, 0, 0, 0, 0x0f, 0x05]
+    ));
+}
+
+#[test]
+fn emits_direct_elf64_memory_alloc_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let memory: *u8 = alloc(1)
+                if memory != null {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }
