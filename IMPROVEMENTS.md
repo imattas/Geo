@@ -6,7 +6,7 @@ This file tracks practical improvements that would make Geo easier to expand, te
 
 ### 0. Keep The Compiler From Scratch
 
-Current state: `cargo run -p xtask -- from-scratch` enforces that active Cargo manifests and lockfile do not introduce LLVM, Cranelift, MLIR, GCCJIT, or similar backend framework dependencies.
+Current state: `cargo run -p xtask -- from-scratch` enforces that active Cargo manifests and lockfile do not introduce LLVM, Cranelift, MLIR, GCCJIT, or similar backend framework dependencies. `geo emit-obj --target x86_64-linux` exposes a compiler-owned ELF64 relocatable writer for the current object subset.
 
 External assembler/linker tools are allowed only as temporary build-tool steps. The compiler pipeline itself must remain owned by Geo.
 
@@ -65,7 +65,7 @@ Reason: a compiler project needs repeatable full-stack checks: Rust tests, Geo e
 
 ### 4. Make The Backend Target Pipeline More Explicit
 
-Current state: target support exists, including Linux and Windows x86-64 paths, NASM emission, and a PE writer path.
+Current state: target support exists, including Linux and Windows x86-64 paths, NASM emission, a Linux ELF64 object writer path, and a PE writer path.
 
 Recommended structure:
 
@@ -156,7 +156,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 
 ## Backend Improvements
 
-- Add ELF64 object writing beyond prototype-level integer functions.
+- Expand ELF64 object writing beyond the current CLI-exposed subset.
 - Make PE64 writer handle runtime imports and external symbols robustly.
 - Add relocation tests for object writers.
 - Add stack-passed argument support for both Linux and Windows ABIs.

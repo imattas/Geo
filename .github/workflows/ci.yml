@@ -42,6 +42,9 @@ jobs:
       - name: Check Linux target
         run: cargo run --locked --quiet -- check examples/return_42.geo --target x86_64-linux
 
+      - name: Emit Linux object
+        run: cargo run --locked --quiet -- emit-obj examples/return_42.geo --target x86_64-linux -o target/ci-return-42-linux.o
+
       - name: Emit Windows assembly
         run: cargo run --locked --quiet -- emit-asm examples/return_42.geo --target x86_64-windows -o target/ci-return-42-windows.asm
 

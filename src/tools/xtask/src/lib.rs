@@ -106,39 +106,60 @@ fn required_paths() -> Vec<&'static str> {
 
 fn run_verify(root: &Path) -> Result<String, String> {
     check_from_scratch_policy(root)?;
-    run_command(root, "cargo", &["fmt", "--check"])?;
-    run_command(root, "cargo", &["test", "--workspace", "--locked"])?;
-    run_command(
-        root,
-        "cargo",
-        &[
-            "run",
-            "--locked",
-            "--quiet",
-            "--",
-            "check",
-            "examples/return_42.geo",
-            "--target",
-            "x86_64-linux",
-        ],
-    )?;
-    run_command(
-        root,
-        "cargo",
-        &[
-            "run",
-            "--locked",
-            "--quiet",
-            "--",
-            "emit-asm",
-            "examples/return_42.geo",
-            "--target",
-            "x86_64-windows",
-            "-o",
-            "target/xtask-return-42-windows.asm",
-        ],
-    )?;
+    for (program, args) in verify_commands() {
+        run_command(root, program, &args)?;
+    }
     Ok("verify ok".to_string())
+}
+
+pub fn verify_commands() -> Vec<(&'static str, Vec<&'static str>)> {
+    vec![
+        ("cargo", vec!["fmt", "--check"]),
+        ("cargo", vec!["test", "--workspace", "--locked"]),
+        (
+            "cargo",
+            vec![
+                "run",
+                "--locked",
+                "--quiet",
+                "--",
+                "check",
+                "examples/return_42.geo",
+                "--target",
+                "x86_64-linux",
+            ],
+        ),
+        (
+            "cargo",
+            vec![
+                "run",
+                "--locked",
+                "--quiet",
+                "--",
+                "emit-obj",
+                "examples/return_42.geo",
+                "--target",
+                "x86_64-linux",
+                "-o",
+                "target/xtask-return-42-linux.o",
+            ],
+        ),
+        (
+            "cargo",
+            vec![
+                "run",
+                "--locked",
+                "--quiet",
+                "--",
+                "emit-asm",
+                "examples/return_42.geo",
+                "--target",
+                "x86_64-windows",
+                "-o",
+                "target/xtask-return-42-windows.asm",
+            ],
+        ),
+    ]
 }
 
 fn run_from_scratch(root: &Path) -> Result<String, String> {

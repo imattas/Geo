@@ -1,4 +1,4 @@
-use xtask::{parse_args, XtaskCommand};
+use xtask::{parse_args, verify_commands, XtaskCommand};
 
 #[test]
 fn parses_layout_command() {
@@ -29,4 +29,17 @@ fn rejects_unknown_command_with_helpful_error() {
     assert!(err.contains("layout"));
     assert!(err.contains("verify"));
     assert!(err.contains("from-scratch"));
+}
+
+#[test]
+fn verify_includes_compiler_owned_linux_object_emission() {
+    let commands = verify_commands();
+    let has_emit_obj = commands.iter().any(|(program, args)| {
+        *program == "cargo"
+            && args.contains(&"emit-obj")
+            && args.contains(&"x86_64-linux")
+            && args.contains(&"target/xtask-return-42-linux.o")
+    });
+
+    assert!(has_emit_obj);
 }

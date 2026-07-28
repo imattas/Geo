@@ -23,6 +23,13 @@ pub enum Command {
         #[arg(long)]
         target: Option<String>,
     },
+    EmitObj {
+        input: PathBuf,
+        #[arg(short, long)]
+        output: PathBuf,
+        #[arg(long)]
+        target: Option<String>,
+    },
     Build {
         input: PathBuf,
         #[arg(short, long)]

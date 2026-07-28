@@ -52,6 +52,7 @@ Verification:
 - `cargo test --workspace --quiet`
 - `cargo run -p xtask --quiet -- layout`
 - `cargo run --quiet -- check examples\return_42.geo --target x86_64-linux`
+- `cargo run --quiet -- emit-obj examples\return_42.geo --target x86_64-linux -o target\workspace_return_42_linux.o`
 - `cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\workspace_return_42_win.asm`
 
 ## Phase 1: Workspace Hardening
@@ -203,6 +204,7 @@ Deliverables:
 - Stack-passed arguments beyond register limits.
 - Data sections for strings and globals.
 - Direct ELF64 relocatable object writer.
+- `geo emit-obj` CLI path for compiler-owned Linux ELF64 objects.
 - PE64 writer support for runtime imports and external symbols.
 - NASM backend retained as the stable fallback.
 
@@ -211,6 +213,7 @@ Acceptance criteria:
 - Linux target emits valid System V calls.
 - Windows target emits valid Windows x64 calls.
 - Object writer tests cover sections, symbols, and relocations.
+- CI emits a Linux object without invoking NASM.
 
 ## Phase 9: Self-Hosting Foundation Examples
 

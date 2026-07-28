@@ -36,6 +36,20 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
             })?;
             Ok(())
         }
+        Command::EmitObj {
+            input,
+            output,
+            target,
+        } => {
+            let config = compile_config(target, "nasm".to_string(), None, false, false)?;
+            let object = compile_to_object(&input, &config)?;
+            fs::write(&output, object).map_err(|err| {
+                vec![Diagnostic::error(format!(
+                    "failed to write object file: {err}"
+                ))]
+            })?;
+            Ok(())
+        }
         Command::Build {
             input,
             output,
@@ -100,6 +114,18 @@ pub fn compile_to_asm(path: &Path, config: &CompileConfig) -> Result<String, Vec
         &config.target,
         config.runtime_entry,
     ))
+}
+
+pub fn compile_to_object(path: &Path, config: &CompileConfig) -> Result<Vec<u8>, Vec<Diagnostic>> {
+    if config.target.triple != TargetTriple::X86_64Linux {
+        return Err(vec![Diagnostic::error(
+            "native object emission currently supports x86_64-linux",
+        )]);
+    }
+
+    let program = load_checked_program(path)?;
+    let ir = crate::lower::lower(&program);
+    Ok(crate::object::emit_elf64_relocatable(&ir))
 }
 
 fn check_source_file(path: &Path, _config: &CompileConfig) -> Result<(), Vec<Diagnostic>> {
