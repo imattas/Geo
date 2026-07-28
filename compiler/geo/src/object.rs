@@ -133,7 +133,7 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
 }
 
 fn build_coff_image_subset(program: &IrProgram) -> Option<ObjectImage> {
-    let image = build_image(program);
+    let image = build_image_for_abi(program, TargetAbi::Win64);
     if image.relocations.iter().any(|relocation| {
         !matches!(
             relocation.kind,
@@ -232,6 +232,10 @@ enum RelocationKind {
 }
 
 fn build_image(program: &IrProgram) -> ObjectImage {
+    build_image_for_abi(program, TargetAbi::SystemV)
+}
+
+fn build_image_for_abi(program: &IrProgram, abi: TargetAbi) -> ObjectImage {
     let mut text = Vec::new();
     let mut rodata = Vec::new();
     let mut functions = Vec::new();
@@ -242,6 +246,7 @@ fn build_image(program: &IrProgram) -> ObjectImage {
         let offset = text.len() as u64;
         emit_function_text(
             function,
+            abi,
             &mut text,
             &mut rodata,
             &mut data_symbols,
@@ -264,8 +269,15 @@ fn build_image(program: &IrProgram) -> ObjectImage {
     }
 }
 
+#[derive(Clone, Copy)]
+enum TargetAbi {
+    SystemV,
+    Win64,
+}
+
 fn emit_function_text(
     function: &IrFunction,
+    abi: TargetAbi,
     bytes: &mut Vec<u8>,
     rodata: &mut Vec<u8>,
     data_symbols: &mut Vec<DataSymbol>,
@@ -276,7 +288,7 @@ fn emit_function_text(
     let mut jumps = Vec::new();
     bytes.extend_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
     emit_stack_alloc(bytes, frame.stack_size);
-    emit_parameter_spills(bytes, &frame, &function.params);
+    emit_parameter_spills(bytes, abi, &frame, &function.params);
 
     for instruction in &function.instructions {
         match instruction {
@@ -377,7 +389,7 @@ fn emit_function_text(
                 emit_compare(bytes, *op, &frame, *dst, *left, *right);
             }
             Instruction::Call { function, args, .. } => {
-                let stack_arg_bytes = emit_call_args(bytes, &frame, args);
+                let stack_arg_bytes = emit_call_args(bytes, abi, &frame, args);
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
                 bytes.extend_from_slice(&0_i32.to_le_bytes());
@@ -392,11 +404,14 @@ fn emit_function_text(
                 }
             }
             Instruction::BoundsCheck { index, len } => {
-                emit_load_arg_register(bytes, 0, frame.value_offset(*index));
-                emit_mov_arg_imm32(bytes, 1, *len as i32);
+                emit_load_arg_register(bytes, abi, 0, frame.value_offset(*index));
+                emit_mov_arg_imm32(bytes, abi, 1, *len as i32);
+                let shadow_space = abi.call_shadow_space();
+                emit_stack_alloc(bytes, shadow_space);
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
                 bytes.extend_from_slice(&0_i32.to_le_bytes());
+                emit_stack_dealloc(bytes, shadow_space);
                 relocations.push(TextRelocation {
                     offset: call_offset + 1,
                     symbol: "__geo_bounds_check".to_string(),
@@ -750,106 +765,166 @@ fn emit_load_r10(bytes: &mut Vec<u8>, offset: u32) {
     emit_rbp_operand(bytes, 2, offset);
 }
 
-fn emit_call_args(bytes: &mut Vec<u8>, frame: &FrameLayout, args: &[crate::ir::ValueId]) -> u32 {
-    for (index, arg) in args.iter().enumerate().take(6) {
-        emit_load_arg_register(bytes, index, frame.value_offset(*arg));
+fn emit_call_args(
+    bytes: &mut Vec<u8>,
+    abi: TargetAbi,
+    frame: &FrameLayout,
+    args: &[crate::ir::ValueId],
+) -> u32 {
+    let register_count = abi.argument_register_count();
+    for (index, arg) in args.iter().enumerate().take(register_count) {
+        emit_load_arg_register(bytes, abi, index, frame.value_offset(*arg));
     }
 
-    let stack_args = args.len().saturating_sub(6);
+    let stack_args = args.len().saturating_sub(register_count);
     let padding = if stack_args % 2 == 1 { 8 } else { 0 };
     if padding > 0 {
         emit_stack_alloc(bytes, padding);
     }
-    for arg in args.iter().skip(6).rev() {
+    for arg in args.iter().skip(register_count).rev() {
         emit_load_rax(bytes, frame.value_offset(*arg));
         bytes.push(0x50);
     }
+    let shadow_space = abi.call_shadow_space();
+    emit_stack_alloc(bytes, shadow_space);
 
-    (stack_args as u32 * 8) + padding
+    (stack_args as u32 * 8) + padding + shadow_space
 }
 
-fn emit_parameter_spills(bytes: &mut Vec<u8>, frame: &FrameLayout, params: &[String]) {
-    for (index, param) in params.iter().enumerate().take(6) {
-        emit_store_arg_register(bytes, index, frame.local_offset(param));
+fn emit_parameter_spills(
+    bytes: &mut Vec<u8>,
+    abi: TargetAbi,
+    frame: &FrameLayout,
+    params: &[String],
+) {
+    let register_count = abi.argument_register_count();
+    for (index, param) in params.iter().enumerate().take(register_count) {
+        emit_store_arg_register(bytes, abi, index, frame.local_offset(param));
     }
-    for (stack_index, param) in params.iter().enumerate().skip(6) {
-        let incoming_offset = 16 + ((stack_index - 6) as u32 * 8);
+    for (stack_index, param) in params.iter().enumerate().skip(register_count) {
+        let home_space = if matches!(abi, TargetAbi::Win64) {
+            32
+        } else {
+            0
+        };
+        let incoming_offset = 16 + home_space + ((stack_index - register_count) as u32 * 8);
         emit_load_rax_from_incoming_arg(bytes, incoming_offset);
         emit_store_rax(bytes, frame.local_offset(param));
     }
 }
 
-fn emit_load_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
-    match index {
-        0 => {
+fn emit_load_arg_register(bytes: &mut Vec<u8>, abi: TargetAbi, index: usize, offset: u32) {
+    match abi.argument_register(index) {
+        Some(ArgRegister::Rcx) => {
             bytes.extend_from_slice(&[0x48, 0x8b]);
-            emit_rbp_operand(bytes, 7, offset);
+            emit_rbp_operand(bytes, 1, offset);
         }
-        1 => {
-            bytes.extend_from_slice(&[0x48, 0x8b]);
-            emit_rbp_operand(bytes, 6, offset);
-        }
-        2 => {
+        Some(ArgRegister::Rdx) => {
             bytes.extend_from_slice(&[0x48, 0x8b]);
             emit_rbp_operand(bytes, 2, offset);
         }
-        3 => {
-            bytes.extend_from_slice(&[0x48, 0x8b]);
-            emit_rbp_operand(bytes, 1, offset);
-        }
-        4 => {
+        Some(ArgRegister::R8) => {
             bytes.extend_from_slice(&[0x4c, 0x8b]);
             emit_rbp_operand(bytes, 0, offset);
         }
-        5 => {
+        Some(ArgRegister::R9) => {
             bytes.extend_from_slice(&[0x4c, 0x8b]);
             emit_rbp_operand(bytes, 1, offset);
         }
-        _ => {}
+        Some(ArgRegister::Rdi) => {
+            bytes.extend_from_slice(&[0x48, 0x8b]);
+            emit_rbp_operand(bytes, 7, offset);
+        }
+        Some(ArgRegister::Rsi) => {
+            bytes.extend_from_slice(&[0x48, 0x8b]);
+            emit_rbp_operand(bytes, 6, offset);
+        }
+        None => {}
     }
 }
 
-fn emit_mov_arg_imm32(bytes: &mut Vec<u8>, index: usize, value: i32) {
-    match index {
-        0 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc7]),
-        1 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc6]),
-        2 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc2]),
-        3 => bytes.extend_from_slice(&[0x48, 0xc7, 0xc1]),
-        4 => bytes.extend_from_slice(&[0x49, 0xc7, 0xc0]),
-        5 => bytes.extend_from_slice(&[0x49, 0xc7, 0xc1]),
-        _ => return,
+fn emit_mov_arg_imm32(bytes: &mut Vec<u8>, abi: TargetAbi, index: usize, value: i32) {
+    match abi.argument_register(index) {
+        Some(ArgRegister::Rcx) => bytes.extend_from_slice(&[0x48, 0xc7, 0xc1]),
+        Some(ArgRegister::Rdx) => bytes.extend_from_slice(&[0x48, 0xc7, 0xc2]),
+        Some(ArgRegister::R8) => bytes.extend_from_slice(&[0x49, 0xc7, 0xc0]),
+        Some(ArgRegister::R9) => bytes.extend_from_slice(&[0x49, 0xc7, 0xc1]),
+        Some(ArgRegister::Rdi) => bytes.extend_from_slice(&[0x48, 0xc7, 0xc7]),
+        Some(ArgRegister::Rsi) => bytes.extend_from_slice(&[0x48, 0xc7, 0xc6]),
+        None => return,
     }
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
-fn emit_store_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
-    match index {
-        0 => {
+fn emit_store_arg_register(bytes: &mut Vec<u8>, abi: TargetAbi, index: usize, offset: u32) {
+    match abi.argument_register(index) {
+        Some(ArgRegister::Rcx) => {
             bytes.extend_from_slice(&[0x48, 0x89]);
-            emit_rbp_operand(bytes, 7, offset);
+            emit_rbp_operand(bytes, 1, offset);
         }
-        1 => {
-            bytes.extend_from_slice(&[0x48, 0x89]);
-            emit_rbp_operand(bytes, 6, offset);
-        }
-        2 => {
+        Some(ArgRegister::Rdx) => {
             bytes.extend_from_slice(&[0x48, 0x89]);
             emit_rbp_operand(bytes, 2, offset);
         }
-        3 => {
-            bytes.extend_from_slice(&[0x48, 0x89]);
-            emit_rbp_operand(bytes, 1, offset);
-        }
-        4 => {
+        Some(ArgRegister::R8) => {
             bytes.extend_from_slice(&[0x4c, 0x89]);
             emit_rbp_operand(bytes, 0, offset);
         }
-        5 => {
+        Some(ArgRegister::R9) => {
             bytes.extend_from_slice(&[0x4c, 0x89]);
             emit_rbp_operand(bytes, 1, offset);
         }
-        _ => {}
+        Some(ArgRegister::Rdi) => {
+            bytes.extend_from_slice(&[0x48, 0x89]);
+            emit_rbp_operand(bytes, 7, offset);
+        }
+        Some(ArgRegister::Rsi) => {
+            bytes.extend_from_slice(&[0x48, 0x89]);
+            emit_rbp_operand(bytes, 6, offset);
+        }
+        None => {}
     }
+}
+
+impl TargetAbi {
+    fn call_shadow_space(self) -> u32 {
+        match self {
+            Self::SystemV => 0,
+            Self::Win64 => 32,
+        }
+    }
+
+    fn argument_register_count(self) -> usize {
+        match self {
+            Self::SystemV => 6,
+            Self::Win64 => 4,
+        }
+    }
+
+    fn argument_register(self, index: usize) -> Option<ArgRegister> {
+        match (self, index) {
+            (Self::SystemV, 0) => Some(ArgRegister::Rdi),
+            (Self::SystemV, 1) => Some(ArgRegister::Rsi),
+            (Self::SystemV, 2) => Some(ArgRegister::Rdx),
+            (Self::SystemV, 3) => Some(ArgRegister::Rcx),
+            (Self::SystemV, 4) => Some(ArgRegister::R8),
+            (Self::SystemV, 5) => Some(ArgRegister::R9),
+            (Self::Win64, 0) => Some(ArgRegister::Rcx),
+            (Self::Win64, 1) => Some(ArgRegister::Rdx),
+            (Self::Win64, 2) => Some(ArgRegister::R8),
+            (Self::Win64, 3) => Some(ArgRegister::R9),
+            _ => None,
+        }
+    }
+}
+
+enum ArgRegister {
+    Rcx,
+    Rdx,
+    R8,
+    R9,
+    Rdi,
+    Rsi,
 }
 
 fn emit_lea_rax_local(bytes: &mut Vec<u8>, offset: u32) {

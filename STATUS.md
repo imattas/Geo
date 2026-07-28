@@ -129,6 +129,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - runtime-backed examples
 - Linux and Windows target-aware assembly paths
 - direct Linux ELF64 relocatable object emission for constants, stack locals, System V register and stack-passed function parameters, integer addition/subtraction/multiplication/division/remainder, shifts, logical/bitwise operations, comparisons, labels, conditional/unconditional jumps, address-of, dereference, pointer stores, bounds-check runtime argument setup, string data, calls, symbols, and relocations in the current object subset
+- direct Windows AMD64 COFF relocatable object emission for stack code, `.rdata` strings, function/data symbols, internal function calls, Windows x64 register arguments, call shadow space, and text relocations in the current object subset
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
@@ -154,7 +155,7 @@ Current repository-level tooling:
 
 The compiler pipeline is implemented in this repository. The active workspace has no LLVM, Cranelift, MLIR, GCCJIT, or similar compiler backend framework dependency.
 
-External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` now exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code, System V register and stack-passed parameter handling, bounds-check runtime ABI setup, branch patching, `.rodata` strings, and text relocations for the current object subset. `geo emit-obj --target x86_64-windows` now emits a compiler-owned AMD64 COFF relocatable for the current object subset, including stack code, `.rdata` strings, function/data symbols, internal function calls, and text relocations. Broader Linux linking and broader Windows COFF/PE object coverage remain roadmap work.
+External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` now exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code, System V register and stack-passed parameter handling, bounds-check runtime ABI setup, branch patching, `.rodata` strings, and text relocations for the current object subset. `geo emit-obj --target x86_64-windows` now emits a compiler-owned AMD64 COFF relocatable for the current object subset, including stack code, `.rdata` strings, function/data symbols, internal function calls, Windows x64 argument registers, call shadow space, and text relocations. Broader Linux linking and broader Windows COFF/PE object coverage remain roadmap work.
 
 ## Documentation Status
 

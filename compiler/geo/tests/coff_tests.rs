@@ -77,10 +77,58 @@ fn emits_win64_coff_internal_function_call_relocation() {
     assert!(text_relocation_count(&object) > 0);
 }
 
+#[test]
+fn emits_win64_coff_calls_with_windows_argument_registers() {
+    let object = coff_for(
+        r#"
+            fn add(left: int, right: int) -> int {
+                return left + right
+            }
+
+            fn main() -> int {
+                return add(40, 2)
+            }
+        "#,
+    );
+
+    assert!(contains_opcode_with_disp8(&object, &[0x48, 0x8b, 0x4d]));
+    assert!(contains_opcode_with_disp8(&object, &[0x48, 0x8b, 0x55]));
+    assert!(contains_bytes(
+        &object,
+        &[0x48, 0x83, 0xec, 0x20, 0xe8, 0, 0, 0, 0]
+    ));
+}
+
+#[test]
+fn emits_win64_coff_bounds_check_call_with_windows_shadow_space() {
+    let object = coff_for(
+        r#"
+            fn main() -> int {
+                let values: [int] = [42]
+                return values[0]
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&object, b"__geo_bounds_check"));
+    assert!(contains_opcode_with_disp8(&object, &[0x48, 0x8b, 0x4d]));
+    assert!(contains_bytes(&object, &[0x48, 0xc7, 0xc2, 1, 0, 0, 0]));
+    assert!(contains_bytes(
+        &object,
+        &[0x48, 0x83, 0xec, 0x20, 0xe8, 0, 0, 0, 0]
+    ));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+fn contains_opcode_with_disp8(haystack: &[u8], opcode: &[u8]) -> bool {
+    haystack
+        .windows(opcode.len() + 1)
+        .any(|window| window.starts_with(opcode))
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {

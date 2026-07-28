@@ -6,7 +6,7 @@ This file tracks practical improvements that would make Geo easier to expand, te
 
 ### 0. Keep The Compiler From Scratch
 
-Current state: `cargo run -p xtask -- from-scratch` enforces that active Cargo manifests and lockfile do not introduce LLVM, Cranelift, MLIR, GCCJIT, or similar backend framework dependencies. `geo emit-obj --target x86_64-linux` exposes a compiler-owned ELF64 relocatable writer for constants, stack locals, System V register and stack-passed function parameters, integer arithmetic/logical/bitwise/shift operations, comparisons, labels, branches, pointer address/load/store operations, bounds-check runtime argument setup, string data, calls, symbols, and relocations in the current object subset. `geo emit-obj --target x86_64-windows` exposes a compiler-owned AMD64 COFF relocatable writer for the current object subset, including stack code, `.rdata` strings, function/data symbols, internal function calls, and text relocations.
+Current state: `cargo run -p xtask -- from-scratch` enforces that active Cargo manifests and lockfile do not introduce LLVM, Cranelift, MLIR, GCCJIT, or similar backend framework dependencies. `geo emit-obj --target x86_64-linux` exposes a compiler-owned ELF64 relocatable writer for constants, stack locals, System V register and stack-passed function parameters, integer arithmetic/logical/bitwise/shift operations, comparisons, labels, branches, pointer address/load/store operations, bounds-check runtime argument setup, string data, calls, symbols, and relocations in the current object subset. `geo emit-obj --target x86_64-windows` exposes a compiler-owned AMD64 COFF relocatable writer for the current object subset, including stack code, `.rdata` strings, function/data symbols, internal function calls, Windows x64 register arguments, call shadow space, and text relocations.
 
 External assembler/linker tools are allowed only as temporary build-tool steps. The compiler pipeline itself must remain owned by Geo.
 
@@ -159,7 +159,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Expand ELF64 object writing to cover aggregate layout and linkable runtime calls.
 - Expand the Windows COFF writer beyond the current object subset and make the PE64 path handle runtime imports and external symbols robustly.
 - Add relocation tests for object writers.
-- Add stack-passed argument support beyond the first four Windows x64 registers.
+- Harden stack-passed argument support beyond the first four Windows x64 registers.
 - Add a simple register allocator after the IR and ABI boundaries are stable.
 - Add debug-friendly assembly comments behind a flag.
 - Add direct syscall experiments behind explicit target/runtime flags, not as the default path.
