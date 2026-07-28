@@ -103,12 +103,21 @@ name = "geo"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "geo-backend",
  "geo-codegen",
  "geo-diagnostics",
  "geo-ir",
  "geo-semantic",
  "geo-source",
  "geo-syntax",
+]
+
+[[package]]
+name = "geo-backend"
+version = "0.0.0"
+dependencies = [
+ "geo-diagnostics",
+ "geo-ir",
 ]
 
 [[package]]
