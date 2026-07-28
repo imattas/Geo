@@ -89,6 +89,17 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_is_empty" => emit_string_is_empty_runtime(&mut code),
             "string_is_ascii" => emit_string_is_ascii_runtime(&mut code),
             "string_find_byte" => emit_string_find_byte_runtime(&mut code),
+            "string_compare" => emit_string_compare_runtime(&mut code, StringCompareKind::Compare),
+            "string_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::Equal),
+            "string_not_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::NotEqual),
+            "string_less" => emit_string_compare_runtime(&mut code, StringCompareKind::Less),
+            "string_less_or_equal" => {
+                emit_string_compare_runtime(&mut code, StringCompareKind::LessOrEqual)
+            }
+            "string_greater" => emit_string_compare_runtime(&mut code, StringCompareKind::Greater),
+            "string_greater_or_equal" => {
+                emit_string_compare_runtime(&mut code, StringCompareKind::GreaterOrEqual)
+            }
             "print" => emit_print_runtime(&mut code, false),
             "println" => emit_print_runtime(&mut code, true),
             "string_concat" => emit_string_concat_runtime(&mut code),
@@ -255,6 +266,73 @@ fn emit_string_find_byte_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, missing, missing_target);
     patch_short_jump(code, end, missing_target);
     patch_short_jump(code, found, found_target);
+}
+
+#[derive(Clone, Copy)]
+enum StringCompareKind {
+    Compare,
+    Equal,
+    NotEqual,
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+}
+
+fn emit_string_compare_runtime(code: &mut Vec<u8>, kind: StringCompareKind) {
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x0f, 0xb6, 0x04, 0x0f]);
+    code.extend_from_slice(&[0x0f, 0xb6, 0x14, 0x0e]);
+    code.extend_from_slice(&[0x39, 0xd0]);
+    let less = emit_short_jump_placeholder(code, 0x72);
+    let greater = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let equal = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, loop_start);
+
+    let less_target = code.len();
+    emit_compare_result(code, kind, CompareOutcome::Less);
+    let greater_target = code.len();
+    emit_compare_result(code, kind, CompareOutcome::Greater);
+    let equal_target = code.len();
+    emit_compare_result(code, kind, CompareOutcome::Equal);
+    patch_short_jump(code, less, less_target);
+    patch_short_jump(code, greater, greater_target);
+    patch_short_jump(code, equal, equal_target);
+}
+
+#[derive(Clone, Copy)]
+enum CompareOutcome {
+    Less,
+    Equal,
+    Greater,
+}
+
+fn emit_compare_result(code: &mut Vec<u8>, kind: StringCompareKind, outcome: CompareOutcome) {
+    let value = match kind {
+        StringCompareKind::Compare => match outcome {
+            CompareOutcome::Less => -1,
+            CompareOutcome::Equal => 0,
+            CompareOutcome::Greater => 1,
+        },
+        StringCompareKind::Equal => i32::from(matches!(outcome, CompareOutcome::Equal)),
+        StringCompareKind::NotEqual => i32::from(!matches!(outcome, CompareOutcome::Equal)),
+        StringCompareKind::Less => i32::from(matches!(outcome, CompareOutcome::Less)),
+        StringCompareKind::LessOrEqual => i32::from(matches!(
+            outcome,
+            CompareOutcome::Less | CompareOutcome::Equal
+        )),
+        StringCompareKind::Greater => i32::from(matches!(outcome, CompareOutcome::Greater)),
+        StringCompareKind::GreaterOrEqual => i32::from(matches!(
+            outcome,
+            CompareOutcome::Greater | CompareOutcome::Equal
+        )),
+    };
+    code.extend_from_slice(&[0xb8]);
+    code.extend_from_slice(&value.to_le_bytes());
+    code.push(0xc3);
 }
 
 fn emit_file_exists_runtime(code: &mut Vec<u8>) {

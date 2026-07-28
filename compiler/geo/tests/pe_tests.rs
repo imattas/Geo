@@ -1540,7 +1540,10 @@ fn emits_direct_pe64_string_less_as_compiled_helper() {
         &pe,
         &[0x44, 0x0f, 0xb6, 0x01, 0x44, 0x0f, 0xb6, 0x0a]
     ));
-    assert!(contains_bytes(&pe, &[0x0f, 0x92, 0xc0, 0xc3]));
+    assert!(contains_bytes(
+        &pe,
+        &[0x0f, 0x92, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3]
+    ));
     assert!(contains_bytes(&pe, b"ExitProcess"));
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }
@@ -1568,7 +1571,10 @@ fn emits_direct_pe64_string_less_or_equal_as_compiled_helper() {
         &pe,
         &[0x44, 0x0f, 0xb6, 0x01, 0x44, 0x0f, 0xb6, 0x0a]
     ));
-    assert!(contains_bytes(&pe, &[0x0f, 0x96, 0xc0, 0xc3]));
+    assert!(contains_bytes(
+        &pe,
+        &[0x0f, 0x96, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3]
+    ));
     assert!(contains_bytes(&pe, b"ExitProcess"));
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }
@@ -1596,7 +1602,10 @@ fn emits_direct_pe64_string_greater_as_compiled_helper() {
         &pe,
         &[0x44, 0x0f, 0xb6, 0x01, 0x44, 0x0f, 0xb6, 0x0a]
     ));
-    assert!(contains_bytes(&pe, &[0x0f, 0x97, 0xc0, 0xc3]));
+    assert!(contains_bytes(
+        &pe,
+        &[0x0f, 0x97, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3]
+    ));
     assert!(contains_bytes(&pe, b"ExitProcess"));
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }
@@ -1624,7 +1633,10 @@ fn emits_direct_pe64_string_greater_or_equal_as_compiled_helper() {
         &pe,
         &[0x44, 0x0f, 0xb6, 0x01, 0x44, 0x0f, 0xb6, 0x0a]
     ));
-    assert!(contains_bytes(&pe, &[0x0f, 0x93, 0xc0, 0xc3]));
+    assert!(contains_bytes(
+        &pe,
+        &[0x0f, 0x93, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3]
+    ));
     assert!(contains_bytes(&pe, b"ExitProcess"));
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }

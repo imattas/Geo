@@ -1759,8 +1759,7 @@ fn emit_string_less_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x31, 0xc0]);
     code.push(0xc3);
     let difference_target = code.len();
-    code.extend_from_slice(&[0x31, 0xc0]);
-    code.extend_from_slice(&[0x0f, 0x92, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x92, 0xc0, 0x0f, 0xb6, 0xc0]);
     code.push(0xc3);
 
     patch_short_jump(code, difference, difference_target);
@@ -1783,8 +1782,7 @@ fn emit_string_less_or_equal_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&1_u32.to_le_bytes());
     code.push(0xc3);
     let difference_target = code.len();
-    code.extend_from_slice(&[0x31, 0xc0]);
-    code.extend_from_slice(&[0x0f, 0x96, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x96, 0xc0, 0x0f, 0xb6, 0xc0]);
     code.push(0xc3);
 
     patch_short_jump(code, difference, difference_target);
@@ -1806,8 +1804,7 @@ fn emit_string_greater_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x31, 0xc0]);
     code.push(0xc3);
     let difference_target = code.len();
-    code.extend_from_slice(&[0x31, 0xc0]);
-    code.extend_from_slice(&[0x0f, 0x97, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x97, 0xc0, 0x0f, 0xb6, 0xc0]);
     code.push(0xc3);
 
     patch_short_jump(code, difference, difference_target);
@@ -1830,8 +1827,7 @@ fn emit_string_greater_or_equal_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&1_u32.to_le_bytes());
     code.push(0xc3);
     let difference_target = code.len();
-    code.extend_from_slice(&[0x31, 0xc0]);
-    code.extend_from_slice(&[0x0f, 0x93, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x93, 0xc0, 0x0f, 0xb6, 0xc0]);
     code.push(0xc3);
 
     patch_short_jump(code, difference, difference_target);

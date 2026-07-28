@@ -246,6 +246,7 @@ Acceptance criteria:
 - Each example builds through the compiler-owned Linux ELF64 and Windows PE64 executable writers.
 - Runtime-using examples link on supported hosts.
 - The examples use the public standard library, not private runtime symbols.
+- Native string comparison and ordering predicates are covered by direct ELF64 and PE64 executable tests.
 
 ## Phase 10: Distribution
 
