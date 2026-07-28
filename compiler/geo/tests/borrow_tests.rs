@@ -1,0 +1,118 @@
+use geo::borrow;
+use geo::lexer::lex;
+use geo::parser::parse;
+use geo::typecheck;
+
+fn borrow_check(source: &str) -> Result<(), Vec<geo::diagnostics::Diagnostic>> {
+    let tokens = lex(source).unwrap();
+    let program = parse(&tokens).unwrap();
+    typecheck::check(&program).unwrap();
+    borrow::check(&program)
+}
+
+#[test]
+fn accepts_owned_value_moved_once() {
+    let source = r#"
+        fn main() -> int {
+            let name: string = "Geo"
+            let moved: string = name
+            return 0
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
+fn rejects_string_use_after_move() {
+    let source = r#"
+        fn main() -> int {
+            let name: string = "Geo"
+            let moved: string = name
+            let again: string = name
+            return 0
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0].message.contains("use of moved value 'name'"));
+}
+
+#[test]
+fn rejects_struct_use_after_move() {
+    let source = r#"
+        struct Token {
+            kind: int
+        }
+
+        fn main() -> int {
+            let token: Token = Token { kind: 1 }
+            let moved: Token = token
+            return token.kind
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0].message.contains("use of moved value 'token'"));
+}
+
+#[test]
+fn accepts_repeated_scalar_use() {
+    let source = r#"
+        fn main() -> int {
+            let x: int = 1
+            let y: int = x
+            return x + y
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
+fn rejects_move_while_value_is_borrowed() {
+    let source = r#"
+        fn take(value: string) -> int {
+            return 0
+        }
+
+        fn main() -> int {
+            let name: string = "Geo"
+            let borrowed: &string = &name
+            return take(name)
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0].message.contains("cannot move borrowed value 'name'"));
+}
+
+#[test]
+fn rejects_mutable_borrow_while_shared_borrow_exists() {
+    let source = r#"
+        fn main() -> int {
+            let x: int = 1
+            let shared: &int = &x
+            let unique: &mut int = &mut x
+            return x
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0]
+        .message
+        .contains("cannot mutably borrow 'x' while it is already borrowed"));
+}
+
+#[test]
+fn rejects_borrow_return_escape() {
+    let source = r#"
+        fn main() -> &int {
+            let x: int = 1
+            return &x
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0].message.contains("borrow of 'x' escapes"));
+}

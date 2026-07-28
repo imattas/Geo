@@ -1,0 +1,874 @@
+use geo::lexer::lex;
+use geo::lower::lower;
+use geo::parser::parse;
+use geo::pe::emit_pe64_console;
+use geo::typecheck::check;
+
+fn pe_for(source: &str) -> Vec<u8> {
+    let tokens = lex(source).unwrap();
+    let program = parse(&tokens).unwrap();
+    check(&program).unwrap();
+    let ir = lower(&program);
+    emit_pe64_console(&ir).expect("program should fit direct PE console subset")
+}
+
+#[test]
+fn emits_direct_pe64_console_hello_world() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                println("Hello, world!")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"GetStdHandle"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(contains_bytes(&pe, b"Hello, world!\n"));
+}
+
+#[test]
+fn emits_direct_pe64_constant_exit_program() {
+    let pe = pe_for("fn main() -> int { return 42 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_prefixed_and_underscored_integer_literals() {
+    let pe = pe_for("fn main() -> int { return 0xff + 0b1010 + 1_000 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_function_tail_expression_exit_program() {
+    let pe = pe_for("fn main() -> int { 42 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_top_level_const_exit_program() {
+    let pe = pe_for("const LIMIT: int = 42 fn main() -> int { return LIMIT }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_folded_top_level_const_arithmetic_dependencies() {
+    let pe = pe_for(
+        r#"
+            const BASE: int = 40
+            const LIMIT: int = BASE + 2
+
+            fn main() -> int {
+                return LIMIT
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_enum_variant_exit_program() {
+    let pe = pe_for(
+        "enum TokenKind { Eof Ident Number } fn main() -> TokenKind { return TokenKind.Number }",
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_explicit_enum_discriminant_exit_program() {
+    let pe = pe_for(
+        "enum Status { Ok = 0 Warning = 7 Error = 42 } fn main() -> Status { Status.Error }",
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_implicit_enum_discriminant_after_explicit_exit_program() {
+    let pe = pe_for("enum Status { Ok = 5 Warning Error } fn main() -> Status { Status.Error }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_match_expression_exit_program() {
+    let pe = pe_for("enum TokenKind { Eof Number } fn main() -> int { let kind: TokenKind = TokenKind.Number return match kind { TokenKind.Eof => 0 TokenKind.Number => 2 _ => 9 } }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_exhaustive_match_without_wildcard_exit_program() {
+    let pe = pe_for("enum TokenKind { Eof Number } fn main() -> int { let kind: TokenKind = TokenKind.Number return match kind { TokenKind.Eof => 0 TokenKind.Number => 2 } }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_if_expression_exit_program() {
+    let pe = pe_for("fn main() -> int { return if true { 7 } else { 9 } }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_block_expression_exit_program() {
+    let pe = pe_for("fn main() -> int { return { let base: int = 40 base + 2 } }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_arithmetic_exit_program() {
+    let pe = pe_for("fn main() -> int { return 6 * 7 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_remainder_exit_program() {
+    let pe = pe_for("fn main() -> int { return 10 % 4 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_compound_assignment_exit_program() {
+    let pe = pe_for("fn main() -> int { var x: int = 10 x += 5 x %= 4 return x }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_boolean_logic_exit_program() {
+    let pe = pe_for("fn main() -> int { if true || false && false { return 7 } return 1 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_bitwise_exit_program() {
+    let pe = pe_for("fn main() -> int { return 10 | 6 ^ 3 & 1 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_shift_exit_program() {
+    let pe = pe_for("fn main() -> int { return 1 << 3 >> 1 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_bitwise_not_exit_program() {
+    let pe = pe_for("fn main() -> int { return ~10 & 255 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_integer_cast_exit_program() {
+    let pe = pe_for("fn main() -> int { let x: i32 = 42 return x as int }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_pointer_to_usize_cast_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                let ptr: *u8 = null
+                let addr: usize = ptr as usize
+                let zero: usize = 0
+                if (addr == zero) {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_usize_to_pointer_cast_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                let addr: usize = 0
+                unsafe {
+                    let ptr: *u8 = addr as *u8
+                    if ptr == null {
+                        return 42
+                    }
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_raw_pointer_add_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> usize {
+                unsafe {
+                    let ptr: *u32 = null
+                    let next: *u32 = ptr + 2
+                    return next as usize
+                }
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_raw_pointer_difference_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                unsafe {
+                    let first: *u32 = null
+                    let last: *u32 = first + 3
+                    return last - first
+                }
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_raw_pointer_compound_assignment_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> usize {
+                unsafe {
+                    var ptr: *u32 = null
+                    ptr += 3
+                    ptr -= 1
+                    return ptr as usize
+                }
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_raw_pointer_ordering_comparison_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                unsafe {
+                    let first: *u32 = null
+                    let last: *u32 = first + 3
+                    if first < last {
+                        return 42
+                    }
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_sizeof_exit_program() {
+    let pe = pe_for("fn main() -> usize { return sizeof(*u8) }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_alignof_exit_program() {
+    let pe = pe_for("fn main() -> usize { return alignof(*u8) }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_offsetof_exit_program() {
+    let pe = pe_for(
+        r#"
+            struct Header {
+                tag: u8
+                next: *u8
+            }
+
+            fn main() -> usize {
+                return offsetof(Header, next)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_comma_separated_struct_declaration_fields() {
+    let pe = pe_for(
+        r#"
+            struct Token {
+                kind: int,
+                start: usize,
+            }
+
+            fn main() -> int {
+                let token: Token = Token { kind: 42, start: 0, }
+                return token.kind
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_struct_literal_field_shorthand() {
+    let pe = pe_for(
+        r#"
+            struct Token {
+                kind: int,
+                start: usize,
+            }
+
+            fn main() -> int {
+                let kind: int = 42
+                let start: usize = 0
+                let token: Token = Token { kind, start, }
+                return token.kind
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_null_literal_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                let p: *u8 = null
+                if p == null {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_null_comparison_with_pointer_on_right() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                let p: *u8 = null
+                if (null == p) {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_local_arithmetic_exit_program() {
+    let pe = pe_for("fn main() -> int { let x: int = 10 let y: int = 32 return x + y }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_mutable_reference_assignment_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                var x: int = 1
+                let slot: &mut int = &mut x
+                *slot = 42
+                return x
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_mutable_reference_compound_assignment_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                var value: int = 1
+                let slot: &mut int = &mut value
+                *slot += 41
+                return value
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_if_else_exit_program() {
+    let pe = pe_for("fn main() -> int { if 10 < 32 { return 42 } else { return 1 } }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_multi_level_else_if_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                let score: int = 75
+                if score >= 90 {
+                    return 3
+                } else if score >= 70 {
+                    return 42
+                } else if score >= 50 {
+                    return 1
+                } else {
+                    return 0
+                }
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_while_exit_program() {
+    let pe = pe_for("fn main() -> int { var x: int = 0 while x < 42 { x = x + 1 } return x }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_for_range_exit_program() {
+    let pe =
+        pe_for("fn main() -> int { var total: int = 0 for i in 0..7 { total += i } return total }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_inclusive_for_range_exit_program() {
+    let pe = pe_for(
+        "fn main() -> int { var total: int = 0 for i in 0..=4 { total += i } return total }",
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_loop_exit_program() {
+    let pe =
+        pe_for("fn main() -> int { var x: int = 0 loop { x += 1 if x == 4 { break } } return x }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_user_function_call_exit_program() {
+    let pe = pe_for(
+        r#"
+            fn add(a: int, b: int) -> int {
+                return a + b
+            }
+
+            fn main() -> int {
+                let x: int = 10
+                let y: int = 32
+                return add(x, y)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_user_function_call_inside_control_flow() {
+    let pe = pe_for(
+        r#"
+            fn step(x: int) -> int {
+                return x + 1
+            }
+
+            fn main() -> int {
+                var x: int = 0
+                while x < 42 {
+                    x = step(x)
+                }
+                return x
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_trailing_commas_in_params_and_calls() {
+    let pe = pe_for(
+        r#"
+            fn add(a: int, b: int,) -> int {
+                return a + b
+            }
+
+            fn main() -> int {
+                return add(40, 2,)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"KERNEL32.dll"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_ordered_print_output() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                print("Geo")
+                print(" ")
+                println("compiler")
+                println("v1")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"GetStdHandle"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"Geo compiler\nv1\n"));
+}
+
+#[test]
+fn emits_direct_pe64_decoded_string_escape_bytes() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                print("A\r\0B")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"A\r\0B"));
+}
+
+#[test]
+fn emits_direct_pe64_decoded_hex_escape_bytes() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                print("A\x0d\x00B")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"A\r\0B"));
+}
+
+#[test]
+fn emits_direct_pe64_decoded_unicode_escape_bytes() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                print("lambda: \u{03bb}")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"lambda: \xce\xbb"));
+}
+
+#[test]
+fn emits_direct_pe64_raw_string_bytes() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                print(r"C:\temp\n.txt")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, br"C:\temp\n.txt"));
+}
+
+#[test]
+fn emits_direct_pe64_hash_raw_string_quote_bytes() {
+    let pe = pe_for(
+        r##"
+            import std.io
+
+            fn main() {
+                print(r#"quote: " and slash: \"#)
+            }
+        "##,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, br#"quote: " and slash: \"#));
+}
+
+#[test]
+fn emits_direct_pe64_string_concat_output() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                let message = "Geo " + "compiler"
+                println(message)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"GetStdHandle"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"Geo compiler\n"));
+}
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}

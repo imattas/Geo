@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "compiler/geo",
+    "library/geo_runtime",
+]
+default-members = ["compiler/geo"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"

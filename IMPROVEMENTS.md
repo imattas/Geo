@@ -1,0 +1,190 @@
+# Geo Improvements
+
+This file tracks practical improvements that would make Geo easier to expand, test, maintain, and eventually self-host.
+
+## Highest Leverage
+
+### 1. Split Compiler Internals Into Smaller Crates
+
+Current state: the compiler crate is already isolated at `compiler/geo`, but most compiler phases still live inside one crate.
+
+Recommended split:
+
+- `compiler/geo_cli`: command-line entry point and user-facing commands.
+- `compiler/geo_driver`: orchestration for check, build, run, test, and emit flows.
+- `compiler/geo_syntax`: source files, spans, tokens, lexer, parser, AST.
+- `compiler/geo_semantic`: name resolution, type checking, borrow checking.
+- `compiler/geo_ir`: IR definitions, lowering, validation.
+- `compiler/geo_codegen`: target lowering and backend selection.
+- `compiler/geo_codegen_x86_64`: x86-64 NASM backend.
+- `compiler/geo_object`: PE/ELF object writers.
+- `compiler/geo_diagnostics`: diagnostics, rendering, source snippets.
+
+Reason: self-hosting work needs stable internal boundaries. Smaller crates also reduce compile times and make testing each phase cleaner.
+
+### 2. Add A Real Standard Library Source Tree
+
+Current state: the C runtime lives in `library/geo_runtime`, but Geo standard library modules are not yet organized as source packages.
+
+Recommended layout:
+
+```text
+library/
+  geo_runtime/
+  std/
+    io.geo
+    mem.geo
+    process.geo
+    string.geo
+    array.geo
+    platform/
+      linux.geo
+      windows.geo
+```
+
+Reason: Geo code should eventually import stable modules like `std.io`. Keeping the runtime and source-level standard library separate avoids mixing platform ABI glue with user-facing APIs.
+
+### 3. Add A Bootstrap/Test Harness
+
+Current state: Rust tests cover compiler stages and example compilation. There is no single bootstrap-style command that verifies the whole language distribution.
+
+Recommended commands:
+
+- `cargo xtask check`
+- `cargo xtask test`
+- `cargo xtask examples`
+- `cargo xtask dist`
+
+Reason: a compiler project needs repeatable full-stack checks: Rust tests, Geo example checks, Linux assembly emission, Windows assembly/PE emission, runtime linking, and future self-hosting samples.
+
+### 4. Make The Backend Target Pipeline More Explicit
+
+Current state: target support exists, including Linux and Windows x86-64 paths, NASM emission, and a PE writer path.
+
+Recommended structure:
+
+```text
+IR
+-> ABI lowering
+-> machine-independent backend plan
+-> target emitter
+-> assembler/object writer
+-> linker/runtime packaging
+```
+
+Reason: Windows x64 and System V AMD64 differ enough that ABI decisions should be represented before final assembly text emission.
+
+### 5. Strengthen Diagnostics As A Product Feature
+
+Current state: diagnostics include source-aware rendering and tests.
+
+Recommended improvements:
+
+- Stable diagnostic IDs such as `GEO0001`.
+- Machine-readable JSON diagnostics.
+- Multi-span diagnostics for imports, duplicate symbols, and borrow errors.
+- Snapshot tests for important error rendering.
+- Suggestions for common mistakes.
+
+Reason: good diagnostics are core compiler quality, especially for a new language.
+
+## Language Improvements
+
+### Syntax And Ergonomics
+
+- Keep canonical syntax:
+
+```geo
+import std.io
+
+fn main() {
+    println("Hello, world!")
+}
+```
+
+- Treat `fn main()` as unit-returning and exit code `0`.
+- Keep `fn main() -> int` for explicit exit status.
+- Keep semicolons optional.
+- Prefer `let` immutable and `var` mutable.
+- Prefer `str` as the user-facing string type name while keeping `string` compatibility.
+
+### Type System
+
+- Add a real `unit` type.
+- Add fixed-width integers and `usize`.
+- Make integer conversions explicit.
+- Add typed null or nullable design before expanding pointer-heavy APIs.
+- Define string and array ownership rules before adding more collection APIs.
+
+### Ownership And Safety
+
+- Keep ownership lexical for v1.
+- Enforce move checking for owned `str`, arrays, and structs.
+- Allow many immutable borrows or one mutable borrow.
+- Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
+- Keep runtime/platform internals as the primary place for unsafe code.
+
+## Runtime And Standard Library Improvements
+
+### Core Runtime
+
+- Stable runtime ABI for printing, allocation, process exit, panic, and file IO.
+- Platform-specific implementations hidden behind a common ABI.
+- Explicit runtime entry point for unit-returning `main`.
+- Bounds-check trap path for strings and arrays.
+- Minimal allocator abstraction with `alloc`, `realloc`, and `free`.
+
+### Standard Library
+
+Initial modules should be small and boring:
+
+- `std.io`: `print`, `println`, `eprint`, file read/write.
+- `std.mem`: allocation and memory copy/fill.
+- `std.process`: exit, args, env basics.
+- `std.string`: len, clone, concat, compare, substring.
+- `std.array`: len, push, pop, get, set, slice.
+- `std.fs`: paths, metadata, directory iteration, copy/rename/delete.
+
+Reason: self-hosting examples need IO, strings, arrays, and diagnostics more than advanced abstractions.
+
+## Backend Improvements
+
+- Add ELF64 object writing beyond prototype-level integer functions.
+- Make PE64 writer handle runtime imports and external symbols robustly.
+- Add relocation tests for object writers.
+- Add stack-passed argument support for both Linux and Windows ABIs.
+- Add a simple register allocator after the IR and ABI boundaries are stable.
+- Add debug-friendly assembly comments behind a flag.
+- Add direct syscall experiments behind explicit target/runtime flags, not as the default path.
+
+## Repository Improvements
+
+- Add `CONTRIBUTING.md` with local verification commands.
+- Add `docs/architecture/` for compiler pipeline docs.
+- Add `docs/language/` for syntax and type-system reference.
+- Add `docs/runtime/` for runtime ABI and standard library design.
+- Add `tests/ui/` for diagnostic snapshot tests.
+- Add `tests/run-pass/`, `tests/check-pass/`, and `tests/check-fail/` for Geo source tests.
+- Move generated `.exe` and `.asm` artifacts out of the repository root and into `target/`.
+
+## Tooling Improvements
+
+- Add formatter tests for canonical syntax.
+- Add `geo fmt --check`.
+- Add `geo --version`.
+- Add `geo dump-tokens`, `geo dump-ast`, `geo dump-ir`, and `geo dump-asm` for compiler development.
+- Add CI for Windows and Linux.
+- Add a small `xtask` crate for repeatable dev workflows.
+- Add benchmark fixtures once backend behavior stabilizes.
+
+## Self-Hosting Improvements
+
+The next self-hosting target should be meaningful but narrow:
+
+1. A Geo lexer that tokenizes a subset of Geo source.
+2. A Geo diagnostic formatter that renders file, line, column, and caret.
+3. A Geo AST builder for a small expression grammar.
+4. A Geo mini parser that uses the lexer and AST structs.
+5. A Geo file echo tool that proves file IO and buffers.
+
+Do not start with the full compiler rewrite. First make Geo capable of writing compiler-shaped components cleanly.

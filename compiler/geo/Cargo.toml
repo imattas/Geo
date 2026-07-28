@@ -1,0 +1,12 @@
+[package]
+name = "geo"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "geo"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+geo-runtime = { path = "../../library/geo_runtime" }

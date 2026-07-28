@@ -1,0 +1,33 @@
+# Rust build output
+/target/
+
+# Geo-generated native artifacts and scratch output
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.o
+*.asm
+
+# Keep source examples and docs tracked.
+!examples/**/*.geo
+!docs/**/*.md
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment and logs
+.env
+.env.*
+*.log
+*.tmp
+*.bak
+
