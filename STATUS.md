@@ -75,6 +75,8 @@ cargo run --quiet -- build examples\read_line_len_exit.geo --target x86_64-linux
 cargo run --quiet -- build examples\read_line_len_windows_exit.geo --target x86_64-windows -o target\read_line_len_windows_exit.exe
 cargo run --quiet -- build examples\mem_runtime_exit.geo --target x86_64-linux -o target\mem_runtime_exit
 cargo run --quiet -- build examples\mem_runtime_exit.geo --target x86_64-windows -o target\mem_runtime_exit.exe
+cargo run --quiet -- build examples\string_from_byte_len_exit.geo --target x86_64-linux -o target\string_from_byte_len_exit
+cargo run --quiet -- build examples\string_from_byte_len_exit.geo --target x86_64-windows -o target\string_from_byte_len_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -143,6 +145,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.read_file_or`, returning the caller-provided default string when the file cannot be opened or read
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.read_line` with bounded native input buffers and newline termination
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_copy`, `std.mem.mem_move`, and `std.mem.mem_zero` buffer primitives
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.string.string_from_byte`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 

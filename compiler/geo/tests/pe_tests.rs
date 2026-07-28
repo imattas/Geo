@@ -1107,6 +1107,22 @@ fn emits_direct_pe64_memory_move_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_string_from_byte_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_len(string_from_byte(65)) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0xc6, 0x40, 0x01, 0x00]));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"

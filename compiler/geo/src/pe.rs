@@ -57,7 +57,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         || image.relocations.iter().any(|relocation| {
             matches!(
                 relocation.symbol.as_str(),
-                "alloc" | "alloc_zeroed" | "alloc_array"
+                "alloc" | "alloc_zeroed" | "alloc_array" | "string_from_byte"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -641,6 +641,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "mem_move");
+    let needs_string_from_byte = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_from_byte");
     let needs_file_read = image
         .relocations
         .iter()
@@ -709,6 +713,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_mem_copy
         || needs_mem_zero
         || needs_mem_move
+        || needs_string_from_byte
         || needs_file_read
         || needs_file_read_or
         || needs_read_line
@@ -868,6 +873,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_mem_move {
         helpers.mem_move = Some(layout.text_rva + code.len() as u32);
         emit_mem_move_helper(&mut code);
+    }
+    if needs_string_from_byte {
+        helpers.string_from_byte = Some(layout.text_rva + code.len() as u32);
+        emit_string_from_byte_helper(&mut code, layout);
     }
     if needs_process_exit {
         helpers.exit_process = Some(layout.text_rva + code.len() as u32);
@@ -1039,6 +1048,9 @@ fn compiled_symbol_rva(
     if symbol == "mem_move" {
         return helpers.mem_move;
     }
+    if symbol == "string_from_byte" {
+        return helpers.string_from_byte;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -1065,6 +1077,7 @@ struct PeHelperRvas {
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
     mem_move: Option<u32>,
+    string_from_byte: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
     string_byte_at: Option<u32>,
@@ -2113,6 +2126,25 @@ fn emit_mem_move_helper(code: &mut Vec<u8>) {
     ]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, forward, forward_target);
+}
+
+fn emit_string_from_byte_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[0x89, 0x4c, 0x24, 0x20]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    code.extend_from_slice(&[0xba, 0x02, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x8a, 0x54, 0x24, 0x20]);
+    code.extend_from_slice(&[0x88, 0x10]);
+    code.extend_from_slice(&[0xc6, 0x40, 0x01, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_read_file_helper(code: &mut Vec<u8>, layout: &Layout) {

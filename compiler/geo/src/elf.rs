@@ -93,6 +93,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "mem_copy" => emit_mem_copy_runtime(&mut code),
             "mem_zero" => emit_mem_zero_runtime(&mut code),
             "mem_move" => emit_mem_move_runtime(&mut code),
+            "string_from_byte" => emit_string_from_byte_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
@@ -493,6 +494,27 @@ fn emit_mem_move_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xf3, 0xa4]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, forward, forward_target);
+}
+
+fn emit_string_from_byte_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x18]);
+    code.extend_from_slice(&[0x40, 0x88, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x31, 0xff]);
+    code.extend_from_slice(&[0xbe, 0x02, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0xba, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xba, 0x22, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0xb8, 0x09, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x8a, 0x14, 0x24]);
+    code.extend_from_slice(&[0x88, 0x10]);
+    code.extend_from_slice(&[0xc6, 0x40, 0x01, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x18, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x18, 0xc3]);
+    patch_near_jump(code, failed, failure);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {

@@ -233,6 +233,22 @@ fn emits_direct_elf64_memory_move_runtime() {
     assert!(contains_bytes(&executable, &[0xf3, 0xa4]));
 }
 
+#[test]
+fn emits_direct_elf64_string_from_byte_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_len(string_from_byte(65)) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xc6, 0x40, 0x01, 0x00]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }
