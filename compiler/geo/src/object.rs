@@ -127,9 +127,23 @@ fn emit_function_text(
                 emit_load_rax(bytes, frame.local_offset(local));
                 emit_store_rax(bytes, frame.value_offset(*dst));
             }
+            Instruction::AddressOf { dst, local } => {
+                emit_lea_rax_local(bytes, frame.local_offset(local));
+                emit_store_rax(bytes, frame.value_offset(*dst));
+            }
+            Instruction::Deref { dst, pointer } => {
+                emit_load_rax(bytes, frame.value_offset(*pointer));
+                bytes.extend_from_slice(&[0x48, 0x8b, 0x00]);
+                emit_store_rax(bytes, frame.value_offset(*dst));
+            }
             Instruction::Store { local, value } => {
                 emit_load_rax(bytes, frame.value_offset(*value));
                 emit_store_rax(bytes, frame.local_offset(local));
+            }
+            Instruction::StoreDeref { pointer, value } => {
+                emit_load_rax(bytes, frame.value_offset(*pointer));
+                emit_load_r10(bytes, frame.value_offset(*value));
+                bytes.extend_from_slice(&[0x4c, 0x89, 0x10]);
             }
             Instruction::Cmp {
                 dst,
@@ -178,10 +192,7 @@ fn emit_function_text(
             Instruction::StringConst { .. }
             | Instruction::And { .. }
             | Instruction::Or { .. }
-            | Instruction::AddressOf { .. }
-            | Instruction::Deref { .. }
-            | Instruction::BitNot { .. }
-            | Instruction::StoreDeref { .. } => {}
+            | Instruction::BitNot { .. } => {}
         }
     }
 
@@ -479,6 +490,16 @@ fn emit_load_rax(bytes: &mut Vec<u8>, offset: u32) {
 fn emit_load_rcx(bytes: &mut Vec<u8>, offset: u32) {
     bytes.extend_from_slice(&[0x48, 0x8b]);
     emit_rbp_operand(bytes, 1, offset);
+}
+
+fn emit_load_r10(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x4c, 0x8b]);
+    emit_rbp_operand(bytes, 2, offset);
+}
+
+fn emit_lea_rax_local(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x48, 0x8d]);
+    emit_rbp_operand(bytes, 0, offset);
 }
 
 fn emit_store_rax(bytes: &mut Vec<u8>, offset: u32) {

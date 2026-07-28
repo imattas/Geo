@@ -142,6 +142,45 @@ fn emits_machine_code_for_shift_operations() {
     assert!(contains_bytes(text, &[0x48, 0xd3, 0xf8]));
 }
 
+#[test]
+fn emits_machine_code_for_address_of_and_deref() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                let x: int = 42
+                unsafe {
+                    let p: *int = &x
+                    return *p
+                }
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x8d, 0x45]));
+    assert!(contains_bytes(text, &[0x48, 0x8b, 0x00]));
+}
+
+#[test]
+fn emits_machine_code_for_pointer_store() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                var x: int = 1
+                unsafe {
+                    let p: *int = &x
+                    *p = 42
+                }
+                return x
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x8d, 0x45]));
+    assert!(contains_bytes(text, &[0x4c, 0x89, 0x10]));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
