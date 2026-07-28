@@ -82,6 +82,46 @@ fn emits_machine_code_for_local_loads_and_stores() {
     assert!(count_bytes(text, &[0x48, 0x89, 0x45]) >= 2);
 }
 
+#[test]
+fn emits_machine_code_for_if_else_branches() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                if 10 < 32 {
+                    return 42
+                } else {
+                    return 1
+                }
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x3b, 0x45]));
+    assert!(contains_bytes(text, &[0x0f, 0x9c, 0xc0]));
+    assert!(contains_bytes(text, &[0x0f, 0x84]));
+    assert!(contains_bytes(text, &[0xe9]));
+}
+
+#[test]
+fn emits_machine_code_for_while_loop_backedge() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                var x: int = 0
+                while x < 3 {
+                    x = x + 1
+                }
+                return x
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x0f, 0x84]));
+    assert!(contains_backward_jump(text));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
@@ -93,6 +133,11 @@ fn count_bytes(haystack: &[u8], needle: &[u8]) -> usize {
         .windows(needle.len())
         .filter(|window| *window == needle)
         .count()
+}
+
+fn contains_backward_jump(text: &[u8]) -> bool {
+    text.windows(5)
+        .any(|window| window[0] == 0xe9 && i32::from_le_bytes(window[1..5].try_into().unwrap()) < 0)
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {

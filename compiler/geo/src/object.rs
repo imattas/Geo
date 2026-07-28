@@ -1,4 +1,4 @@
-use crate::ir::{Instruction, IrFunction, IrProgram};
+use crate::ir::{CmpOp, Instruction, IrFunction, IrProgram};
 use std::collections::HashMap;
 
 const SHT_PROGBITS: u32 = 1;
@@ -73,6 +73,8 @@ fn emit_function_text(
     relocations: &mut Vec<CallRelocation>,
 ) {
     let frame = FrameLayout::new(function);
+    let mut labels = HashMap::new();
+    let mut jumps = Vec::new();
     bytes.extend_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
     emit_stack_alloc(bytes, frame.stack_size);
 
@@ -110,6 +112,14 @@ fn emit_function_text(
                 emit_load_rax(bytes, frame.value_offset(*value));
                 emit_store_rax(bytes, frame.local_offset(local));
             }
+            Instruction::Cmp {
+                dst,
+                op,
+                left,
+                right,
+            } => {
+                emit_compare(bytes, *op, &frame, *dst, *left, *right);
+            }
             Instruction::Call { function, .. } => {
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
@@ -131,6 +141,17 @@ fn emit_function_text(
                     symbol: "__geo_bounds_check".to_string(),
                 });
             }
+            Instruction::Jump { label } => {
+                emit_jump(bytes, label, &mut jumps);
+            }
+            Instruction::JumpIfZero { value, label } => {
+                emit_load_rax(bytes, frame.value_offset(*value));
+                bytes.extend_from_slice(&[0x48, 0x83, 0xf8, 0x00]);
+                emit_jump_if_equal(bytes, label, &mut jumps);
+            }
+            Instruction::Label { name } => {
+                labels.insert(name.clone(), bytes.len() as u64);
+            }
             Instruction::Return { value } => {
                 emit_load_rax(bytes, frame.value_offset(*value));
                 bytes.extend_from_slice(&[0xc9, 0xc3]);
@@ -145,11 +166,7 @@ fn emit_function_text(
             | Instruction::AddressOf { .. }
             | Instruction::Deref { .. }
             | Instruction::BitNot { .. }
-            | Instruction::StoreDeref { .. }
-            | Instruction::Cmp { .. }
-            | Instruction::Jump { .. }
-            | Instruction::JumpIfZero { .. }
-            | Instruction::Label { .. } => {}
+            | Instruction::StoreDeref { .. } => {}
         }
     }
 
@@ -159,6 +176,13 @@ fn emit_function_text(
     ) {
         bytes.extend_from_slice(&[0xb8, 0, 0, 0, 0, 0xc9, 0xc3]);
     }
+
+    patch_jumps(bytes, &labels, &jumps);
+}
+
+struct JumpPatch {
+    displacement_offset: usize,
+    label: String,
 }
 
 struct FrameLayout {
@@ -304,6 +328,65 @@ fn emit_binary_mem_op(
     bytes.extend_from_slice(&[0x48, opcode]);
     emit_rbp_operand(bytes, 0, frame.value_offset(right));
     emit_store_rax(bytes, frame.value_offset(dst));
+}
+
+fn emit_compare(
+    bytes: &mut Vec<u8>,
+    op: CmpOp,
+    frame: &FrameLayout,
+    dst: crate::ir::ValueId,
+    left: crate::ir::ValueId,
+    right: crate::ir::ValueId,
+) {
+    emit_load_rax(bytes, frame.value_offset(left));
+    bytes.extend_from_slice(&[0x48, 0x3b]);
+    emit_rbp_operand(bytes, 0, frame.value_offset(right));
+    bytes.extend_from_slice(&[0x0f, setcc_opcode(op), 0xc0]);
+    bytes.extend_from_slice(&[0x48, 0x0f, 0xb6, 0xc0]);
+    emit_store_rax(bytes, frame.value_offset(dst));
+}
+
+fn setcc_opcode(op: CmpOp) -> u8 {
+    match op {
+        CmpOp::Equal => 0x94,
+        CmpOp::NotEqual => 0x95,
+        CmpOp::Less => 0x9c,
+        CmpOp::LessEqual => 0x9e,
+        CmpOp::Greater => 0x9f,
+        CmpOp::GreaterEqual => 0x9d,
+    }
+}
+
+fn emit_jump(bytes: &mut Vec<u8>, label: &str, jumps: &mut Vec<JumpPatch>) {
+    bytes.push(0xe9);
+    let displacement_offset = bytes.len();
+    bytes.extend_from_slice(&0_i32.to_le_bytes());
+    jumps.push(JumpPatch {
+        displacement_offset,
+        label: label.to_string(),
+    });
+}
+
+fn emit_jump_if_equal(bytes: &mut Vec<u8>, label: &str, jumps: &mut Vec<JumpPatch>) {
+    bytes.extend_from_slice(&[0x0f, 0x84]);
+    let displacement_offset = bytes.len();
+    bytes.extend_from_slice(&0_i32.to_le_bytes());
+    jumps.push(JumpPatch {
+        displacement_offset,
+        label: label.to_string(),
+    });
+}
+
+fn patch_jumps(bytes: &mut [u8], labels: &HashMap<String, u64>, jumps: &[JumpPatch]) {
+    for jump in jumps {
+        let target = *labels
+            .get(&jump.label)
+            .unwrap_or_else(|| panic!("missing object label '{}'", jump.label));
+        let next = jump.displacement_offset as u64 + 4;
+        let displacement = target as i64 - next as i64;
+        bytes[jump.displacement_offset..jump.displacement_offset + 4]
+            .copy_from_slice(&(displacement as i32).to_le_bytes());
+    }
 }
 
 fn emit_stack_alloc(bytes: &mut Vec<u8>, size: u32) {
