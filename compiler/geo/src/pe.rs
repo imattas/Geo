@@ -416,6 +416,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_starts_with");
+    let needs_string_ends_with = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_ends_with");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -451,6 +455,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_compare
         || needs_string_contains
         || needs_string_starts_with
+        || needs_string_ends_with
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -480,6 +485,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_starts_with {
         helpers.string_starts_with = Some(layout.text_rva + code.len() as u32);
         emit_string_starts_with_helper(&mut code);
+    }
+    if needs_string_ends_with {
+        helpers.string_ends_with = Some(layout.text_rva + code.len() as u32);
+        emit_string_ends_with_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -554,6 +563,9 @@ fn compiled_symbol_rva(
     if symbol == "string_starts_with" {
         return helpers.string_starts_with;
     }
+    if symbol == "string_ends_with" {
+        return helpers.string_ends_with;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -578,6 +590,7 @@ struct PeHelperRvas {
     string_compare: Option<u32>,
     string_contains: Option<u32>,
     string_starts_with: Option<u32>,
+    string_ends_with: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -705,6 +718,49 @@ fn emit_string_starts_with_helper(code: &mut Vec<u8>) {
 
     patch_short_jump(code, prefix_done, true_target);
     patch_short_jump(code, source_done, false_target);
+    patch_short_jump(code, mismatch, false_target);
+}
+
+fn emit_string_ends_with_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
+    let source_len_loop = code.len();
+    code.extend_from_slice(&[0x42, 0x80, 0x3c, 0x01, 0x00]);
+    let source_len_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, source_len_loop);
+    let source_len_done_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x31, 0xc9]);
+    let suffix_len_loop = code.len();
+    code.extend_from_slice(&[0x42, 0x80, 0x3c, 0x0a, 0x00]);
+    let suffix_len_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_short_jump_back(code, suffix_len_loop);
+    let suffix_len_done_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x39, 0xc8]);
+    let suffix_too_long = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x4c, 0x01, 0xc1]);
+    code.extend_from_slice(&[0x4c, 0x29, 0xc9]);
+    let compare_loop = code.len();
+    code.extend_from_slice(&[0x8a, 0x02]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x38, 0x01]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, compare_loop);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, source_len_done, source_len_done_target);
+    patch_short_jump(code, suffix_len_done, suffix_len_done_target);
+    patch_short_jump(code, suffix_too_long, false_target);
+    patch_short_jump(code, matched, true_target);
     patch_short_jump(code, mismatch, false_target);
 }
 
