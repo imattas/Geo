@@ -5,8 +5,10 @@ const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x20;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
+const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
+const IMAGE_REL_AMD64_REL32: u16 = 0x0004;
 const SHT_PROGBITS: u32 = 1;
 const SHT_SYMTAB: u32 = 2;
 const SHT_STRTAB: u32 = 3;
@@ -40,15 +42,20 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
         .functions
         .iter()
         .find(|function| function.name == "main")?;
-    let text = emit_coff_text_subset(main)?;
+    let image = emit_coff_image_subset(main)?;
     let section_table_offset = 20_usize;
-    let text_offset = section_table_offset + 40;
-    let symbol_table_offset = text_offset + text.len();
-    let symbol_count = 1_u32;
+    let section_count = if image.rodata.is_empty() { 1_u16 } else { 2 };
+    let text_offset = section_table_offset + section_count as usize * 40;
+    let rdata_offset = text_offset + image.text.len();
+    let text_relocation_offset = rdata_offset + image.rodata.len();
+    let symbol_table_offset = text_relocation_offset + image.relocations.len() * 10;
+    let symbol_count = 1_u32 + image.data_symbols.len() as u32;
+    let symbol_indices = coff_symbol_indices(&image);
+    let mut string_table = vec![0_u8; 4];
 
     let mut out = Vec::new();
     out.extend_from_slice(&IMAGE_FILE_MACHINE_AMD64.to_le_bytes());
-    out.extend_from_slice(&1_u16.to_le_bytes());
+    out.extend_from_slice(&section_count.to_le_bytes());
     out.extend_from_slice(&0_u32.to_le_bytes());
     out.extend_from_slice(&(symbol_table_offset as u32).to_le_bytes());
     out.extend_from_slice(&symbol_count.to_le_bytes());
@@ -58,52 +65,120 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
     write_coff_short_name(&mut out, b".text");
     out.extend_from_slice(&0_u32.to_le_bytes());
     out.extend_from_slice(&0_u32.to_le_bytes());
-    out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(image.text.len() as u32).to_le_bytes());
     out.extend_from_slice(&(text_offset as u32).to_le_bytes());
+    out.extend_from_slice(&(text_relocation_offset as u32).to_le_bytes());
     out.extend_from_slice(&0_u32.to_le_bytes());
-    out.extend_from_slice(&0_u32.to_le_bytes());
-    out.extend_from_slice(&0_u16.to_le_bytes());
+    out.extend_from_slice(&(image.relocations.len() as u16).to_le_bytes());
     out.extend_from_slice(&0_u16.to_le_bytes());
     out.extend_from_slice(
         &(IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ).to_le_bytes(),
     );
 
-    out.extend_from_slice(&text);
+    if !image.rodata.is_empty() {
+        write_coff_short_name(&mut out, b".rdata");
+        out.extend_from_slice(&0_u32.to_le_bytes());
+        out.extend_from_slice(&0_u32.to_le_bytes());
+        out.extend_from_slice(&(image.rodata.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(rdata_offset as u32).to_le_bytes());
+        out.extend_from_slice(&0_u32.to_le_bytes());
+        out.extend_from_slice(&0_u32.to_le_bytes());
+        out.extend_from_slice(&0_u16.to_le_bytes());
+        out.extend_from_slice(&0_u16.to_le_bytes());
+        out.extend_from_slice(&(IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ).to_le_bytes());
+    }
 
-    write_coff_short_name(&mut out, b"main");
+    out.extend_from_slice(&image.text);
+    out.extend_from_slice(&image.rodata);
+    for relocation in &image.relocations {
+        let RelocationKind::Pc32 = relocation.kind else {
+            return None;
+        };
+        let symbol_index = *symbol_indices.get(&relocation.symbol)?;
+        out.extend_from_slice(&(relocation.offset as u32).to_le_bytes());
+        out.extend_from_slice(&symbol_index.to_le_bytes());
+        out.extend_from_slice(&IMAGE_REL_AMD64_REL32.to_le_bytes());
+    }
+
+    write_coff_symbol_name(&mut out, b"main", &mut string_table);
     out.extend_from_slice(&0_u32.to_le_bytes());
     out.extend_from_slice(&1_i16.to_le_bytes());
     out.extend_from_slice(&IMAGE_SYM_DTYPE_FUNCTION.to_le_bytes());
     out.push(IMAGE_SYM_CLASS_EXTERNAL);
     out.push(0);
-    out.extend_from_slice(&4_u32.to_le_bytes());
+    for symbol in &image.data_symbols {
+        write_coff_symbol_name(&mut out, symbol.name.as_bytes(), &mut string_table);
+        out.extend_from_slice(&(symbol.offset as u32).to_le_bytes());
+        out.extend_from_slice(&2_i16.to_le_bytes());
+        out.extend_from_slice(&0_u16.to_le_bytes());
+        out.push(IMAGE_SYM_CLASS_EXTERNAL);
+        out.push(0);
+    }
+    let string_table_len = string_table.len() as u32;
+    string_table[0..4].copy_from_slice(&string_table_len.to_le_bytes());
+    out.extend_from_slice(&string_table);
 
     Some(out)
 }
 
-fn emit_coff_text_subset(function: &IrFunction) -> Option<Vec<u8>> {
+fn emit_coff_image_subset(function: &IrFunction) -> Option<ObjectImage> {
     let mut text = Vec::new();
-    let mut rodata = Vec::new();
+    let mut rdata = Vec::new();
     let mut data_symbols = Vec::new();
     let mut relocations = Vec::new();
     emit_function_text(
         function,
         &mut text,
-        &mut rodata,
+        &mut rdata,
         &mut data_symbols,
         &mut relocations,
     );
-    if !rodata.is_empty() || !data_symbols.is_empty() || !relocations.is_empty() {
+    if relocations
+        .iter()
+        .any(|relocation| !matches!(relocation.kind, RelocationKind::Pc32))
+    {
         return None;
     }
 
-    Some(text)
+    Some(ObjectImage {
+        text,
+        rodata: rdata,
+        functions: vec![FunctionSymbol {
+            name: function.name.clone(),
+            offset: 0,
+            size: 0,
+        }],
+        data_symbols,
+        relocations,
+    })
+}
+
+fn coff_symbol_indices(image: &ObjectImage) -> HashMap<String, u32> {
+    let mut indices = HashMap::new();
+    indices.insert("main".to_string(), 0);
+    for (index, symbol) in image.data_symbols.iter().enumerate() {
+        indices.insert(symbol.name.clone(), index as u32 + 1);
+    }
+    indices
 }
 
 fn write_coff_short_name(out: &mut Vec<u8>, name: &[u8]) {
     let mut bytes = [0_u8; 8];
     bytes[..name.len()].copy_from_slice(name);
     out.extend_from_slice(&bytes);
+}
+
+fn write_coff_symbol_name(out: &mut Vec<u8>, name: &[u8], string_table: &mut Vec<u8>) {
+    if name.len() <= 8 {
+        write_coff_short_name(out, name);
+        return;
+    }
+
+    let offset = string_table.len() as u32;
+    string_table.extend_from_slice(name);
+    string_table.push(0);
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&offset.to_le_bytes());
 }
 
 struct ObjectImage {

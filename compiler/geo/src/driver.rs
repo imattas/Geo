@@ -123,7 +123,7 @@ pub fn compile_to_object(path: &Path, config: &CompileConfig) -> Result<Vec<u8>,
         ObjectFormat::Elf64 => Ok(crate::object::emit_elf64_relocatable(&ir)),
         ObjectFormat::Win64 => crate::object::emit_coff_x64_relocatable(&ir).ok_or_else(|| {
             vec![Diagnostic::error(
-                "x86_64-windows object emission currently supports relocation-free main programs",
+                "x86_64-windows object emission currently supports self-contained main programs",
             )]
         }),
     }

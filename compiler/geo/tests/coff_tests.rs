@@ -38,6 +38,24 @@ fn emits_win64_coff_machine_code_for_stack_arithmetic() {
     assert!(contains_bytes(&object, &[0xc9, 0xc3]));
 }
 
+#[test]
+fn emits_win64_coff_string_data_and_text_relocation() {
+    let object = coff_for(
+        r#"
+            fn main() -> int {
+                let name: string = "Geo"
+                return 0
+            }
+        "#,
+    );
+
+    assert_eq!(read_u16(&object, 2), 2);
+    assert!(contains_bytes(&object, b".rdata"));
+    assert!(contains_bytes(&object, b"Geo\0"));
+    assert!(contains_bytes(&object, b"__geo_str_main_0"));
+    assert!(text_relocation_count(&object) > 0);
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
@@ -46,4 +64,8 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
+}
+
+fn text_relocation_count(object: &[u8]) -> u16 {
+    read_u16(object, 20 + 32)
 }
