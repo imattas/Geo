@@ -49,6 +49,9 @@ jobs:
         run: |
           mkdir -p dist/geo
           cp target/release/${{ matrix.binary }} dist/geo/
+          mkdir -p dist/geo/library
+          cp -R library/std dist/geo/library/
+          cp -R library/geo_runtime dist/geo/library/
           cp README.md STATUS.md ROADMAP.md IMPROVEMENTS.md dist/geo/
           tar -czf dist/${{ matrix.archive }} -C dist geo
 
@@ -58,6 +61,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist/geo | Out-Null
           Copy-Item target/release/${{ matrix.binary }} dist/geo/
+          New-Item -ItemType Directory -Force dist/geo/library | Out-Null
+          Copy-Item library/std dist/geo/library/std -Recurse
+          Copy-Item library/geo_runtime dist/geo/library/geo_runtime -Recurse
           Copy-Item README.md,STATUS.md,ROADMAP.md,IMPROVEMENTS.md dist/geo/
           Compress-Archive -Path dist/geo/* -DestinationPath dist/${{ matrix.archive }}
 

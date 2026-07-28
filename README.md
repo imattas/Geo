@@ -17,8 +17,13 @@ fn main() {
 ```text
 compiler/
   geo/              Rust compiler crate and CLI
+  geo_layout/       Repository layout validation crate
 library/
   geo_runtime/      Runtime crate and C runtime shim
+  std/              Source-level Geo standard library modules
+src/
+  bootstrap/        Bootstrap stage model
+  tools/xtask/      Workspace automation tool
 examples/           Geo source examples
 docs/               Design specs and implementation plans
 ```
@@ -28,8 +33,17 @@ docs/               Design specs and implementation plans
 ```powershell
 cargo fmt --check
 cargo test --workspace --quiet
+cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\return_42_windows.asm
+```
+
+## Workspace Tool
+
+```powershell
+cargo run -p xtask --quiet -- status
+cargo run -p xtask --quiet -- layout
+cargo run -p xtask --quiet -- verify
 ```
 
 ## Project Docs
@@ -38,4 +52,3 @@ cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o 
 - `ROADMAP.md`: v1 development roadmap.
 - `IMPROVEMENTS.md`: concrete engineering improvements to consider.
 - `CONTRIBUTING.md`: local verification and contribution notes.
-

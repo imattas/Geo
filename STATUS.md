@@ -14,11 +14,28 @@ compiler/
     Cargo.toml
     src/
     tests/
+  geo_layout/
+    Cargo.toml
+    src/
+    tests/
 library/
   geo_runtime/
     Cargo.toml
     src/
     geo_runtime.c
+  std/
+    src/
+    src/platform/
+src/
+  bootstrap/
+    Cargo.toml
+    src/
+    tests/
+  tools/
+    xtask/
+      Cargo.toml
+      src/
+      tests/
 docs/
   superpowers/
 examples/
@@ -28,7 +45,10 @@ target/
 Workspace members:
 
 - `compiler/geo`
+- `compiler/geo_layout`
 - `library/geo_runtime`
+- `src/bootstrap`
+- `src/tools/xtask`
 
 The compiler crate is the default workspace member, so root-level `cargo run -- ...` runs the `geo` compiler.
 
@@ -39,6 +59,7 @@ These commands were run successfully after the repository restructure:
 ```powershell
 cargo fmt --check
 cargo test --workspace --quiet
+cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\workspace_return_42_win.asm
 ```
@@ -109,8 +130,17 @@ Current runtime layout:
 
 - Runtime Rust crate: `library/geo_runtime`
 - Runtime C shim: `library/geo_runtime/geo_runtime.c`
+- Source-level standard library modules: `library/std/src`
 
 The compiler resolves the C runtime path through the `geo-runtime` crate instead of hard-coding a compiler-local runtime directory.
+
+## Tooling Status
+
+Current repository-level tooling:
+
+- `src/bootstrap`: declares bootstrap stages for host compiler, runtime, standard library, self-hosting examples, and distribution.
+- `src/tools/xtask`: provides `layout`, `status`, and `verify` commands.
+- `compiler/geo_layout`: validates that the expected compiler/library/src workspace shape exists.
 
 ## Documentation Status
 
@@ -126,9 +156,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 - No Git repository metadata in this checkout.
 - No root-level `CONTRIBUTING.md`.
-- No `xtask` automation crate.
 - Compiler internals are still mostly one crate.
-- Standard library Geo source tree is not yet separated under `library/std`.
 - Runtime ABI is not yet documented as a stable contract.
 - Formatter is minimal.
 - Distribution/install layout is not defined.
@@ -136,6 +164,6 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 ## Current Priority
 
-The next best technical move is Phase 1 from `ROADMAP.md`: harden the workspace and split compiler internals into smaller crates before adding significantly more language surface.
+The next best technical move is Phase 1 from `ROADMAP.md`: continue splitting compiler internals into smaller crates before adding significantly more language surface.
 
 That preserves momentum while reducing the risk of the compiler becoming difficult to change as v1 grows.

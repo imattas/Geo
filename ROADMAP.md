@@ -36,6 +36,10 @@ Deliverables:
 - Rust-style workspace root.
 - Compiler located under `compiler/geo`.
 - Runtime crate located under `library/geo_runtime`.
+- Layout validation crate located under `compiler/geo_layout`.
+- Bootstrap model located under `src/bootstrap`.
+- Workspace automation tool located under `src/tools/xtask`.
+- Source-level standard library modules located under `library/std/src`.
 - Root Cargo workspace with compiler as the default member.
 - Existing examples and tests adjusted to the new layout.
 
@@ -43,6 +47,7 @@ Verification:
 
 - `cargo fmt --check`
 - `cargo test --workspace --quiet`
+- `cargo run -p xtask --quiet -- layout`
 - `cargo run --quiet -- check examples\return_42.geo --target x86_64-linux`
 - `cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\workspace_return_42_win.asm`
 
@@ -52,7 +57,7 @@ Goal: make the project structure scale before adding more language surface.
 
 Deliverables:
 
-- Add `xtask` crate for repeatable commands.
+- Expand `xtask` into the main developer workflow for repeatable commands.
 - Add `compiler/geo_syntax` for source, tokens, lexer, parser, and AST.
 - Add `compiler/geo_diagnostics` for diagnostic data and rendering.
 - Add `compiler/geo_driver` for check/build/run orchestration.

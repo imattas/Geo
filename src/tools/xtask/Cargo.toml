@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[lib]
+name = "xtask"
+path = "src/lib.rs"
+
+[dependencies]
+geo-layout = { path = "../../../compiler/geo_layout" }

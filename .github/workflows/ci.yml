@@ -33,6 +33,9 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked
 
+      - name: Validate workspace layout
+        run: cargo run --locked -p xtask --quiet -- layout
+
       - name: Check Linux target
         run: cargo run --locked --quiet -- check examples/return_42.geo --target x86_64-linux
 

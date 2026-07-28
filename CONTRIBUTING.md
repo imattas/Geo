@@ -9,6 +9,7 @@ Run these before submitting changes:
 ```powershell
 cargo fmt --check
 cargo test --workspace --locked
+cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\ci-return-42-windows.asm
 ```
@@ -27,8 +28,11 @@ Use `cargo test --workspace --quiet` during local iteration when lockfile checki
 ## Repository Areas
 
 - `compiler/geo`: current compiler crate and CLI.
+- `compiler/geo_layout`: repository layout validation crate.
 - `library/geo_runtime`: runtime path helper and C runtime shim.
+- `library/std`: source-level Geo standard library package.
+- `src/bootstrap`: bootstrap stage model.
+- `src/tools/xtask`: workspace automation tool.
 - `examples`: Geo source examples and acceptance-style inputs.
 - `docs/superpowers`: design specs and implementation plans.
 - `.github`: CI and contribution templates.
-

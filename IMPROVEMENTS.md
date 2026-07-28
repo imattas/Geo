@@ -6,7 +6,7 @@ This file tracks practical improvements that would make Geo easier to expand, te
 
 ### 1. Split Compiler Internals Into Smaller Crates
 
-Current state: the compiler crate is already isolated at `compiler/geo`, but most compiler phases still live inside one crate.
+Current state: the compiler crate is already isolated at `compiler/geo`, and `compiler/geo_layout` validates the repository shape. Most compiler phases still live inside one crate.
 
 Recommended split:
 
@@ -24,7 +24,7 @@ Reason: self-hosting work needs stable internal boundaries. Smaller crates also 
 
 ### 2. Add A Real Standard Library Source Tree
 
-Current state: the C runtime lives in `library/geo_runtime`, but Geo standard library modules are not yet organized as source packages.
+Current state: the C runtime lives in `library/geo_runtime`, and first-pass source-level standard library module declarations live in `library/std/src`.
 
 Recommended layout:
 
@@ -44,16 +44,16 @@ library/
 
 Reason: Geo code should eventually import stable modules like `std.io`. Keeping the runtime and source-level standard library separate avoids mixing platform ABI glue with user-facing APIs.
 
-### 3. Add A Bootstrap/Test Harness
+### 3. Expand The Bootstrap/Test Harness
 
-Current state: Rust tests cover compiler stages and example compilation. There is no single bootstrap-style command that verifies the whole language distribution.
+Current state: Rust tests cover compiler stages and example compilation. `src/bootstrap` defines bootstrap stages and `src/tools/xtask` provides `layout`, `status`, and `verify`.
 
 Recommended commands:
 
-- `cargo xtask check`
-- `cargo xtask test`
-- `cargo xtask examples`
-- `cargo xtask dist`
+- `cargo run -p xtask -- check`
+- `cargo run -p xtask -- test`
+- `cargo run -p xtask -- examples`
+- `cargo run -p xtask -- dist`
 
 Reason: a compiler project needs repeatable full-stack checks: Rust tests, Geo example checks, Linux assembly emission, Windows assembly/PE emission, runtime linking, and future self-hosting samples.
 
