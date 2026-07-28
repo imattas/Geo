@@ -47,10 +47,17 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_concat");
+    let needs_virtual_alloc = needs_string_concat
+        || image.relocations.iter().any(|relocation| {
+            matches!(
+                relocation.symbol.as_str(),
+                "alloc" | "alloc_zeroed" | "alloc_array"
+            )
+        });
     let layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
-        needs_string_concat,
+        needs_virtual_alloc,
     );
     let text = build_compiled_text(&layout, &image)?;
     let rdata = build_compiled_rdata(&image, needs_console_helpers);
@@ -331,8 +338,6 @@ struct Layout {
     rdata_rva: u32,
     idata_rva: u32,
     text_raw: u32,
-    rdata_raw: u32,
-    idata_raw: u32,
     message_rva: u32,
     written_rva: u32,
     import_descriptor_rva: u32,
@@ -353,8 +358,6 @@ impl Layout {
         let rdata_rva = 0x2000;
         let idata_rva = 0x3000;
         let text_raw = headers_raw;
-        let rdata_raw = text_raw + FILE_ALIGNMENT;
-        let idata_raw = rdata_raw + FILE_ALIGNMENT;
         let message_rva = rdata_rva;
         let written_rva = align_to(message_rva + data_len, 8);
         let import_descriptor_rva = idata_rva;
@@ -374,8 +377,6 @@ impl Layout {
             rdata_rva,
             idata_rva,
             text_raw,
-            rdata_raw,
-            idata_raw,
             message_rva,
             written_rva,
             import_descriptor_rva,
@@ -545,6 +546,16 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_parse_int");
+    let needs_alloc = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "alloc" | "alloc_zeroed" | "alloc_array"
+        )
+    });
+    let needs_process_exit = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "exit_geo");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -597,6 +608,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_last_index_of
         || needs_string_count
         || needs_string_parse_int
+        || needs_alloc
+        || needs_process_exit
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -733,6 +746,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.println = Some(layout.text_rva + code.len() as u32);
         emit_println_helper(&mut code, layout, print_rva, newline_rva?);
     }
+    if needs_alloc {
+        helpers.alloc = Some(layout.text_rva + code.len() as u32);
+        let array = image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "alloc_array");
+        emit_alloc_helper(&mut code, layout, array);
+    }
+    if needs_process_exit {
+        helpers.exit_process = Some(layout.text_rva + code.len() as u32);
+        emit_process_exit_helper(&mut code, layout);
+    }
     patch_compiled_relocations(&mut code, layout, image, function_base, &helpers)?;
     pad_to(&mut code, FILE_ALIGNMENT as usize);
     Some(code)
@@ -862,6 +887,12 @@ fn compiled_symbol_rva(
     if symbol == "string_parse_int" {
         return helpers.string_parse_int;
     }
+    if matches!(symbol, "alloc" | "alloc_zeroed" | "alloc_array") {
+        return helpers.alloc;
+    }
+    if symbol == "exit_geo" {
+        return helpers.exit_process;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -880,6 +911,8 @@ struct PeHelperRvas {
     bounds_check: Option<u32>,
     print: Option<u32>,
     println: Option<u32>,
+    exit_process: Option<u32>,
+    alloc: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
     string_byte_at: Option<u32>,
@@ -1821,6 +1854,25 @@ fn emit_println_helper(code: &mut Vec<u8>, layout: &Layout, print_rva: u32, newl
     code.push(0xc3);
 }
 
+fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_call_iat(code, layout, layout.exit_process_iat);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+}
+
+fn emit_alloc_helper(code: &mut Vec<u8>, layout: &Layout, array: bool) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    if array {
+        code.extend_from_slice(&[0x48, 0x0f, 0xaf, 0xca]);
+    }
+    code.extend_from_slice(&[0x48, 0x89, 0xca]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+}
+
 fn build_compiled_rdata(image: &ObjectImage, needs_console_helpers: bool) -> Vec<u8> {
     let mut data = image.rodata.clone();
     if needs_console_helpers {
@@ -1903,7 +1955,15 @@ fn write_import_name(data: &mut [u8], offset: usize, name: &[u8]) {
 }
 
 fn build_image(layout: &Layout, text: &[u8], rdata: &[u8], idata: &[u8]) -> Vec<u8> {
-    let mut out = vec![0_u8; 0x200];
+    let text_raw = layout.text_raw;
+    let rdata_raw = text_raw + align_to(text.len() as u32, FILE_ALIGNMENT);
+    let rdata_file_size = align_to(
+        rdata.len().max(FILE_ALIGNMENT as usize) as u32,
+        FILE_ALIGNMENT,
+    );
+    let idata_raw = rdata_raw + rdata_file_size;
+    let file_size = idata_raw as usize + idata.len();
+    let mut out = vec![0_u8; file_size];
     write_dos_header(&mut out);
     write_pe_headers(&mut out, layout);
     write_section_header(
@@ -1912,7 +1972,8 @@ fn build_image(layout: &Layout, text: &[u8], rdata: &[u8], idata: &[u8]) -> Vec<
         b".text\0\0\0",
         text.len() as u32,
         layout.text_rva,
-        layout.text_raw,
+        text_raw,
+        align_to(text.len() as u32, FILE_ALIGNMENT),
         0x60000020,
     );
     write_section_header(
@@ -1921,7 +1982,8 @@ fn build_image(layout: &Layout, text: &[u8], rdata: &[u8], idata: &[u8]) -> Vec<
         b".rdata\0\0",
         rdata.len() as u32,
         layout.rdata_rva,
-        layout.rdata_raw,
+        rdata_raw,
+        rdata_file_size,
         0xc0000040,
     );
     write_section_header(
@@ -1930,12 +1992,13 @@ fn build_image(layout: &Layout, text: &[u8], rdata: &[u8], idata: &[u8]) -> Vec<
         b".idata\0\0",
         idata.len() as u32,
         layout.idata_rva,
-        layout.idata_raw,
+        idata_raw,
+        align_to(idata.len() as u32, FILE_ALIGNMENT),
         0xc0000040,
     );
-    out.extend_from_slice(text);
-    out.extend_from_slice(rdata);
-    out.extend_from_slice(idata);
+    write_bytes(&mut out, text_raw as usize, text);
+    write_bytes(&mut out, rdata_raw as usize, rdata);
+    write_bytes(&mut out, idata_raw as usize, idata);
     out
 }
 
@@ -1985,12 +2048,13 @@ fn write_section_header(
     virtual_size: u32,
     virtual_address: u32,
     raw_pointer: u32,
+    raw_size: u32,
     characteristics: u32,
 ) {
     out[offset..offset + 8].copy_from_slice(name);
     write_u32(out, offset + 8, virtual_size);
     write_u32(out, offset + 12, virtual_address);
-    write_u32(out, offset + 16, FILE_ALIGNMENT);
+    write_u32(out, offset + 16, raw_size);
     write_u32(out, offset + 20, raw_pointer);
     write_u32(out, offset + 36, characteristics);
 }

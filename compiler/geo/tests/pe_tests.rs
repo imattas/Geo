@@ -980,6 +980,42 @@ fn emits_direct_pe64_string_len_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_memory_alloc_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let memory: *u8 = alloc(1)
+                if memory != null {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28]));
+}
+
+#[test]
+fn emits_direct_pe64_process_exit_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                return exit(42)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28]));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"
