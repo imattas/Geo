@@ -127,7 +127,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - modules/import examples
 - runtime-backed examples
 - Linux and Windows target-aware assembly paths
-- direct Linux ELF64 relocatable object emission for constants, stack locals, System V register and stack-passed function parameters, integer addition/subtraction/multiplication/division/remainder, shifts, bitwise operations, comparisons, labels, conditional/unconditional jumps, address-of, dereference, pointer stores, string data, calls, symbols, and relocations in the current object subset
+- direct Linux ELF64 relocatable object emission for constants, stack locals, System V register and stack-passed function parameters, integer addition/subtraction/multiplication/division/remainder, shifts, logical/bitwise operations, comparisons, labels, conditional/unconditional jumps, address-of, dereference, pointer stores, string data, calls, symbols, and relocations in the current object subset
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 

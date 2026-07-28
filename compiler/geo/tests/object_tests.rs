@@ -238,6 +238,25 @@ fn emits_machine_code_for_shift_operations() {
 }
 
 #[test]
+fn emits_machine_code_for_logical_and_bit_not_operations() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                if true && false || true {
+                    return ~0
+                }
+                return 0
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x23, 0x45]));
+    assert!(contains_bytes(text, &[0x48, 0x0b, 0x45]));
+    assert!(contains_bytes(text, &[0x48, 0xf7, 0xd0]));
+}
+
+#[test]
 fn emits_machine_code_for_address_of_and_deref() {
     let object = object_for(
         r#"

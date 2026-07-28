@@ -149,6 +149,12 @@ fn emit_function_text(
                     DivisionResult::Remainder,
                 );
             }
+            Instruction::And { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x23, &frame, *dst, *left, *right);
+            }
+            Instruction::Or { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x0b, &frame, *dst, *left, *right);
+            }
             Instruction::BitAnd { dst, left, right } => {
                 emit_binary_mem_op(bytes, 0x23, &frame, *dst, *left, *right);
             }
@@ -175,6 +181,11 @@ fn emit_function_text(
             Instruction::Deref { dst, pointer } => {
                 emit_load_rax(bytes, frame.value_offset(*pointer));
                 bytes.extend_from_slice(&[0x48, 0x8b, 0x00]);
+                emit_store_rax(bytes, frame.value_offset(*dst));
+            }
+            Instruction::BitNot { dst, value } => {
+                emit_load_rax(bytes, frame.value_offset(*value));
+                bytes.extend_from_slice(&[0x48, 0xf7, 0xd0]);
                 emit_store_rax(bytes, frame.value_offset(*dst));
             }
             Instruction::Store { local, value } => {
@@ -234,7 +245,6 @@ fn emit_function_text(
                 emit_load_rax(bytes, frame.value_offset(*value));
                 bytes.extend_from_slice(&[0xc9, 0xc3]);
             }
-            Instruction::And { .. } | Instruction::Or { .. } | Instruction::BitNot { .. } => {}
         }
     }
 
