@@ -12,11 +12,29 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         return Some(image);
     }
     let plan = PePlan::from_program(program)?;
-    let layout = Layout::new(plan.output.as_deref().unwrap_or(""), plan.output.is_some());
+    let layout = Layout::new(
+        plan.output
+            .as_deref()
+            .map_or(0, |message| message.len() as u32 + 1),
+        plan.output.is_some(),
+        false,
+    );
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
     let idata = build_idata(&layout);
     Some(build_image(&layout, &text, &rdata, &idata))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Layout;
+
+    #[test]
+    fn layout_places_write_file_count_after_compiled_rodata() {
+        let layout = Layout::new(9, true, false);
+
+        assert_eq!(layout.written_rva, 0x2010);
+    }
 }
 
 fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
@@ -29,9 +47,13 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_concat");
-    let layout = Layout::new("", needs_console_helpers);
+    let layout = Layout::new(
+        image.rodata.len() as u32,
+        needs_console_helpers,
+        needs_string_concat,
+    );
     let text = build_compiled_text(&layout, &image)?;
-    let rdata = build_compiled_rdata(&image, needs_console_helpers, needs_string_concat);
+    let rdata = build_compiled_rdata(&image, needs_console_helpers);
     let idata = build_idata(&layout);
     Some(build_image(&layout, &text, &rdata, &idata))
 }
@@ -315,14 +337,17 @@ struct Layout {
     written_rva: u32,
     import_descriptor_rva: u32,
     import_descriptor_size: u32,
+    iat_size: u32,
     get_std_handle_iat: u32,
     write_file_iat: u32,
     exit_process_iat: u32,
+    virtual_alloc_iat: u32,
     has_console_io: bool,
+    has_virtual_alloc: bool,
 }
 
 impl Layout {
-    fn new(message: &str, has_console_io: bool) -> Self {
+    fn new(data_len: u32, has_console_io: bool, has_virtual_alloc: bool) -> Self {
         let headers_raw = 0x200;
         let text_rva = 0x1000;
         let rdata_rva = 0x2000;
@@ -331,11 +356,19 @@ impl Layout {
         let rdata_raw = text_raw + FILE_ALIGNMENT;
         let idata_raw = rdata_raw + FILE_ALIGNMENT;
         let message_rva = rdata_rva;
-        let written_rva = align_to(message_rva + message.len() as u32 + 1, 8);
+        let written_rva = align_to(message_rva + data_len, 8);
         let import_descriptor_rva = idata_rva;
         let oft_rva = import_descriptor_rva + 40;
-        let ft_rva = oft_rva + 32;
+        let import_count = u32::from(has_console_io) * 2 + 1 + u32::from(has_virtual_alloc);
+        let iat_size = (import_count + 1) * 8;
+        let ft_rva = oft_rva + iat_size;
 
+        let (get_std_handle_iat, write_file_iat, exit_process_iat, virtual_alloc_iat) =
+            if has_console_io {
+                (ft_rva, ft_rva + 8, ft_rva + 16, ft_rva + 24)
+            } else {
+                (ft_rva, ft_rva, ft_rva, ft_rva + 8)
+            };
         Self {
             text_rva,
             rdata_rva,
@@ -347,10 +380,13 @@ impl Layout {
             written_rva,
             import_descriptor_rva,
             import_descriptor_size: FILE_ALIGNMENT,
-            get_std_handle_iat: ft_rva,
-            write_file_iat: ft_rva + 8,
-            exit_process_iat: if has_console_io { ft_rva + 16 } else { ft_rva },
+            iat_size,
+            get_std_handle_iat,
+            write_file_iat,
+            exit_process_iat,
+            virtual_alloc_iat,
             has_console_io,
+            has_virtual_alloc,
         }
     }
 }
@@ -399,7 +435,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_string_len = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "string_len");
+        .any(|relocation| relocation.symbol == "string_len")
+        || needs_string_concat;
     let needs_string_byte_at = image
         .relocations
         .iter()
@@ -513,12 +550,6 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     } else {
         None
     };
-    let concat_buffer_rva = if needs_string_concat {
-        let after_newline = image.rodata.len() as u32 + u32::from(needs_println) * 2;
-        Some(layout.rdata_rva + align_to(after_newline, 8))
-    } else {
-        None
-    };
     let main = image
         .functions
         .iter()
@@ -572,13 +603,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             code.push(0xcc);
         }
     }
-    if needs_string_concat {
-        helpers.string_concat = Some(layout.text_rva + code.len() as u32);
-        emit_string_concat_helper(&mut code, layout, concat_buffer_rva?);
-    }
     if needs_string_len {
         helpers.string_len = Some(layout.text_rva + code.len() as u32);
         emit_string_len_helper(&mut code);
+    }
+    if needs_string_concat {
+        let string_len = helpers.string_len?;
+        helpers.string_concat = Some(layout.text_rva + code.len() as u32);
+        emit_string_concat_helper(&mut code, layout, string_len);
     }
     if needs_string_byte_at {
         helpers.string_byte_at = Some(layout.text_rva + code.len() as u32);
@@ -879,25 +911,60 @@ struct PeHelperRvas {
     string_parse_int: Option<u32>,
 }
 
-fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
-    emit_lea(code, layout, &[0x48, 0x8d, 0x05], buffer_rva);
+fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, string_len_rva: u32) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38]);
+    code.extend_from_slice(&[0x49, 0x89, 0xca]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd3]);
+    code.extend_from_slice(&[0x4c, 0x89, 0x54, 0x24, 0x20]);
+    code.extend_from_slice(&[0x4c, 0x89, 0x5c, 0x24, 0x28]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xd1]);
+    emit_direct_call(code, layout.text_rva, string_len_rva);
     code.extend_from_slice(&[0x49, 0x89, 0xc0]);
-    code.extend_from_slice(&[0x44, 0x8a, 0x09]);
-    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x00]);
-    code.extend_from_slice(&[0x74, 0x0b]);
-    code.extend_from_slice(&[0x45, 0x88, 0x08]);
-    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xd9]);
+    emit_direct_call(code, layout.text_rva, string_len_rva);
+    code.extend_from_slice(&[0x4c, 0x01, 0xc0]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x89, 0xc2]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x40, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x54, 0x24, 0x20]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x5c, 0x24, 0x28]);
+    code.extend_from_slice(&[0x48, 0x89, 0xc2]);
+    code.extend_from_slice(&[0x49, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x4d, 0x89, 0xd0]);
+    let left_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x00]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let left_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x88, 0x01]);
     code.extend_from_slice(&[0x49, 0xff, 0xc0]);
-    code.extend_from_slice(&[0xeb, 0xec]);
-    code.extend_from_slice(&[0x44, 0x8a, 0x0a]);
-    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x00]);
-    code.extend_from_slice(&[0x74, 0x0b]);
-    code.extend_from_slice(&[0x45, 0x88, 0x08]);
-    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
-    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
-    code.extend_from_slice(&[0xeb, 0xec]);
-    code.extend_from_slice(&[0x41, 0xc6, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_short_jump_back(code, left_loop);
+    let right_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x03]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let right_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x88, 0x01]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc3]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_short_jump_back(code, right_loop);
+    let done = code.len();
+    code.extend_from_slice(&[0x41, 0xc6, 0x01, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38]);
+    code.extend_from_slice(&[0x48, 0x89, 0xd0]);
     code.push(0xc3);
+    let allocation_failed_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38]);
+    code.push(0xc3);
+
+    patch_short_jump(code, left_done, right_loop);
+    patch_short_jump(code, right_done, done);
+    patch_short_jump(code, allocation_failed, allocation_failed_target);
 }
 
 fn emit_string_len_helper(code: &mut Vec<u8>) {
@@ -1717,11 +1784,13 @@ fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
 fn emit_print_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
     code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x28]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x54, 0x24, 0x28]);
     code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
-    code.extend_from_slice(&[0x42, 0x80, 0x3c, 0x01, 0x00]);
+    code.extend_from_slice(&[0x43, 0x80, 0x3c, 0x02, 0x00]);
     code.extend_from_slice(&[0x74, 0x05]);
     code.extend_from_slice(&[0x49, 0xff, 0xc0]);
-    code.extend_from_slice(&[0xeb, 0xf3]);
+    code.extend_from_slice(&[0xeb, 0xf4]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
     code.extend_from_slice(&[0x4c, 0x89, 0x44, 0x24, 0x30]);
     code.push(0xb9);
     code.extend_from_slice(&(-11_i32).to_le_bytes());
@@ -1752,19 +1821,11 @@ fn emit_println_helper(code: &mut Vec<u8>, layout: &Layout, print_rva: u32, newl
     code.push(0xc3);
 }
 
-fn build_compiled_rdata(
-    image: &ObjectImage,
-    needs_console_helpers: bool,
-    needs_string_concat: bool,
-) -> Vec<u8> {
+fn build_compiled_rdata(image: &ObjectImage, needs_console_helpers: bool) -> Vec<u8> {
     let mut data = image.rodata.clone();
     if needs_console_helpers {
         data.push(b'\n');
         data.push(0);
-    }
-    if needs_string_concat {
-        pad_to(&mut data, 8);
-        data.extend(std::iter::repeat_n(0, 4096));
     }
     pad_to(&mut data, FILE_ALIGNMENT as usize);
     data
@@ -1805,45 +1866,31 @@ fn build_rdata(message: &str) -> Vec<u8> {
 fn build_idata(layout: &Layout) -> Vec<u8> {
     let mut data = vec![0_u8; FILE_ALIGNMENT as usize];
     let oft = 40_u32;
-    let ft = oft + 32;
-    let dll = ft + 32;
+    let ft = oft + layout.iat_size;
+    let dll = ft + layout.iat_size;
     let first_name = align_to(dll + b"KERNEL32.dll\0".len() as u32, 2);
 
     write_u32(&mut data, 0, layout.idata_rva + oft);
     write_u32(&mut data, 12, layout.idata_rva + dll);
     write_u32(&mut data, 16, layout.idata_rva + ft);
 
+    let mut imports = Vec::new();
     if layout.has_console_io {
-        let get_std = first_name;
-        let write_file = align_to(get_std + 2 + b"GetStdHandle\0".len() as u32, 2);
-        let exit_process = align_to(write_file + 2 + b"WriteFile\0".len() as u32, 2);
-        for (idx, name_rva) in [
-            layout.idata_rva + get_std,
-            layout.idata_rva + write_file,
-            layout.idata_rva + exit_process,
-        ]
-        .iter()
-        .enumerate()
-        {
-            write_u64(&mut data, oft as usize + idx * 8, u64::from(*name_rva));
-            write_u64(&mut data, ft as usize + idx * 8, u64::from(*name_rva));
-        }
-        write_import_name(&mut data, get_std as usize, b"GetStdHandle\0");
-        write_import_name(&mut data, write_file as usize, b"WriteFile\0");
-        write_import_name(&mut data, exit_process as usize, b"ExitProcess\0");
-    } else {
-        let exit_process = first_name;
-        write_u64(
-            &mut data,
-            oft as usize,
-            u64::from(layout.idata_rva + exit_process),
-        );
-        write_u64(
-            &mut data,
-            ft as usize,
-            u64::from(layout.idata_rva + exit_process),
-        );
-        write_import_name(&mut data, exit_process as usize, b"ExitProcess\0");
+        imports.push(b"GetStdHandle\0".as_slice());
+        imports.push(b"WriteFile\0".as_slice());
+    }
+    imports.push(b"ExitProcess\0".as_slice());
+    if layout.has_virtual_alloc {
+        imports.push(b"VirtualAlloc\0".as_slice());
+    }
+
+    let mut name_offset = first_name;
+    for (idx, name) in imports.iter().enumerate() {
+        let name_rva = layout.idata_rva + name_offset;
+        write_u64(&mut data, oft as usize + idx * 8, u64::from(name_rva));
+        write_u64(&mut data, ft as usize + idx * 8, u64::from(name_rva));
+        write_import_name(&mut data, name_offset as usize, name);
+        name_offset = align_to(name_offset + 2 + name.len() as u32, 2);
     }
 
     write_bytes(&mut data, dll as usize, b"KERNEL32.dll\0");
@@ -1928,7 +1975,7 @@ fn write_pe_headers(out: &mut [u8], layout: &Layout) {
     write_u32(out, opt + 120, layout.import_descriptor_rva);
     write_u32(out, opt + 124, layout.import_descriptor_size);
     write_u32(out, opt + 208, layout.get_std_handle_iat);
-    write_u32(out, opt + 212, 32);
+    write_u32(out, opt + 212, layout.iat_size);
 }
 
 fn write_section_header(

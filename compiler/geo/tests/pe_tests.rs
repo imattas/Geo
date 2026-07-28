@@ -50,6 +50,10 @@ fn emits_direct_pe64_println_as_compiled_helper_call() {
     assert_eq!(&pe[0x80..0x84], b"PE\0\0");
     assert!(contains_bytes(&pe, &[0x55, 0x48, 0x89, 0xe5]));
     assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x20, 0xe8]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x8b, 0x54, 0x24, 0x28]));
+    assert!(contains_bytes(&pe, &[0x43, 0x80, 0x3c, 0x02, 0x00]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x89, 0xc0]));
+    assert!(contains_bytes(&pe, &[0xeb, 0xf4]));
     assert!(contains_bytes(&pe, b"GetStdHandle"));
     assert!(contains_bytes(&pe, b"WriteFile"));
     assert!(contains_bytes(&pe, b"ExitProcess"));
@@ -933,9 +937,22 @@ fn emits_direct_pe64_string_concat_output() {
     assert_eq!(&pe[0x80..0x84], b"PE\0\0");
     assert!(contains_bytes(&pe, b"GetStdHandle"));
     assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
     assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28, 0xe8]));
     assert!(contains_bytes(&pe, b"Geo \0compiler\0"));
-    assert!(contains_bytes(&pe, &[0x41, 0xc6, 0x00, 0x00, 0xc3]));
+    assert!(contains_bytes(&pe, &[0x41, 0x8a, 0x00, 0x84, 0xc0]));
+    assert!(contains_bytes(&pe, &[0x41, 0x8a, 0x03, 0x84, 0xc0]));
+    assert!(contains_bytes(&pe, &[0x41, 0x88, 0x01]));
+    assert!(contains_bytes(&pe, &[0x48, 0x89, 0xc2, 0x49, 0x89, 0xc1]));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28]));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x38]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x89, 0x54, 0x24, 0x20]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x8b, 0x54, 0x24, 0x20]));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xc4, 0x28, 0xc3]));
+    assert!(contains_bytes(
+        &pe,
+        &[0x41, 0xc6, 0x01, 0x00, 0x48, 0x83, 0xc4, 0x38, 0x48, 0x89, 0xd0, 0xc3]
+    ));
 }
 
 #[test]
