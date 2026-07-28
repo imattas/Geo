@@ -21,9 +21,13 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
 
 fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let image = crate::object::build_win64_code_image(program)?;
-    let layout = Layout::new("", false);
+    let needs_console_helpers = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println");
+    let layout = Layout::new("", needs_console_helpers);
     let text = build_compiled_text(&layout, &image)?;
-    let rdata = build_compiled_rdata(&image);
+    let rdata = build_compiled_rdata(&image, needs_console_helpers);
     let idata = build_idata(&layout);
     Some(build_image(&layout, &text, &rdata, &idata))
 }
@@ -372,12 +376,20 @@ fn build_text(layout: &Layout, plan: &PePlan) -> Vec<u8> {
 fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> {
     let entry_len = 21_u32;
     let function_base = align_to(entry_len, 16);
-    let bounds_check_rva = if image
+    let needs_bounds_check = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "__geo_bounds_check")
-    {
-        Some(layout.text_rva + align_to(function_base + image.text.len() as u32, 16))
+        .any(|relocation| relocation.symbol == "__geo_bounds_check");
+    let needs_print = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println");
+    let needs_println = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "println");
+    let newline_rva = if needs_println {
+        Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
         None
     };
@@ -396,13 +408,27 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         code.push(0xcc);
     }
     code.extend_from_slice(&image.text);
-    if let Some(bounds_check_rva) = bounds_check_rva {
-        while layout.text_rva + (code.len() as u32) < bounds_check_rva {
+    let mut helpers = PeHelperRvas::default();
+    if needs_bounds_check || needs_print {
+        let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
+        while layout.text_rva + (code.len() as u32) < helper_start_rva {
             code.push(0xcc);
         }
+    }
+    if needs_bounds_check {
+        helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
         emit_bounds_check_helper(&mut code, layout);
     }
-    patch_compiled_relocations(&mut code, layout, image, function_base, bounds_check_rva)?;
+    if needs_print {
+        helpers.print = Some(layout.text_rva + code.len() as u32);
+        emit_print_helper(&mut code, layout);
+    }
+    if needs_println {
+        let print_rva = helpers.print?;
+        helpers.println = Some(layout.text_rva + code.len() as u32);
+        emit_println_helper(&mut code, layout, print_rva, newline_rva?);
+    }
+    patch_compiled_relocations(&mut code, layout, image, function_base, &helpers)?;
     pad_to(&mut code, FILE_ALIGNMENT as usize);
     Some(code)
 }
@@ -412,17 +438,12 @@ fn patch_compiled_relocations(
     layout: &Layout,
     image: &ObjectImage,
     function_base: u32,
-    bounds_check_rva: Option<u32>,
+    helpers: &PeHelperRvas,
 ) -> Option<()> {
     for relocation in &image.relocations {
         let relocation_offset = function_base + relocation.offset as u32;
-        let target_rva = compiled_symbol_rva(
-            layout,
-            image,
-            function_base,
-            bounds_check_rva,
-            &relocation.symbol,
-        )?;
+        let target_rva =
+            compiled_symbol_rva(layout, image, function_base, helpers, &relocation.symbol)?;
         let next_rva = layout.text_rva + relocation_offset + 4;
         let addend = match relocation.kind {
             RelocationKind::Pc32 | RelocationKind::Plt32 => rel32(target_rva, next_rva),
@@ -437,11 +458,17 @@ fn compiled_symbol_rva(
     layout: &Layout,
     image: &ObjectImage,
     function_base: u32,
-    bounds_check_rva: Option<u32>,
+    helpers: &PeHelperRvas,
     symbol: &str,
 ) -> Option<u32> {
     if symbol == "__geo_bounds_check" {
-        return bounds_check_rva;
+        return helpers.bounds_check;
+    }
+    if symbol == "print" {
+        return helpers.print;
+    }
+    if symbol == "println" {
+        return helpers.println;
     }
     if let Some(function) = image
         .functions
@@ -456,6 +483,13 @@ fn compiled_symbol_rva(
     None
 }
 
+#[derive(Default)]
+struct PeHelperRvas {
+    bounds_check: Option<u32>,
+    print: Option<u32>,
+    println: Option<u32>,
+}
+
 fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x39, 0xd1]);
     code.extend_from_slice(&[0x73, 0x01]);
@@ -466,8 +500,50 @@ fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
     emit_call_iat(code, layout, layout.exit_process_iat);
 }
 
-fn build_compiled_rdata(image: &ObjectImage) -> Vec<u8> {
+fn emit_print_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x28]);
+    code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x42, 0x80, 0x3c, 0x01, 0x00]);
+    code.extend_from_slice(&[0x74, 0x05]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    code.extend_from_slice(&[0xeb, 0xf3]);
+    code.extend_from_slice(&[0x4c, 0x89, 0x44, 0x24, 0x30]);
+    code.push(0xb9);
+    code.extend_from_slice(&(-11_i32).to_le_bytes());
+    emit_call_iat(code, layout, layout.get_std_handle_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x28]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x44, 0x24, 0x30]);
+    emit_lea(code, layout, &[0x4c, 0x8d, 0x0d], layout.written_rva);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0, 0, 0, 0]);
+    emit_call_iat(code, layout, layout.write_file_iat);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48]);
+    code.push(0xc3);
+}
+
+fn emit_println_helper(code: &mut Vec<u8>, layout: &Layout, print_rva: u32, newline_rva: u32) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_direct_call(code, layout.text_rva, print_rva);
+    code.push(0xb9);
+    code.extend_from_slice(&(-11_i32).to_le_bytes());
+    emit_call_iat(code, layout, layout.get_std_handle_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0xc1]);
+    emit_lea(code, layout, &[0x48, 0x8d, 0x15], newline_rva);
+    code.extend_from_slice(&[0x41, 0xb8, 1, 0, 0, 0]);
+    emit_lea(code, layout, &[0x4c, 0x8d, 0x0d], layout.written_rva);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0, 0, 0, 0]);
+    emit_call_iat(code, layout, layout.write_file_iat);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28]);
+    code.push(0xc3);
+}
+
+fn build_compiled_rdata(image: &ObjectImage, needs_console_helpers: bool) -> Vec<u8> {
     let mut data = image.rodata.clone();
+    if needs_console_helpers {
+        data.push(b'\n');
+        data.push(0);
+    }
     pad_to(&mut data, FILE_ALIGNMENT as usize);
     data
 }

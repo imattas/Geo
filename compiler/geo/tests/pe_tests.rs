@@ -30,7 +30,30 @@ fn emits_direct_pe64_console_hello_world() {
     assert!(contains_bytes(&pe, b"GetStdHandle"));
     assert!(contains_bytes(&pe, b"WriteFile"));
     assert!(contains_bytes(&pe, b"ExitProcess"));
-    assert!(contains_bytes(&pe, b"Hello, world!\n"));
+    assert!(contains_bytes(&pe, b"Hello, world!\0"));
+    assert!(contains_bytes(&pe, &[b'\n', 0]));
+}
+
+#[test]
+fn emits_direct_pe64_println_as_compiled_helper_call() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() {
+                println("Hello, compiled PE!")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, &[0x55, 0x48, 0x89, 0xe5]));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x20, 0xe8]));
+    assert!(contains_bytes(&pe, b"GetStdHandle"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(contains_bytes(&pe, b"Hello, compiled PE!\0"));
 }
 
 #[test]
@@ -801,7 +824,11 @@ fn emits_direct_pe64_ordered_print_output() {
     assert_eq!(&pe[0x80..0x84], b"PE\0\0");
     assert!(contains_bytes(&pe, b"GetStdHandle"));
     assert!(contains_bytes(&pe, b"WriteFile"));
-    assert!(contains_bytes(&pe, b"Geo compiler\nv1\n"));
+    assert!(contains_bytes(&pe, b"Geo\0"));
+    assert!(contains_bytes(&pe, b" \0"));
+    assert!(contains_bytes(&pe, b"compiler\0"));
+    assert!(contains_bytes(&pe, b"v1\0"));
+    assert!(contains_bytes(&pe, &[b'\n', 0]));
 }
 
 #[test]
