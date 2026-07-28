@@ -408,6 +408,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_compare");
+    let needs_string_contains = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_contains");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -441,6 +445,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_len
         || needs_string_byte_at
         || needs_string_compare
+        || needs_string_contains
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -462,6 +467,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_compare {
         helpers.string_compare = Some(layout.text_rva + code.len() as u32);
         emit_string_compare_helper(&mut code);
+    }
+    if needs_string_contains {
+        helpers.string_contains = Some(layout.text_rva + code.len() as u32);
+        emit_string_contains_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -530,6 +539,9 @@ fn compiled_symbol_rva(
     if symbol == "string_compare" {
         return helpers.string_compare;
     }
+    if symbol == "string_contains" {
+        return helpers.string_contains;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -552,6 +564,7 @@ struct PeHelperRvas {
     string_len: Option<u32>,
     string_byte_at: Option<u32>,
     string_compare: Option<u32>,
+    string_contains: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -615,6 +628,64 @@ fn emit_string_compare_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x44, 0x89, 0xc0]);
     code.extend_from_slice(&[0x44, 0x29, 0xc8]);
     code.push(0xc3);
+}
+
+fn emit_string_contains_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x49, 0x89, 0xc8]);
+    let outer = code.len();
+    code.extend_from_slice(&[0x8a, 0x02]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let empty_needle = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0x38, 0x00]);
+    let haystack_end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd2]);
+    let inner = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x02]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0x39, 0x00]);
+    let advance = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x3a, 0x01]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    emit_short_jump_back(code, inner);
+    let advance_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, outer);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, empty_needle, true_target);
+    patch_short_jump(code, matched, true_target);
+    patch_short_jump(code, haystack_end, false_target);
+    patch_short_jump(code, advance, advance_target);
+    patch_short_jump(code, mismatch, advance_target);
+}
+
+fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
+    code.extend_from_slice(&[opcode, 0]);
+    code.len() - 1
+}
+
+fn emit_short_jump_back(code: &mut Vec<u8>, target: usize) {
+    code.push(0xeb);
+    let displacement_offset = code.len();
+    code.push(0);
+    patch_short_jump(code, displacement_offset, target);
+}
+
+fn patch_short_jump(code: &mut [u8], displacement_offset: usize, target: usize) {
+    let next = displacement_offset + 1;
+    let displacement = target as isize - next as isize;
+    debug_assert!((-128..=127).contains(&displacement));
+    code[displacement_offset] = displacement as i8 as u8;
 }
 
 fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
