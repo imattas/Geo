@@ -20,6 +20,7 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         false,
         false,
         false,
+        false,
     );
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
@@ -33,7 +34,7 @@ mod tests {
 
     #[test]
     fn layout_places_write_file_count_after_compiled_rodata() {
-        let layout = Layout::new(9, true, false, false, false);
+        let layout = Layout::new(9, true, false, false, false, false);
 
         assert_eq!(layout.written_rva, 0x2010);
     }
@@ -96,12 +97,17 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_close"
         )
     });
+    let needs_file_metadata = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "file_exists");
     let layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
         needs_virtual_alloc || needs_file_read,
         needs_file_read,
         needs_file_ops,
+        needs_file_metadata,
     );
     let text = build_compiled_text(&layout, &image)?;
     let rdata = build_compiled_rdata(&image, needs_console_helpers);
@@ -400,6 +406,8 @@ struct Layout {
     close_handle_iat: u32,
     delete_file_iat: u32,
     has_file_ops: bool,
+    get_file_attributes_iat: u32,
+    has_file_metadata: bool,
 }
 
 impl Layout {
@@ -409,6 +417,7 @@ impl Layout {
         has_virtual_alloc: bool,
         has_file_read: bool,
         has_file_ops: bool,
+        has_file_metadata: bool,
     ) -> Self {
         let headers_raw = 0x200;
         let text_rva = 0x1000;
@@ -430,7 +439,8 @@ impl Layout {
             + 1
             + u32::from(has_virtual_alloc)
             + file_import_count
-            + u32::from(has_file_ops);
+            + u32::from(has_file_ops)
+            + u32::from(has_file_metadata);
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
         let mut next_iat = ft_rva;
@@ -489,6 +499,10 @@ impl Layout {
             ft_rva
         };
         let delete_file_iat = if has_file_ops { next_iat } else { ft_rva };
+        if has_file_ops {
+            next_iat += 8;
+        }
+        let get_file_attributes_iat = if has_file_metadata { next_iat } else { ft_rva };
         Self {
             text_rva,
             rdata_rva,
@@ -512,6 +526,8 @@ impl Layout {
             close_handle_iat,
             delete_file_iat,
             has_file_ops,
+            get_file_attributes_iat,
+            has_file_metadata,
         }
     }
 }
@@ -770,6 +786,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             "file_read" | "file_read_to_string"
         )
     });
+    let needs_file_metadata = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "file_exists");
     let needs_process_exit = image
         .relocations
         .iter()
@@ -848,6 +868,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_file_write
         || needs_file_close
         || needs_file_read_to_string
+        || needs_file_metadata
         || needs_read_line
         || needs_process_exit
     {
@@ -1113,6 +1134,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.file_read_to_string = Some(layout.text_rva + code.len() as u32);
         emit_file_read_to_string_helper(&mut code, layout);
     }
+    if needs_file_metadata {
+        helpers.file_exists = Some(layout.text_rva + code.len() as u32);
+        emit_file_exists_helper(&mut code, layout);
+    }
     if needs_read_line {
         helpers.read_line = Some(layout.text_rva + code.len() as u32);
         emit_read_line_helper(&mut code, layout);
@@ -1291,6 +1316,9 @@ fn compiled_symbol_rva(
     if symbol == "file_read" {
         return helpers.file_read_to_string;
     }
+    if symbol == "file_exists" {
+        return helpers.file_exists;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -1362,6 +1390,7 @@ struct PeHelperRvas {
     file_write: Option<u32>,
     file_close: Option<u32>,
     file_read_to_string: Option<u32>,
+    file_exists: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -2914,6 +2943,21 @@ fn emit_file_close_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
 }
 
+fn emit_file_exists_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let non_null = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let call_target = code.len();
+    emit_call_iat(code, layout, layout.get_file_attributes_iat);
+    code.extend_from_slice(&[0x83, 0xf8, 0xff]);
+    let missing = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let missing_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, non_null, call_target);
+    patch_short_jump(code, missing, missing_target);
+}
+
 fn emit_file_read_to_string_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
     code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x30]);
@@ -3096,6 +3140,9 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     }
     if layout.has_file_ops {
         imports.push(b"DeleteFileA\0".as_slice());
+    }
+    if layout.has_file_metadata {
+        imports.push(b"GetFileAttributesA\0".as_slice());
     }
 
     let mut name_offset = first_name;

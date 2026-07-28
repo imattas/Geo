@@ -1160,6 +1160,24 @@ fn emits_direct_pe64_handle_file_read_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_file_exists_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                if file_exists("C:\\geo-file-exists-test") {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"GetFileAttributesA"));
+}
+
+#[test]
 fn emits_direct_pe64_read_line_as_compiled_helper() {
     let pe = pe_for(
         r#"

@@ -236,6 +236,27 @@ fn emits_direct_elf64_handle_file_read_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_file_exists_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                if file_exists("/tmp/geo-elf-file-exists") {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(
+        &executable,
+        &[0xb8, 21, 0, 0, 0, 0x0f, 0x05]
+    ));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

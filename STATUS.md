@@ -213,6 +213,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct PE64 executable emission also includes compiler-owned `std.io.append_file`, `std.io.touch_file`, and `std.io.remove_file` through `CreateFileA`, `WriteFile`, `CloseHandle`, and `DeleteFileA`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.file_open`, `std.io.file_open_write`, `std.io.file_open_append`, `std.io.file_write`, and `std.io.file_close` through native descriptors/handles
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.file_read_to_string` through native handle reads and allocation-backed NUL-terminated strings
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.file_exists` through native filesystem metadata checks
 - the six `examples/v1` compiler-shaped programs now build through direct ELF64 and PE64 executable writers; aggregate indexing is guarded by the compiler-owned bounds helper
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.

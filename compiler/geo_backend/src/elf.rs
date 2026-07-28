@@ -113,6 +113,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_write" => emit_file_write_runtime(&mut code),
             "file_close" => emit_file_close_runtime(&mut code),
             "file_read" | "file_read_to_string" => emit_file_read_to_string_runtime(&mut code),
+            "file_exists" => emit_file_exists_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
             "read_file_or" => {
@@ -134,6 +135,22 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         symbols.insert(name.to_string(), runtime_base + offset as u64);
     }
     RuntimeText { code, symbols }
+}
+
+fn emit_file_exists_runtime(code: &mut Vec<u8>) {
+    // access(path, F_OK) returns zero when the path exists.
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let non_null = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let call = code.len();
+    code.extend_from_slice(&[0x31, 0xf6, 0xb8, 21, 0, 0, 0, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let exists = emit_short_jump_placeholder(code, 0x79);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let exists_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    patch_short_jump(code, non_null, call);
+    patch_short_jump(code, exists, exists_target);
 }
 
 fn defined_symbols(
