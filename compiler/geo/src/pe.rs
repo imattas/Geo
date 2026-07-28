@@ -452,6 +452,26 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_is_ascii");
+    let needs_string_is_ascii_digit = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_ascii_digit");
+    let needs_string_is_ascii_hex_digit = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_ascii_hex_digit");
+    let needs_string_is_ascii_alpha = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_ascii_alpha");
+    let needs_string_is_ascii_lower = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_ascii_lower");
+    let needs_string_is_ascii_upper = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_is_ascii_upper");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -496,6 +516,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_greater_or_equal
         || needs_string_is_empty
         || needs_string_is_ascii
+        || needs_string_is_ascii_digit
+        || needs_string_is_ascii_hex_digit
+        || needs_string_is_ascii_alpha
+        || needs_string_is_ascii_lower
+        || needs_string_is_ascii_upper
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -561,6 +586,26 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_is_ascii {
         helpers.string_is_ascii = Some(layout.text_rva + code.len() as u32);
         emit_string_is_ascii_helper(&mut code);
+    }
+    if needs_string_is_ascii_digit {
+        helpers.string_is_ascii_digit = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_ascii_digit_helper(&mut code);
+    }
+    if needs_string_is_ascii_hex_digit {
+        helpers.string_is_ascii_hex_digit = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_ascii_hex_digit_helper(&mut code);
+    }
+    if needs_string_is_ascii_alpha {
+        helpers.string_is_ascii_alpha = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_ascii_alpha_helper(&mut code);
+    }
+    if needs_string_is_ascii_lower {
+        helpers.string_is_ascii_lower = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_ascii_lower_helper(&mut code);
+    }
+    if needs_string_is_ascii_upper {
+        helpers.string_is_ascii_upper = Some(layout.text_rva + code.len() as u32);
+        emit_string_is_ascii_upper_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -662,6 +707,21 @@ fn compiled_symbol_rva(
     if symbol == "string_is_ascii" {
         return helpers.string_is_ascii;
     }
+    if symbol == "string_is_ascii_digit" {
+        return helpers.string_is_ascii_digit;
+    }
+    if symbol == "string_is_ascii_hex_digit" {
+        return helpers.string_is_ascii_hex_digit;
+    }
+    if symbol == "string_is_ascii_alpha" {
+        return helpers.string_is_ascii_alpha;
+    }
+    if symbol == "string_is_ascii_lower" {
+        return helpers.string_is_ascii_lower;
+    }
+    if symbol == "string_is_ascii_upper" {
+        return helpers.string_is_ascii_upper;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -695,6 +755,11 @@ struct PeHelperRvas {
     string_greater_or_equal: Option<u32>,
     string_is_empty: Option<u32>,
     string_is_ascii: Option<u32>,
+    string_is_ascii_digit: Option<u32>,
+    string_is_ascii_hex_digit: Option<u32>,
+    string_is_ascii_alpha: Option<u32>,
+    string_is_ascii_lower: Option<u32>,
+    string_is_ascii_upper: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -1034,6 +1099,116 @@ fn emit_string_is_ascii_helper(code: &mut Vec<u8>) {
 
     patch_short_jump(code, end, true_target);
     patch_short_jump(code, non_ascii, false_target);
+}
+
+fn emit_string_is_ascii_digit_helper(code: &mut Vec<u8>) {
+    emit_string_all_bytes_in_range_helper(code, b'0', b'9');
+}
+
+fn emit_string_is_ascii_hex_digit_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'0']);
+    let below_digit = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'9']);
+    let accepted_digit = emit_short_jump_placeholder(code, 0x76);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'A']);
+    let below_upper = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'F']);
+    let accepted_upper = emit_short_jump_placeholder(code, 0x76);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'a']);
+    let below_lower = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'f']);
+    let above_lower = emit_short_jump_placeholder(code, 0x77);
+    let accepted_target = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let next = emit_short_jump_placeholder(code, 0x75);
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, empty, false_target);
+    patch_short_jump(code, below_digit, false_target);
+    patch_short_jump(code, accepted_digit, accepted_target);
+    patch_short_jump(code, below_upper, false_target);
+    patch_short_jump(code, accepted_upper, accepted_target);
+    patch_short_jump(code, below_lower, false_target);
+    patch_short_jump(code, above_lower, false_target);
+    patch_short_jump(code, next, loop_start);
+}
+
+fn emit_string_is_ascii_alpha_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'A']);
+    let below_upper = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'Z']);
+    let accepted_upper = emit_short_jump_placeholder(code, 0x76);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'a']);
+    let below_lower = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, b'z']);
+    let above_lower = emit_short_jump_placeholder(code, 0x77);
+    let accepted_target = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let next = emit_short_jump_placeholder(code, 0x75);
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, empty, false_target);
+    patch_short_jump(code, below_upper, false_target);
+    patch_short_jump(code, accepted_upper, accepted_target);
+    patch_short_jump(code, below_lower, false_target);
+    patch_short_jump(code, above_lower, false_target);
+    patch_short_jump(code, next, loop_start);
+}
+
+fn emit_string_is_ascii_lower_helper(code: &mut Vec<u8>) {
+    emit_string_all_bytes_in_range_helper(code, b'a', b'z');
+}
+
+fn emit_string_is_ascii_upper_helper(code: &mut Vec<u8>) {
+    emit_string_all_bytes_in_range_helper(code, b'A', b'Z');
+}
+
+fn emit_string_all_bytes_in_range_helper(code: &mut Vec<u8>, min: u8, max: u8) {
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, min]);
+    let below_min = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x41, 0x80, 0xf8, max]);
+    let above_max = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let next = emit_short_jump_placeholder(code, 0x75);
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, empty, false_target);
+    patch_short_jump(code, below_min, false_target);
+    patch_short_jump(code, above_max, false_target);
+    patch_short_jump(code, next, loop_start);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
