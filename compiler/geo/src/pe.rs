@@ -484,6 +484,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_is_ascii_whitespace");
+    let needs_string_find_byte = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_find_byte");
+    let needs_string_last_find_byte = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_last_find_byte");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -536,6 +544,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_is_ascii_alnum
         || needs_string_is_ascii_identifier
         || needs_string_is_ascii_whitespace
+        || needs_string_find_byte
+        || needs_string_last_find_byte
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -633,6 +643,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_is_ascii_whitespace {
         helpers.string_is_ascii_whitespace = Some(layout.text_rva + code.len() as u32);
         emit_string_is_ascii_whitespace_helper(&mut code);
+    }
+    if needs_string_find_byte {
+        helpers.string_find_byte = Some(layout.text_rva + code.len() as u32);
+        emit_string_find_byte_helper(&mut code);
+    }
+    if needs_string_last_find_byte {
+        helpers.string_last_find_byte = Some(layout.text_rva + code.len() as u32);
+        emit_string_last_find_byte_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -758,6 +776,12 @@ fn compiled_symbol_rva(
     if symbol == "string_is_ascii_whitespace" {
         return helpers.string_is_ascii_whitespace;
     }
+    if symbol == "string_find_byte" {
+        return helpers.string_find_byte;
+    }
+    if symbol == "string_last_find_byte" {
+        return helpers.string_last_find_byte;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -799,6 +823,8 @@ struct PeHelperRvas {
     string_is_ascii_alnum: Option<u32>,
     string_is_ascii_identifier: Option<u32>,
     string_is_ascii_whitespace: Option<u32>,
+    string_find_byte: Option<u32>,
+    string_last_find_byte: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -1355,6 +1381,59 @@ fn emit_string_is_ascii_whitespace_helper(code: &mut Vec<u8>) {
     patch_short_jump(code, below_tab, false_target);
     patch_short_jump(code, above_cr, false_target);
     patch_short_jump(code, next, loop_start);
+}
+
+fn emit_string_find_byte_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x83, 0xfa, 0x00]);
+    let below_zero = emit_short_jump_placeholder(code, 0x7c);
+    code.extend_from_slice(&[0x81, 0xfa, 0xff, 0x00, 0x00, 0x00]);
+    let above_byte = emit_short_jump_placeholder(code, 0x7f);
+    code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x42, 0x8a, 0x04, 0x01]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x38, 0xd0]);
+    let found = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, loop_start);
+    let found_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
+    code.push(0xc3);
+    let not_found_target = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.push(0xc3);
+
+    patch_short_jump(code, below_zero, not_found_target);
+    patch_short_jump(code, above_byte, not_found_target);
+    patch_short_jump(code, end, not_found_target);
+    patch_short_jump(code, found, found_target);
+}
+
+fn emit_string_last_find_byte_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x83, 0xfa, 0x00]);
+    let below_zero = emit_short_jump_placeholder(code, 0x7c);
+    code.extend_from_slice(&[0x81, 0xfa, 0xff, 0x00, 0x00, 0x00]);
+    let above_byte = emit_short_jump_placeholder(code, 0x7f);
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x42, 0x8a, 0x0c, 0x01]);
+    code.extend_from_slice(&[0x84, 0xc9]);
+    let end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x38, 0xd1]);
+    let no_match = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
+    let advance_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, loop_start);
+    let end_target = code.len();
+    code.push(0xc3);
+
+    patch_short_jump(code, below_zero, end_target);
+    patch_short_jump(code, above_byte, end_target);
+    patch_short_jump(code, end, end_target);
+    patch_short_jump(code, no_match, advance_target);
 }
 
 fn emit_string_all_bytes_in_range_helper(code: &mut Vec<u8>, min: u8, max: u8) {

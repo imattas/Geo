@@ -1514,6 +1514,60 @@ fn emits_direct_pe64_string_is_ascii_whitespace_as_compiled_helper() {
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }
 
+#[test]
+fn emits_direct_pe64_string_find_byte_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_find_byte("Geo", 101)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28, 0xe8]));
+    assert!(contains_bytes(&pe, b"Geo\0"));
+    assert!(contains_bytes(&pe, &[0x4d, 0x31, 0xc0]));
+    assert!(contains_bytes(&pe, &[0x42, 0x8a, 0x04, 0x01]));
+    assert!(contains_bytes(&pe, &[0x38, 0xd0]));
+    assert!(contains_bytes(
+        &pe,
+        &[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]
+    ));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
+fn emits_direct_pe64_string_last_find_byte_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_last_find_byte("banana", 97)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28, 0xe8]));
+    assert!(contains_bytes(&pe, b"banana\0"));
+    assert!(contains_bytes(
+        &pe,
+        &[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]
+    ));
+    assert!(contains_bytes(&pe, &[0x42, 0x8a, 0x0c, 0x01]));
+    assert!(contains_bytes(&pe, &[0x38, 0xd1]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x89, 0xc0]));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
