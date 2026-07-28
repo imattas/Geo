@@ -45,6 +45,9 @@ jobs:
       - name: Build compiler-owned Linux executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-linux -o target/ci-hello-world-linux
 
+      - name: Build compiler-owned Linux read executable
+        run: cargo run --locked --quiet -- build examples/read_file_len_exit.geo --target x86_64-linux -o target/ci-read-file-linux
+
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
 

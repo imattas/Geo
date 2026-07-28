@@ -90,6 +90,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "write_file" => emit_write_file_runtime(&mut code),
+            "read_file" => emit_read_file_runtime(&mut code),
             _ => continue,
         }
         symbols.insert(
@@ -331,11 +332,77 @@ fn emit_write_file_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, open_failed, open_failed_target);
 }
 
+fn emit_read_file_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38]);
+    code.extend_from_slice(&[0x48, 0x89, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x31, 0xf6]);
+    code.extend_from_slice(&[0x31, 0xd2]);
+    code.extend_from_slice(&[0xb8, 0x02, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x08]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let open_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x08]);
+    code.extend_from_slice(&[0x31, 0xf6]);
+    code.extend_from_slice(&[0xba, 0x02, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0xb8, 0x08, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x10]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x08]);
+    code.extend_from_slice(&[0x31, 0xf6]);
+    code.extend_from_slice(&[0x31, 0xd2]);
+    code.extend_from_slice(&[0xb8, 0x08, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x10]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x89, 0xc6]);
+    code.extend_from_slice(&[0x31, 0xff]);
+    code.extend_from_slice(&[0xba, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xba, 0x22, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0xb8, 0x09, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x18]);
+    code.extend_from_slice(&[0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x0f, 0x83);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x08]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x74, 0x24, 0x18]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x10]);
+    code.extend_from_slice(&[0x31, 0xc0, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x44, 0x24, 0x18]);
+    code.extend_from_slice(&[0x49, 0x01, 0xc0]);
+    code.extend_from_slice(&[0x41, 0xc6, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x08]);
+    code.extend_from_slice(&[0xb8, 0x03, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x18]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38]);
+    code.push(0xc3);
+
+    let failure_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    patch_near_jump(code, open_failed, failure_target);
+    patch_near_jump(code, allocation_failed, failure_target);
+}
+
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
     code.push(opcode);
     let offset = code.len();
     code.push(0);
     offset
+}
+
+fn emit_near_jump_placeholder(code: &mut Vec<u8>, first: u8, second: u8) -> usize {
+    code.extend_from_slice(&[first, second]);
+    let offset = code.len();
+    code.extend_from_slice(&[0, 0, 0, 0]);
+    offset
+}
+
+fn patch_near_jump(code: &mut [u8], displacement: usize, target: usize) {
+    let next = displacement + 4;
+    let value = (target as isize - next as isize) as i32;
+    code[displacement..displacement + 4].copy_from_slice(&value.to_le_bytes());
 }
 
 fn emit_short_jump_back(code: &mut Vec<u8>, target: usize) {
