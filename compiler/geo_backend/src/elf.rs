@@ -99,6 +99,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "mem_compare" => emit_mem_compare_runtime(&mut code),
             "mem_equal" => emit_mem_equal_runtime(&mut code),
             "mem_is_zero" => emit_mem_is_zero_runtime(&mut code),
+            "mem_reverse" => emit_mem_reverse_runtime(&mut code),
             "string_from_byte" => emit_string_from_byte_runtime(&mut code),
             "string_clone" => emit_string_clone_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
@@ -621,6 +622,27 @@ fn emit_mem_is_zero_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, empty, zero_target);
     patch_short_jump(code, not_zero, false_target);
+}
+
+fn emit_mem_reverse_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xf6]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8d, 0x54, 0x37, 0xff]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x48, 0x39, 0xd7]);
+    let done = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[0x8a, 0x07]);
+    code.extend_from_slice(&[0x8a, 0x0a]);
+    code.extend_from_slice(&[0x86, 0xc8]);
+    code.extend_from_slice(&[0x88, 0x07]);
+    code.extend_from_slice(&[0x88, 0x0a]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc7]);
+    code.extend_from_slice(&[0x48, 0xff, 0xca]);
+    emit_short_jump_back(code, loop_start);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, empty, done_target);
+    patch_short_jump(code, done, done_target);
 }
 
 fn emit_string_from_byte_runtime(code: &mut Vec<u8>) {

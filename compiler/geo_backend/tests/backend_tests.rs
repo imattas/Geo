@@ -103,3 +103,39 @@ fn backend_emits_memory_predicate_helpers_for_both_native_formats() {
     assert!(elf.windows(3).any(|bytes| bytes == [0x48, 0x85, 0xd2]));
     assert!(pe.windows(3).any(|bytes| bytes == [0x4d, 0x85, 0xc0]));
 }
+
+#[test]
+fn backend_emits_memory_reordering_helpers_for_both_native_formats() {
+    let left = ValueId(0);
+    let len = ValueId(1);
+    let program = IrProgram {
+        functions: vec![IrFunction {
+            name: "main".to_string(),
+            params: Vec::new(),
+            instructions: vec![
+                Instruction::Const {
+                    dst: left,
+                    value: 0,
+                },
+                Instruction::Const { dst: len, value: 0 },
+                Instruction::Call {
+                    dst: ValueId(2),
+                    function: "mem_reverse".to_string(),
+                    args: vec![left, len],
+                },
+                Instruction::Const {
+                    dst: ValueId(3),
+                    value: 0,
+                },
+                Instruction::Return { value: ValueId(3) },
+            ],
+        }],
+    };
+
+    let elf = emit_elf64_executable(&program).expect("ELF helper emission failed");
+    let pe = emit_pe64_console(&program).expect("PE helper emission failed");
+    assert!(elf.windows(3).any(|bytes| bytes == [0x48, 0x85, 0xf6]));
+    assert!(pe
+        .windows(5)
+        .any(|bytes| bytes == [0x48, 0x8d, 0x54, 0x11, 0xff]));
+}

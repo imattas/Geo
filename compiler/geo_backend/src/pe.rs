@@ -666,6 +666,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "mem_is_zero");
+    let needs_mem_reverse = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "mem_reverse");
     let needs_string_from_byte = image
         .relocations
         .iter()
@@ -751,6 +755,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_mem_compare
         || needs_mem_equal
         || needs_mem_is_zero
+        || needs_mem_reverse
         || needs_string_from_byte
         || needs_string_clone
         || needs_alloc_copy
@@ -933,6 +938,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_mem_is_zero {
         helpers.mem_is_zero = Some(layout.text_rva + code.len() as u32);
         emit_mem_is_zero_helper(&mut code);
+    }
+    if needs_mem_reverse {
+        helpers.mem_reverse = Some(layout.text_rva + code.len() as u32);
+        emit_mem_reverse_helper(&mut code);
     }
     if needs_string_from_byte {
         helpers.string_from_byte = Some(layout.text_rva + code.len() as u32);
@@ -1131,6 +1140,9 @@ fn compiled_symbol_rva(
     if symbol == "mem_is_zero" {
         return helpers.mem_is_zero;
     }
+    if symbol == "mem_reverse" {
+        return helpers.mem_reverse;
+    }
     if symbol == "string_from_byte" {
         return helpers.string_from_byte;
     }
@@ -1171,6 +1183,7 @@ struct PeHelperRvas {
     mem_compare: Option<u32>,
     mem_equal: Option<u32>,
     mem_is_zero: Option<u32>,
+    mem_reverse: Option<u32>,
     string_from_byte: Option<u32>,
     string_clone: Option<u32>,
     alloc_copy: Option<u32>,
@@ -2308,6 +2321,26 @@ fn emit_mem_is_zero_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, empty, zero_target);
     patch_short_jump(code, not_zero, false_target);
+}
+
+fn emit_mem_reverse_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xd2]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8d, 0x54, 0x11, 0xff]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x48, 0x39, 0xd1]);
+    let done = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[0x8a, 0x01]);
+    code.extend_from_slice(&[0x44, 0x8a, 0x1a]);
+    code.extend_from_slice(&[0x44, 0x88, 0x19]);
+    code.extend_from_slice(&[0x88, 0x02]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xca]);
+    emit_short_jump_back(code, loop_start);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, empty, done_target);
+    patch_short_jump(code, done, done_target);
 }
 
 fn emit_string_from_byte_helper(code: &mut Vec<u8>, layout: &Layout) {
