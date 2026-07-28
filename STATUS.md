@@ -34,6 +34,10 @@ compiler/
     Cargo.toml
     src/
     tests/
+  geo_driver/
+    Cargo.toml
+    src/
+    tests/
   geo_diagnostics/
     Cargo.toml
     src/
@@ -72,6 +76,7 @@ Workspace members:
 - `compiler/geo_semantic`
 - `compiler/geo_codegen`
 - `compiler/geo_backend`
+- `compiler/geo_driver`
 - `compiler/geo_diagnostics`
 - `compiler/geo_source`
 - `src/bootstrap`
@@ -221,7 +226,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 ## Known Gaps
 
-- Compiler internals are still mostly one crate; syntax is owned by `compiler/geo_syntax`, IR is owned by `compiler/geo_ir`, semantic analysis/runtime metadata are owned by `compiler/geo_semantic`, AST-to-IR lowering is owned by `compiler/geo_codegen`, and target backends/object writers are owned by `compiler/geo_backend`.
+- Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
 - Runtime ABI is not yet documented as a stable contract.
 - Formatter is minimal.
 - Distribution/install layout is not defined.

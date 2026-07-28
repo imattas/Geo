@@ -12,7 +12,7 @@ External assembler/linker tools are allowed only as temporary build-tool steps. 
 
 ### 1. Split Compiler Internals Into Smaller Crates
 
-Current state: the compiler crate is isolated at `compiler/geo`, syntax is owned by `compiler/geo_syntax`, IR is owned by `compiler/geo_ir`, semantic analysis is owned by `compiler/geo_semantic`, AST-to-IR lowering is owned by `compiler/geo_codegen`, target backends and object writers are owned by `compiler/geo_backend`, diagnostics live in `compiler/geo_diagnostics`, and source loading lives in `compiler/geo_source`. Driver orchestration still lives inside the main compiler crate.
+Current state: syntax, IR, semantic analysis, lowering, target backends/object writers, and driver orchestration are owned by dedicated compiler crates. `compiler/geo` remains the compatibility/library shell and binary entry point; diagnostics and source loading remain dedicated crates.
 
 Recommended split:
 

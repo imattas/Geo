@@ -16,3 +16,4 @@ geo-ir = { path = "../geo_ir" }
 geo-semantic = { path = "../geo_semantic" }
 geo-codegen = { path = "../geo_codegen" }
 geo-backend = { path = "../geo_backend" }
+geo-driver = { path = "../geo_driver" }
