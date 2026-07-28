@@ -72,13 +72,43 @@ fn emit_function_text(
     bytes: &mut Vec<u8>,
     relocations: &mut Vec<CallRelocation>,
 ) {
-    let mut consts = HashMap::new();
+    let frame = FrameLayout::new(function);
     bytes.extend_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+    emit_stack_alloc(bytes, frame.stack_size);
 
     for instruction in &function.instructions {
         match instruction {
             Instruction::Const { dst, value } => {
-                consts.insert(*dst, *value);
+                emit_mov_mem_imm32(bytes, frame.value_offset(*dst), *value as i32);
+            }
+            Instruction::Add { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x03, &frame, *dst, *left, *right);
+            }
+            Instruction::Sub { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x2b, &frame, *dst, *left, *right);
+            }
+            Instruction::Mul { dst, left, right } => {
+                emit_load_rax(bytes, frame.value_offset(*left));
+                bytes.extend_from_slice(&[0x48, 0x0f, 0xaf]);
+                emit_rbp_operand(bytes, 0, frame.value_offset(*right));
+                emit_store_rax(bytes, frame.value_offset(*dst));
+            }
+            Instruction::BitAnd { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x23, &frame, *dst, *left, *right);
+            }
+            Instruction::BitOr { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x0b, &frame, *dst, *left, *right);
+            }
+            Instruction::BitXor { dst, left, right } => {
+                emit_binary_mem_op(bytes, 0x33, &frame, *dst, *left, *right);
+            }
+            Instruction::Load { dst, local } => {
+                emit_load_rax(bytes, frame.local_offset(local));
+                emit_store_rax(bytes, frame.value_offset(*dst));
+            }
+            Instruction::Store { local, value } => {
+                emit_load_rax(bytes, frame.value_offset(*value));
+                emit_store_rax(bytes, frame.local_offset(local));
             }
             Instruction::Call { function, .. } => {
                 let call_offset = bytes.len() as u64;
@@ -88,6 +118,9 @@ fn emit_function_text(
                     offset: call_offset + 1,
                     symbol: function.clone(),
                 });
+                if let Instruction::Call { dst, .. } = instruction {
+                    emit_store_rax(bytes, frame.value_offset(*dst));
+                }
             }
             Instruction::BoundsCheck { .. } => {
                 let call_offset = bytes.len() as u64;
@@ -99,29 +132,19 @@ fn emit_function_text(
                 });
             }
             Instruction::Return { value } => {
-                let value = consts.get(value).copied().unwrap_or(0);
-                bytes.push(0xb8);
-                bytes.extend_from_slice(&(value as i32).to_le_bytes());
-                bytes.extend_from_slice(&[0x5d, 0xc3]);
+                emit_load_rax(bytes, frame.value_offset(*value));
+                bytes.extend_from_slice(&[0xc9, 0xc3]);
             }
             Instruction::StringConst { .. }
             | Instruction::And { .. }
             | Instruction::Or { .. }
-            | Instruction::BitAnd { .. }
-            | Instruction::BitOr { .. }
-            | Instruction::BitXor { .. }
             | Instruction::ShiftLeft { .. }
             | Instruction::ShiftRight { .. }
-            | Instruction::Add { .. }
-            | Instruction::Sub { .. }
-            | Instruction::Mul { .. }
             | Instruction::Div { .. }
             | Instruction::Rem { .. }
-            | Instruction::Load { .. }
             | Instruction::AddressOf { .. }
             | Instruction::Deref { .. }
             | Instruction::BitNot { .. }
-            | Instruction::Store { .. }
             | Instruction::StoreDeref { .. }
             | Instruction::Cmp { .. }
             | Instruction::Jump { .. }
@@ -134,7 +157,194 @@ fn emit_function_text(
         function.instructions.last(),
         Some(Instruction::Return { .. })
     ) {
-        bytes.extend_from_slice(&[0xb8, 0, 0, 0, 0, 0x5d, 0xc3]);
+        bytes.extend_from_slice(&[0xb8, 0, 0, 0, 0, 0xc9, 0xc3]);
+    }
+}
+
+struct FrameLayout {
+    value_offsets: HashMap<crate::ir::ValueId, u32>,
+    local_offsets: HashMap<String, u32>,
+    stack_size: u32,
+}
+
+impl FrameLayout {
+    fn new(function: &IrFunction) -> Self {
+        let mut max_value = None;
+        let mut locals = Vec::new();
+
+        for instruction in &function.instructions {
+            collect_instruction_values(instruction, &mut max_value);
+            match instruction {
+                Instruction::Load { local, .. }
+                | Instruction::AddressOf { local, .. }
+                | Instruction::Store { local, .. } => {
+                    if !locals.contains(local) {
+                        locals.push(local.clone());
+                    }
+                }
+                Instruction::Const { .. }
+                | Instruction::StringConst { .. }
+                | Instruction::And { .. }
+                | Instruction::Or { .. }
+                | Instruction::BitAnd { .. }
+                | Instruction::BitOr { .. }
+                | Instruction::BitXor { .. }
+                | Instruction::ShiftLeft { .. }
+                | Instruction::ShiftRight { .. }
+                | Instruction::Add { .. }
+                | Instruction::Sub { .. }
+                | Instruction::Mul { .. }
+                | Instruction::Div { .. }
+                | Instruction::Rem { .. }
+                | Instruction::Deref { .. }
+                | Instruction::BitNot { .. }
+                | Instruction::BoundsCheck { .. }
+                | Instruction::StoreDeref { .. }
+                | Instruction::Cmp { .. }
+                | Instruction::Jump { .. }
+                | Instruction::JumpIfZero { .. }
+                | Instruction::Label { .. }
+                | Instruction::Call { .. }
+                | Instruction::Return { .. } => {}
+            }
+        }
+
+        let value_count = max_value.map(|value| value.0 + 1).unwrap_or(0);
+        let mut next_offset = 8_u32;
+        let mut value_offsets = HashMap::new();
+        for index in 0..value_count {
+            value_offsets.insert(crate::ir::ValueId(index), next_offset);
+            next_offset += 8;
+        }
+
+        let mut local_offsets = HashMap::new();
+        for local in locals {
+            local_offsets.insert(local, next_offset);
+            next_offset += 8;
+        }
+
+        let used = next_offset.saturating_sub(8);
+        Self {
+            value_offsets,
+            local_offsets,
+            stack_size: align_to(used, 16),
+        }
+    }
+
+    fn value_offset(&self, value: crate::ir::ValueId) -> u32 {
+        *self.value_offsets.get(&value).expect("value stack slot")
+    }
+
+    fn local_offset(&self, local: &str) -> u32 {
+        *self.local_offsets.get(local).expect("local stack slot")
+    }
+}
+
+fn collect_instruction_values(
+    instruction: &Instruction,
+    max_value: &mut Option<crate::ir::ValueId>,
+) {
+    match instruction {
+        Instruction::Const { dst, .. }
+        | Instruction::StringConst { dst, .. }
+        | Instruction::Load { dst, .. }
+        | Instruction::AddressOf { dst, .. }
+        | Instruction::Deref { dst, .. }
+        | Instruction::BitNot { dst, .. }
+        | Instruction::Cmp { dst, .. } => update_max_value(max_value, *dst),
+        Instruction::Call { dst, args, .. } => {
+            update_max_value(max_value, *dst);
+            for arg in args {
+                update_max_value(max_value, *arg);
+            }
+        }
+        Instruction::And { dst, left, right }
+        | Instruction::Or { dst, left, right }
+        | Instruction::BitAnd { dst, left, right }
+        | Instruction::BitOr { dst, left, right }
+        | Instruction::BitXor { dst, left, right }
+        | Instruction::ShiftLeft { dst, left, right }
+        | Instruction::ShiftRight { dst, left, right }
+        | Instruction::Add { dst, left, right }
+        | Instruction::Sub { dst, left, right }
+        | Instruction::Mul { dst, left, right }
+        | Instruction::Div { dst, left, right }
+        | Instruction::Rem { dst, left, right } => {
+            update_max_value(max_value, *dst);
+            update_max_value(max_value, *left);
+            update_max_value(max_value, *right);
+        }
+        Instruction::BoundsCheck { index, .. }
+        | Instruction::Store { value: index, .. }
+        | Instruction::JumpIfZero { value: index, .. }
+        | Instruction::Return { value: index } => update_max_value(max_value, *index),
+        Instruction::StoreDeref { pointer, value } => {
+            update_max_value(max_value, *pointer);
+            update_max_value(max_value, *value);
+        }
+        Instruction::Jump { .. } | Instruction::Label { .. } => {}
+    }
+}
+
+fn update_max_value(max_value: &mut Option<crate::ir::ValueId>, value: crate::ir::ValueId) {
+    if max_value.map(|current| value.0 > current.0).unwrap_or(true) {
+        *max_value = Some(value);
+    }
+}
+
+fn emit_binary_mem_op(
+    bytes: &mut Vec<u8>,
+    opcode: u8,
+    frame: &FrameLayout,
+    dst: crate::ir::ValueId,
+    left: crate::ir::ValueId,
+    right: crate::ir::ValueId,
+) {
+    emit_load_rax(bytes, frame.value_offset(left));
+    bytes.extend_from_slice(&[0x48, opcode]);
+    emit_rbp_operand(bytes, 0, frame.value_offset(right));
+    emit_store_rax(bytes, frame.value_offset(dst));
+}
+
+fn emit_stack_alloc(bytes: &mut Vec<u8>, size: u32) {
+    if size == 0 {
+        return;
+    }
+    if size <= 127 {
+        bytes.extend_from_slice(&[0x48, 0x83, 0xec, size as u8]);
+    } else {
+        bytes.extend_from_slice(&[0x48, 0x81, 0xec]);
+        bytes.extend_from_slice(&size.to_le_bytes());
+    }
+}
+
+fn align_to(value: u32, alignment: u32) -> u32 {
+    value.div_ceil(alignment) * alignment
+}
+
+fn emit_mov_mem_imm32(bytes: &mut Vec<u8>, offset: u32, value: i32) {
+    bytes.extend_from_slice(&[0x48, 0xc7]);
+    emit_rbp_operand(bytes, 0, offset);
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn emit_load_rax(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x48, 0x8b]);
+    emit_rbp_operand(bytes, 0, offset);
+}
+
+fn emit_store_rax(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x48, 0x89]);
+    emit_rbp_operand(bytes, 0, offset);
+}
+
+fn emit_rbp_operand(bytes: &mut Vec<u8>, reg: u8, offset: u32) {
+    if offset <= 128 {
+        bytes.push(0x40 | (reg << 3) | 0x05);
+        bytes.push((-(offset as i32)) as i8 as u8);
+    } else {
+        bytes.push(0x80 | (reg << 3) | 0x05);
+        bytes.extend_from_slice(&(-(offset as i32)).to_le_bytes());
     }
 }
 

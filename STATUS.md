@@ -64,7 +64,7 @@ cargo test --workspace --quiet
 cargo run -p xtask --quiet -- from-scratch
 cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
-cargo run --quiet -- emit-obj examples\return_42.geo --target x86_64-linux -o target\workspace_return_42_linux.o
+cargo run --quiet -- emit-obj examples\variables.geo --target x86_64-linux -o target\workspace_variables_linux.o
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\workspace_return_42_win.asm
 ```
 
@@ -126,7 +126,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - modules/import examples
 - runtime-backed examples
 - Linux and Windows target-aware assembly paths
-- direct Linux ELF64 relocatable object emission for the current object subset
+- direct Linux ELF64 relocatable object emission for constants, stack locals, integer addition/subtraction/multiplication/bitwise operations, calls, symbols, and relocations in the current object subset
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
@@ -152,7 +152,7 @@ Current repository-level tooling:
 
 The compiler pipeline is implemented in this repository. The active workspace has no LLVM, Cranelift, MLIR, GCCJIT, or similar compiler backend framework dependency.
 
-External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` now exercises a compiler-owned ELF64 relocatable writer for the current object subset; broader Linux linking and Windows COFF/PE object coverage remain roadmap work.
+External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` now exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code for the current object subset; broader Linux linking and Windows COFF/PE object coverage remain roadmap work.
 
 ## Documentation Status
 
@@ -170,7 +170,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Runtime ABI is not yet documented as a stable contract.
 - Formatter is minimal.
 - Distribution/install layout is not defined.
-- Direct object emission is Linux ELF64-only today and covers a subset of lowered IR.
+- Direct object emission is Linux ELF64-only today and does not yet cover control flow, division/remainder, shifts, comparisons, pointers, aggregate layout, or Windows COFF objects.
 
 ## Current Priority
 

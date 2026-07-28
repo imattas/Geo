@@ -137,11 +137,11 @@ pub fn verify_commands() -> Vec<(&'static str, Vec<&'static str>)> {
                 "--quiet",
                 "--",
                 "emit-obj",
-                "examples/return_42.geo",
+                "examples/variables.geo",
                 "--target",
                 "x86_64-linux",
                 "-o",
-                "target/xtask-return-42-linux.o",
+                "target/xtask-variables-linux.o",
             ],
         ),
         (

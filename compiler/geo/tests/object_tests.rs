@@ -58,10 +58,41 @@ fn emits_relocation_for_bounds_check_runtime_call() {
     assert!(rela_text_payload_size(&object) > 0);
 }
 
+#[test]
+fn emits_machine_code_for_integer_addition() {
+    let object = object_for("fn main() -> int { return 40 + 2 }");
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x03, 0x45]));
+}
+
+#[test]
+fn emits_machine_code_for_local_loads_and_stores() {
+    let object = object_for(
+        r#"
+            fn main() -> int {
+                let base: int = 40
+                return base + 2
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(count_bytes(text, &[0x48, 0x8b, 0x45]) >= 2);
+    assert!(count_bytes(text, &[0x48, 0x89, 0x45]) >= 2);
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+fn count_bytes(haystack: &[u8], needle: &[u8]) -> usize {
+    haystack
+        .windows(needle.len())
+        .filter(|window| *window == needle)
+        .count()
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
@@ -70,6 +101,16 @@ fn read_u16(bytes: &[u8], offset: usize) -> u16 {
 
 fn read_u64(bytes: &[u8], offset: usize) -> u64 {
     u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+}
+
+fn section_payload(object: &[u8], section_index: usize) -> &[u8] {
+    let section_header_offset = read_u64(object, 40) as usize;
+    let section_header_size = read_u16(object, 58) as usize;
+    let header = section_header_offset + section_index * section_header_size;
+    let offset = read_u64(object, header + 24) as usize;
+    let size = read_u64(object, header + 32) as usize;
+
+    &object[offset..offset + size]
 }
 
 fn rela_text_payload_size(object: &[u8]) -> u64 {
