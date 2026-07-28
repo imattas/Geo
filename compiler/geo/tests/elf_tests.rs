@@ -329,6 +329,30 @@ fn emits_direct_elf64_string_comparison_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_matching_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if !string_contains("Geo compiler", "compiler") {
+                    return 1
+                }
+                if string_contains("Geo", "Rust") {
+                    return 2
+                }
+                if !string_starts_with("Geo compiler", "Geo") {
+                    return 3
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x4c, 0x8d, 0x0c, 0x0f]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

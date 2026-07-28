@@ -261,6 +261,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct path-based file operations cover append, touch, remove, read, write, existence checks, file/directory classification, empty checks, and file size on Linux and Windows.
 - Direct Linux and Windows string runtime coverage includes byte access, empty checks, ASCII validation, and byte search.
 - Direct Linux and Windows string runtime coverage also includes lexical comparison, equality, inequality, and ordering predicates.
+- Direct Linux and Windows string runtime coverage also includes substring containment and prefix matching.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
 
 ## Current Priority

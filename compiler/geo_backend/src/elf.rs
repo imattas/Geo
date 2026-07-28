@@ -89,6 +89,8 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_is_empty" => emit_string_is_empty_runtime(&mut code),
             "string_is_ascii" => emit_string_is_ascii_runtime(&mut code),
             "string_find_byte" => emit_string_find_byte_runtime(&mut code),
+            "string_contains" => emit_string_contains_runtime(&mut code),
+            "string_starts_with" => emit_string_starts_with_runtime(&mut code),
             "string_compare" => emit_string_compare_runtime(&mut code, StringCompareKind::Compare),
             "string_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::Equal),
             "string_not_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::NotEqual),
@@ -266,6 +268,66 @@ fn emit_string_find_byte_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, missing, missing_target);
     patch_short_jump(code, end, missing_target);
     patch_short_jump(code, found, found_target);
+}
+
+fn emit_string_contains_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xf6]);
+    let null_needle = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3e, 0x00]);
+    let empty_needle = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let missing = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    let outer = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x0f, 0x00]);
+    let no_match = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x0c, 0x0f, 0x4d, 0x31, 0xc0]);
+    let inner = code.len();
+    code.extend_from_slice(&[0x42, 0x8a, 0x04, 0x06]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x43, 0x38, 0x04, 0x01]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, inner);
+    let advance = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, outer);
+    let true_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_needle, true_target);
+    patch_short_jump(code, empty_needle, true_target);
+    patch_short_jump(code, missing, false_target);
+    patch_short_jump(code, no_match, false_target);
+    patch_short_jump(code, matched, true_target);
+    patch_short_jump(code, mismatch, advance);
+}
+
+fn emit_string_starts_with_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xf6]);
+    let null_prefix = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let missing = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x8a, 0x04, 0x0e]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x44, 0x8a, 0x04, 0x0f]);
+    code.extend_from_slice(&[0x44, 0x38, 0xc0]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, loop_start);
+    let true_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_prefix, true_target);
+    patch_short_jump(code, missing, false_target);
+    patch_short_jump(code, matched, true_target);
+    patch_short_jump(code, mismatch, false_target);
 }
 
 #[derive(Clone, Copy)]
