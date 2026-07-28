@@ -34,6 +34,7 @@ docs/               Design specs and implementation plans
 ```powershell
 cargo fmt --check
 cargo test --workspace --quiet
+cargo run -p xtask --quiet -- from-scratch
 cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\return_42_windows.asm
@@ -44,6 +45,7 @@ cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o 
 ```powershell
 cargo run -p xtask --quiet -- status
 cargo run -p xtask --quiet -- layout
+cargo run -p xtask --quiet -- from-scratch
 cargo run -p xtask --quiet -- verify
 ```
 

@@ -142,9 +142,15 @@ The compiler owns runtime metadata in `compiler/geo/src/runtime.rs`. No separate
 Current repository-level tooling:
 
 - `src/bootstrap`: declares bootstrap stages for host compiler, native runtime, standard library, self-hosting examples, and distribution.
-- `src/tools/xtask`: provides `layout`, `status`, and `verify` commands.
+- `src/tools/xtask`: provides `from-scratch`, `layout`, `status`, and `verify` commands.
 - `compiler/geo_diagnostics`: owns diagnostic data structures and rendering.
 - `compiler/geo_source`: owns source file loading, source locations, and module path mapping.
+
+## From-Scratch Policy
+
+The compiler pipeline is implemented in this repository. The active workspace has no LLVM, Cranelift, MLIR, GCCJIT, or similar compiler backend framework dependency.
+
+External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline, and the roadmap keeps direct object writing as the path to remove that dependency over time.
 
 ## Documentation Status
 

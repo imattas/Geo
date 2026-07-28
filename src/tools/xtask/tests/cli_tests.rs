@@ -15,10 +15,18 @@ fn parses_verify_command() {
 }
 
 #[test]
+fn parses_from_scratch_command() {
+    let command = parse_args(["xtask", "from-scratch"]).expect("from-scratch command should parse");
+
+    assert_eq!(command, XtaskCommand::FromScratch);
+}
+
+#[test]
 fn rejects_unknown_command_with_helpful_error() {
     let err = parse_args(["xtask", "wat"]).expect_err("unknown command should fail");
 
     assert!(err.contains("unknown xtask command 'wat'"));
     assert!(err.contains("layout"));
     assert!(err.contains("verify"));
+    assert!(err.contains("from-scratch"));
 }

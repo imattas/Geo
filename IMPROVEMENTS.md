@@ -4,6 +4,12 @@ This file tracks practical improvements that would make Geo easier to expand, te
 
 ## Highest Leverage
 
+### 0. Keep The Compiler From Scratch
+
+Current state: `cargo run -p xtask -- from-scratch` enforces that active Cargo manifests and lockfile do not introduce LLVM, Cranelift, MLIR, GCCJIT, or similar backend framework dependencies.
+
+External assembler/linker tools are allowed only as temporary build-tool steps. The compiler pipeline itself must remain owned by Geo.
+
 ### 1. Split Compiler Internals Into Smaller Crates
 
 Current state: the compiler crate is isolated at `compiler/geo`, diagnostics live in `compiler/geo_diagnostics`, and source loading lives in `compiler/geo_source`. Most syntax, semantic, IR, and backend phases still live inside the main compiler crate.

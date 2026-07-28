@@ -36,6 +36,9 @@ jobs:
       - name: Validate workspace layout
         run: cargo run --locked -p xtask --quiet -- layout
 
+      - name: Enforce from-scratch compiler policy
+        run: cargo run --locked -p xtask --quiet -- from-scratch
+
       - name: Check Linux target
         run: cargo run --locked --quiet -- check examples/return_42.geo --target x86_64-linux
 

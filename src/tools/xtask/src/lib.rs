@@ -1,9 +1,11 @@
 use std::fmt::Write as _;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XtaskCommand {
+    FromScratch,
     Help,
     Layout,
     Status,
@@ -22,6 +24,7 @@ where
         Some(command) if command == "help" || command == "--help" || command == "-h" => {
             Ok(XtaskCommand::Help)
         }
+        Some(command) if command == "from-scratch" => Ok(XtaskCommand::FromScratch),
         Some(command) if command == "layout" => Ok(XtaskCommand::Layout),
         Some(command) if command == "status" => Ok(XtaskCommand::Status),
         Some(command) if command == "verify" => Ok(XtaskCommand::Verify),
@@ -34,6 +37,7 @@ where
 
 pub fn run(command: XtaskCommand, root: &Path) -> Result<String, String> {
     match command {
+        XtaskCommand::FromScratch => run_from_scratch(root),
         XtaskCommand::Help => Ok(help_text()),
         XtaskCommand::Layout => run_layout(root),
         XtaskCommand::Status => Ok(run_status(root)),
@@ -44,6 +48,7 @@ pub fn run(command: XtaskCommand, root: &Path) -> Result<String, String> {
 pub fn help_text() -> String {
     [
         "Geo workspace tasks:",
+        "  from-scratch  Enforce no compiler backend framework dependencies",
         "  layout  Validate required compiler/library/src directories",
         "  status  Print repository status summary",
         "  verify  Run formatting, tests, and target smoke checks",
@@ -100,6 +105,7 @@ fn required_paths() -> Vec<&'static str> {
 }
 
 fn run_verify(root: &Path) -> Result<String, String> {
+    check_from_scratch_policy(root)?;
     run_command(root, "cargo", &["fmt", "--check"])?;
     run_command(root, "cargo", &["test", "--workspace", "--locked"])?;
     run_command(
@@ -133,6 +139,57 @@ fn run_verify(root: &Path) -> Result<String, String> {
         ],
     )?;
     Ok("verify ok".to_string())
+}
+
+fn run_from_scratch(root: &Path) -> Result<String, String> {
+    check_from_scratch_policy(root)?;
+    Ok("from-scratch policy ok".to_string())
+}
+
+pub fn check_from_scratch_policy(root: &Path) -> Result<(), String> {
+    let forbidden = [
+        "llvm",
+        "llvm-sys",
+        "inkwell",
+        "cranelift",
+        "cranelift-codegen",
+        "gccjit",
+        "melior",
+        "mlir",
+    ];
+    let files = ["Cargo.toml", "Cargo.lock", "compiler/geo/Cargo.toml"];
+
+    for file in files {
+        let path = root.join(file);
+        if !path.exists() {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            for name in forbidden {
+                if declares_dependency(trimmed, name) {
+                    return Err(format!(
+                        "forbidden compiler backend dependency '{name}' found in {}",
+                        path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn declares_dependency(line: &str, name: &str) -> bool {
+    let quoted = format!("\"{name}\"");
+    line.starts_with(&format!("{name} ="))
+        || line.starts_with(&format!("{name}="))
+        || line.contains(&format!("name = {quoted}"))
 }
 
 fn run_command(root: &Path, program: &str, args: &[&str]) -> Result<(), String> {

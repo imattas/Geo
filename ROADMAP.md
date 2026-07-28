@@ -2,6 +2,8 @@
 
 Geo's v1 direction is a native systems language with a clean Rust/C++/C#/Java-influenced syntax, a from-scratch compiler pipeline, Linux and Windows support, and enough standard library/runtime support to write meaningful compiler components in Geo.
 
+From-scratch means Geo owns lexing, parsing, semantic analysis, IR, target lowering, ABI handling, assembly/object emission, diagnostics, and runtime integration. LLVM, Cranelift, MLIR, GCCJIT, and C code generation are out of bounds for the compiler pipeline.
+
 ## Current North Star
 
 Geo v1 should compile this style of program:
