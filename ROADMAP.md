@@ -202,8 +202,8 @@ Goal: make Linux and Windows first-class targets without depending on accidental
 Deliverables:
 
 - ABI lowering layer for System V AMD64 and Windows x64.
-- System V register parameter spills for compiler-owned ELF64 function bodies.
-- Stack-passed arguments beyond register limits.
+- System V register and stack-passed parameter handling for compiler-owned ELF64 function bodies.
+- Stack-passed argument support beyond Windows x64 register limits.
 - Data sections for strings and globals.
 - Direct ELF64 relocatable object writer.
 - `geo emit-obj` CLI path for compiler-owned Linux ELF64 objects.

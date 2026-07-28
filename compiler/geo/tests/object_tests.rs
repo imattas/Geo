@@ -119,6 +119,26 @@ fn emits_machine_code_for_function_parameter_register_spills() {
 }
 
 #[test]
+fn emits_machine_code_for_stack_passed_function_arguments() {
+    let object = object_for(
+        r#"
+            fn seventh(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int {
+                return g
+            }
+
+            fn main() -> int {
+                return seventh(1, 2, 3, 4, 5, 6, 7)
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x50]));
+    assert!(contains_bytes(text, &[0x48, 0x83, 0xc4, 0x10]));
+    assert!(contains_bytes(text, &[0x48, 0x8b, 0x45, 0x10]));
+}
+
+#[test]
 fn emits_relocation_for_bounds_check_runtime_call() {
     let object = object_for(
         r#"

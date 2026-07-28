@@ -127,7 +127,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - modules/import examples
 - runtime-backed examples
 - Linux and Windows target-aware assembly paths
-- direct Linux ELF64 relocatable object emission for constants, stack locals, first-six System V function parameters, integer addition/subtraction/multiplication/division/remainder, shifts, bitwise operations, comparisons, labels, conditional/unconditional jumps, address-of, dereference, pointer stores, string data, calls, symbols, and relocations in the current object subset
+- direct Linux ELF64 relocatable object emission for constants, stack locals, System V register and stack-passed function parameters, integer addition/subtraction/multiplication/division/remainder, shifts, bitwise operations, comparisons, labels, conditional/unconditional jumps, address-of, dereference, pointer stores, string data, calls, symbols, and relocations in the current object subset
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
@@ -153,7 +153,7 @@ Current repository-level tooling:
 
 The compiler pipeline is implemented in this repository. The active workspace has no LLVM, Cranelift, MLIR, GCCJIT, or similar compiler backend framework dependency.
 
-External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` now exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code, System V register parameter spills, branch patching, `.rodata` strings, and text relocations for the current object subset; broader Linux linking and Windows COFF/PE object coverage remain roadmap work.
+External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` now exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code, System V register and stack-passed parameter handling, branch patching, `.rodata` strings, and text relocations for the current object subset; broader Linux linking and Windows COFF/PE object coverage remain roadmap work.
 
 ## Documentation Status
 
@@ -171,7 +171,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Runtime ABI is not yet documented as a stable contract.
 - Formatter is minimal.
 - Distribution/install layout is not defined.
-- Direct object emission is Linux ELF64-only today and does not yet cover aggregate layout, stack-passed arguments beyond the first six System V registers, full runtime linking from compiler-owned objects, or Windows COFF objects.
+- Direct object emission is Linux ELF64-only today and does not yet cover aggregate layout, full runtime linking from compiler-owned objects, or Windows COFF objects.
 
 ## Current Priority
 

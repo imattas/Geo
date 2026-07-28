@@ -195,10 +195,11 @@ fn emit_function_text(
                 emit_compare(bytes, *op, &frame, *dst, *left, *right);
             }
             Instruction::Call { function, args, .. } => {
-                emit_call_args(bytes, &frame, args);
+                let stack_arg_bytes = emit_call_args(bytes, &frame, args);
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
                 bytes.extend_from_slice(&0_i32.to_le_bytes());
+                emit_stack_dealloc(bytes, stack_arg_bytes);
                 relocations.push(TextRelocation {
                     offset: call_offset + 1,
                     symbol: function.clone(),
@@ -524,6 +525,18 @@ fn emit_stack_alloc(bytes: &mut Vec<u8>, size: u32) {
     }
 }
 
+fn emit_stack_dealloc(bytes: &mut Vec<u8>, size: u32) {
+    if size == 0 {
+        return;
+    }
+    if size <= 127 {
+        bytes.extend_from_slice(&[0x48, 0x83, 0xc4, size as u8]);
+    } else {
+        bytes.extend_from_slice(&[0x48, 0x81, 0xc4]);
+        bytes.extend_from_slice(&size.to_le_bytes());
+    }
+}
+
 fn align_to(value: u32, alignment: u32) -> u32 {
     value.div_ceil(alignment) * alignment
 }
@@ -539,6 +552,11 @@ fn emit_load_rax(bytes: &mut Vec<u8>, offset: u32) {
     emit_rbp_operand(bytes, 0, offset);
 }
 
+fn emit_load_rax_from_incoming_arg(bytes: &mut Vec<u8>, offset: u32) {
+    bytes.extend_from_slice(&[0x48, 0x8b]);
+    emit_positive_rbp_operand(bytes, 0, offset);
+}
+
 fn emit_load_rcx(bytes: &mut Vec<u8>, offset: u32) {
     bytes.extend_from_slice(&[0x48, 0x8b]);
     emit_rbp_operand(bytes, 1, offset);
@@ -549,15 +567,32 @@ fn emit_load_r10(bytes: &mut Vec<u8>, offset: u32) {
     emit_rbp_operand(bytes, 2, offset);
 }
 
-fn emit_call_args(bytes: &mut Vec<u8>, frame: &FrameLayout, args: &[crate::ir::ValueId]) {
+fn emit_call_args(bytes: &mut Vec<u8>, frame: &FrameLayout, args: &[crate::ir::ValueId]) -> u32 {
     for (index, arg) in args.iter().enumerate().take(6) {
         emit_load_arg_register(bytes, index, frame.value_offset(*arg));
     }
+
+    let stack_args = args.len().saturating_sub(6);
+    let padding = if stack_args % 2 == 1 { 8 } else { 0 };
+    if padding > 0 {
+        emit_stack_alloc(bytes, padding);
+    }
+    for arg in args.iter().skip(6).rev() {
+        emit_load_rax(bytes, frame.value_offset(*arg));
+        bytes.push(0x50);
+    }
+
+    (stack_args as u32 * 8) + padding
 }
 
 fn emit_parameter_spills(bytes: &mut Vec<u8>, frame: &FrameLayout, params: &[String]) {
     for (index, param) in params.iter().enumerate().take(6) {
         emit_store_arg_register(bytes, index, frame.local_offset(param));
+    }
+    for (stack_index, param) in params.iter().enumerate().skip(6) {
+        let incoming_offset = 16 + ((stack_index - 6) as u32 * 8);
+        emit_load_rax_from_incoming_arg(bytes, incoming_offset);
+        emit_store_rax(bytes, frame.local_offset(param));
     }
 }
 
@@ -643,6 +678,16 @@ fn emit_rbp_operand(bytes: &mut Vec<u8>, reg: u8, offset: u32) {
     } else {
         bytes.push(0x80 | (reg << 3) | 0x05);
         bytes.extend_from_slice(&(-(offset as i32)).to_le_bytes());
+    }
+}
+
+fn emit_positive_rbp_operand(bytes: &mut Vec<u8>, reg: u8, offset: u32) {
+    if offset <= 127 {
+        bytes.push(0x40 | (reg << 3) | 0x05);
+        bytes.push(offset as u8);
+    } else {
+        bytes.push(0x80 | (reg << 3) | 0x05);
+        bytes.extend_from_slice(&offset.to_le_bytes());
     }
 }
 
