@@ -218,7 +218,7 @@ Acceptance criteria:
 - Object writer tests cover sections, symbols, and relocations.
 - CI emits a Linux object without invoking NASM.
 
-Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, and fixed-buffer `string_concat`.
+Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, `string_len`, and fixed-buffer `string_concat`.
 
 ## Phase 9: Self-Hosting Foundation Examples
 

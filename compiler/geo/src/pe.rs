@@ -396,6 +396,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_concat");
+    let needs_string_len = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_len");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -423,7 +427,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     }
     code.extend_from_slice(&image.text);
     let mut helpers = PeHelperRvas::default();
-    if needs_bounds_check || needs_print || needs_string_concat {
+    if needs_bounds_check || needs_print || needs_string_concat || needs_string_len {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
             code.push(0xcc);
@@ -432,6 +436,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_concat {
         helpers.string_concat = Some(layout.text_rva + code.len() as u32);
         emit_string_concat_helper(&mut code, layout, concat_buffer_rva?);
+    }
+    if needs_string_len {
+        helpers.string_len = Some(layout.text_rva + code.len() as u32);
+        emit_string_len_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -491,6 +499,9 @@ fn compiled_symbol_rva(
     if symbol == "string_concat" {
         return helpers.string_concat;
     }
+    if symbol == "string_len" {
+        return helpers.string_len;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -510,6 +521,7 @@ struct PeHelperRvas {
     print: Option<u32>,
     println: Option<u32>,
     string_concat: Option<u32>,
+    string_len: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -530,6 +542,15 @@ fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u3
     code.extend_from_slice(&[0x49, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xec]);
     code.extend_from_slice(&[0x41, 0xc6, 0x00, 0x00]);
+    code.push(0xc3);
+}
+
+fn emit_string_len_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x80, 0x3c, 0x01, 0x00]);
+    code.extend_from_slice(&[0x74, 0x05]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0xeb, 0xf5]);
     code.push(0xc3);
 }
 
