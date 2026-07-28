@@ -25,9 +25,13 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println");
+    let needs_string_concat = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_concat");
     let layout = Layout::new("", needs_console_helpers);
     let text = build_compiled_text(&layout, &image)?;
-    let rdata = build_compiled_rdata(&image, needs_console_helpers);
+    let rdata = build_compiled_rdata(&image, needs_console_helpers, needs_string_concat);
     let idata = build_idata(&layout);
     Some(build_image(&layout, &text, &rdata, &idata))
 }
@@ -388,8 +392,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "println");
+    let needs_string_concat = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_concat");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
+    } else {
+        None
+    };
+    let concat_buffer_rva = if needs_string_concat {
+        let after_newline = image.rodata.len() as u32 + u32::from(needs_println) * 2;
+        Some(layout.rdata_rva + align_to(after_newline, 8))
     } else {
         None
     };
@@ -409,11 +423,15 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     }
     code.extend_from_slice(&image.text);
     let mut helpers = PeHelperRvas::default();
-    if needs_bounds_check || needs_print {
+    if needs_bounds_check || needs_print || needs_string_concat {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
             code.push(0xcc);
         }
+    }
+    if needs_string_concat {
+        helpers.string_concat = Some(layout.text_rva + code.len() as u32);
+        emit_string_concat_helper(&mut code, layout, concat_buffer_rva?);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -470,6 +488,9 @@ fn compiled_symbol_rva(
     if symbol == "println" {
         return helpers.println;
     }
+    if symbol == "string_concat" {
+        return helpers.string_concat;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -488,6 +509,28 @@ struct PeHelperRvas {
     bounds_check: Option<u32>,
     print: Option<u32>,
     println: Option<u32>,
+    string_concat: Option<u32>,
+}
+
+fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
+    emit_lea(code, layout, &[0x48, 0x8d, 0x05], buffer_rva);
+    code.extend_from_slice(&[0x49, 0x89, 0xc0]);
+    code.extend_from_slice(&[0x44, 0x8a, 0x09]);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x00]);
+    code.extend_from_slice(&[0x74, 0x0b]);
+    code.extend_from_slice(&[0x45, 0x88, 0x08]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    code.extend_from_slice(&[0xeb, 0xec]);
+    code.extend_from_slice(&[0x44, 0x8a, 0x0a]);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x00]);
+    code.extend_from_slice(&[0x74, 0x0b]);
+    code.extend_from_slice(&[0x45, 0x88, 0x08]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    code.extend_from_slice(&[0xeb, 0xec]);
+    code.extend_from_slice(&[0x41, 0xc6, 0x00, 0x00]);
+    code.push(0xc3);
 }
 
 fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
@@ -538,11 +581,19 @@ fn emit_println_helper(code: &mut Vec<u8>, layout: &Layout, print_rva: u32, newl
     code.push(0xc3);
 }
 
-fn build_compiled_rdata(image: &ObjectImage, needs_console_helpers: bool) -> Vec<u8> {
+fn build_compiled_rdata(
+    image: &ObjectImage,
+    needs_console_helpers: bool,
+    needs_string_concat: bool,
+) -> Vec<u8> {
     let mut data = image.rodata.clone();
     if needs_console_helpers {
         data.push(b'\n');
         data.push(0);
+    }
+    if needs_string_concat {
+        pad_to(&mut data, 8);
+        data.extend(std::iter::repeat_n(0, 4096));
     }
     pad_to(&mut data, FILE_ALIGNMENT as usize);
     data

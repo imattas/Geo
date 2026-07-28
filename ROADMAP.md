@@ -208,7 +208,7 @@ Deliverables:
 - Direct ELF64 relocatable object writer.
 - `geo emit-obj` CLI path for compiler-owned Linux ELF64 objects.
 - `geo emit-obj` CLI path for compiler-owned Windows AMD64 COFF objects.
-- PE64 writer support for runtime imports and external symbols.
+- PE64 writer support for runtime imports, local helper symbols, and external symbols.
 - NASM backend retained as the stable fallback.
 
 Acceptance criteria:
@@ -217,6 +217,8 @@ Acceptance criteria:
 - Windows target emits valid Windows x64 calls.
 - Object writer tests cover sections, symbols, and relocations.
 - CI emits a Linux object without invoking NASM.
+
+Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, and fixed-buffer `string_concat`.
 
 ## Phase 9: Self-Hosting Foundation Examples
 

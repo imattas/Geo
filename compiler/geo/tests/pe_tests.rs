@@ -933,7 +933,9 @@ fn emits_direct_pe64_string_concat_output() {
     assert_eq!(&pe[0x80..0x84], b"PE\0\0");
     assert!(contains_bytes(&pe, b"GetStdHandle"));
     assert!(contains_bytes(&pe, b"WriteFile"));
-    assert!(contains_bytes(&pe, b"Geo compiler\n"));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28, 0xe8]));
+    assert!(contains_bytes(&pe, b"Geo \0compiler\0"));
+    assert!(contains_bytes(&pe, &[0x41, 0xc6, 0x00, 0x00, 0xc3]));
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
