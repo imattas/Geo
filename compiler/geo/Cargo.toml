@@ -12,3 +12,4 @@ clap = { version = "4", features = ["derive"] }
 geo-diagnostics = { path = "../geo_diagnostics" }
 geo-source = { path = "../geo_source" }
 geo-syntax = { path = "../geo_syntax" }
+geo-ir = { path = "../geo_ir" }

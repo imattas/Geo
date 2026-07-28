@@ -18,6 +18,10 @@ compiler/
     Cargo.toml
     src/
     tests/
+  geo_ir/
+    Cargo.toml
+    src/
+    tests/
   geo_diagnostics/
     Cargo.toml
     src/
@@ -52,6 +56,7 @@ Workspace members:
 
 - `compiler/geo`
 - `compiler/geo_syntax`
+- `compiler/geo_ir`
 - `compiler/geo_diagnostics`
 - `compiler/geo_source`
 - `src/bootstrap`
@@ -201,7 +206,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 ## Known Gaps
 
-- Compiler internals are still mostly one crate; syntax is now owned by `compiler/geo_syntax`.
+- Compiler internals are still mostly one crate; syntax is owned by `compiler/geo_syntax` and IR is owned by `compiler/geo_ir`.
 - Runtime ABI is not yet documented as a stable contract.
 - Formatter is minimal.
 - Distribution/install layout is not defined.

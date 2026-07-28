@@ -4,7 +4,7 @@ pub mod cli;
 pub mod diagnostics;
 pub mod driver;
 pub mod elf;
-pub mod ir;
+pub use geo_ir::ir;
 pub use geo_syntax::lexer;
 pub mod lower;
 pub mod object;

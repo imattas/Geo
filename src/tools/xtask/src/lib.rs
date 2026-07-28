@@ -93,6 +93,7 @@ fn required_paths() -> Vec<&'static str> {
     vec![
         "compiler/geo",
         "compiler/geo_syntax",
+        "compiler/geo_ir",
         "compiler/geo_diagnostics",
         "compiler/geo_source",
         "library/geo_runtime",
