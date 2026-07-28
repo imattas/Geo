@@ -56,6 +56,27 @@ fn emits_win64_coff_string_data_and_text_relocation() {
     assert!(text_relocation_count(&object) > 0);
 }
 
+#[test]
+fn emits_win64_coff_internal_function_call_relocation() {
+    let object = coff_for(
+        r#"
+            fn add(left: int, right: int) -> int {
+                return left + right
+            }
+
+            fn main() -> int {
+                return add(40, 2)
+            }
+        "#,
+    );
+
+    assert_eq!(read_u32(&object, 12), 2);
+    assert!(contains_bytes(&object, b"add"));
+    assert!(contains_bytes(&object, b"main"));
+    assert!(contains_bytes(&object, &[0xe8, 0, 0, 0, 0]));
+    assert!(text_relocation_count(&object) > 0);
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
@@ -64,6 +85,10 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
 }
 
 fn text_relocation_count(object: &[u8]) -> u16 {

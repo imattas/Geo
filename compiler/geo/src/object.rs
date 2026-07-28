@@ -38,18 +38,22 @@ pub fn emit_elf64_relocatable(program: &IrProgram) -> Vec<u8> {
 }
 
 pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
-    let main = program
+    program
         .functions
         .iter()
-        .find(|function| function.name == "main")?;
-    let image = emit_coff_image_subset(main)?;
+        .any(|function| function.name == "main")
+        .then_some(())?;
+    let image = build_coff_image_subset(program)?;
     let section_table_offset = 20_usize;
     let section_count = if image.rodata.is_empty() { 1_u16 } else { 2 };
     let text_offset = section_table_offset + section_count as usize * 40;
     let rdata_offset = text_offset + image.text.len();
     let text_relocation_offset = rdata_offset + image.rodata.len();
     let symbol_table_offset = text_relocation_offset + image.relocations.len() * 10;
-    let symbol_count = 1_u32 + image.data_symbols.len() as u32;
+    let undefined_symbols = coff_undefined_symbols(&image);
+    let symbol_count = image.functions.len() as u32
+        + image.data_symbols.len() as u32
+        + undefined_symbols.len() as u32;
     let symbol_indices = coff_symbol_indices(&image);
     let mut string_table = vec![0_u8; 4];
 
@@ -91,25 +95,32 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
     out.extend_from_slice(&image.text);
     out.extend_from_slice(&image.rodata);
     for relocation in &image.relocations {
-        let RelocationKind::Pc32 = relocation.kind else {
-            return None;
-        };
         let symbol_index = *symbol_indices.get(&relocation.symbol)?;
         out.extend_from_slice(&(relocation.offset as u32).to_le_bytes());
         out.extend_from_slice(&symbol_index.to_le_bytes());
         out.extend_from_slice(&IMAGE_REL_AMD64_REL32.to_le_bytes());
     }
 
-    write_coff_symbol_name(&mut out, b"main", &mut string_table);
-    out.extend_from_slice(&0_u32.to_le_bytes());
-    out.extend_from_slice(&1_i16.to_le_bytes());
-    out.extend_from_slice(&IMAGE_SYM_DTYPE_FUNCTION.to_le_bytes());
-    out.push(IMAGE_SYM_CLASS_EXTERNAL);
-    out.push(0);
+    for function in &image.functions {
+        write_coff_symbol_name(&mut out, function.name.as_bytes(), &mut string_table);
+        out.extend_from_slice(&(function.offset as u32).to_le_bytes());
+        out.extend_from_slice(&1_i16.to_le_bytes());
+        out.extend_from_slice(&IMAGE_SYM_DTYPE_FUNCTION.to_le_bytes());
+        out.push(IMAGE_SYM_CLASS_EXTERNAL);
+        out.push(0);
+    }
     for symbol in &image.data_symbols {
         write_coff_symbol_name(&mut out, symbol.name.as_bytes(), &mut string_table);
         out.extend_from_slice(&(symbol.offset as u32).to_le_bytes());
         out.extend_from_slice(&2_i16.to_le_bytes());
+        out.extend_from_slice(&0_u16.to_le_bytes());
+        out.push(IMAGE_SYM_CLASS_EXTERNAL);
+        out.push(0);
+    }
+    for symbol in undefined_symbols {
+        write_coff_symbol_name(&mut out, symbol.as_bytes(), &mut string_table);
+        out.extend_from_slice(&0_u32.to_le_bytes());
+        out.extend_from_slice(&0_i16.to_le_bytes());
         out.extend_from_slice(&0_u16.to_le_bytes());
         out.push(IMAGE_SYM_CLASS_EXTERNAL);
         out.push(0);
@@ -121,45 +132,53 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn emit_coff_image_subset(function: &IrFunction) -> Option<ObjectImage> {
-    let mut text = Vec::new();
-    let mut rdata = Vec::new();
-    let mut data_symbols = Vec::new();
-    let mut relocations = Vec::new();
-    emit_function_text(
-        function,
-        &mut text,
-        &mut rdata,
-        &mut data_symbols,
-        &mut relocations,
-    );
-    if relocations
-        .iter()
-        .any(|relocation| !matches!(relocation.kind, RelocationKind::Pc32))
-    {
+fn build_coff_image_subset(program: &IrProgram) -> Option<ObjectImage> {
+    let image = build_image(program);
+    if image.relocations.iter().any(|relocation| {
+        !matches!(
+            relocation.kind,
+            RelocationKind::Pc32 | RelocationKind::Plt32
+        )
+    }) {
         return None;
     }
 
-    Some(ObjectImage {
-        text,
-        rodata: rdata,
-        functions: vec![FunctionSymbol {
-            name: function.name.clone(),
-            offset: 0,
-            size: 0,
-        }],
-        data_symbols,
-        relocations,
-    })
+    Some(image)
 }
 
 fn coff_symbol_indices(image: &ObjectImage) -> HashMap<String, u32> {
     let mut indices = HashMap::new();
-    indices.insert("main".to_string(), 0);
+    let mut next_index = 0_u32;
+    for function in &image.functions {
+        indices.insert(function.name.clone(), next_index);
+        next_index += 1;
+    }
     for (index, symbol) in image.data_symbols.iter().enumerate() {
-        indices.insert(symbol.name.clone(), index as u32 + 1);
+        indices.insert(symbol.name.clone(), next_index + index as u32);
+    }
+    next_index += image.data_symbols.len() as u32;
+    for symbol in coff_undefined_symbols(image) {
+        indices.insert(symbol, next_index);
+        next_index += 1;
     }
     indices
+}
+
+fn coff_undefined_symbols(image: &ObjectImage) -> Vec<String> {
+    let defined: Vec<&str> = image
+        .functions
+        .iter()
+        .map(|function| function.name.as_str())
+        .chain(image.data_symbols.iter().map(|symbol| symbol.name.as_str()))
+        .collect();
+    let mut symbols = Vec::new();
+    for relocation in &image.relocations {
+        if defined.contains(&relocation.symbol.as_str()) || symbols.contains(&relocation.symbol) {
+            continue;
+        }
+        symbols.push(relocation.symbol.clone());
+    }
+    symbols
 }
 
 fn write_coff_short_name(out: &mut Vec<u8>, name: &[u8]) {
