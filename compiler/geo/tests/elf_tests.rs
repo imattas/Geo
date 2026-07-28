@@ -164,6 +164,41 @@ fn emits_direct_elf64_file_read_runtime() {
     assert!(contains_bytes(&executable, &[0xb8, 8, 0, 0, 0, 0x0f, 0x05]));
 }
 
+#[test]
+fn emits_direct_elf64_file_read_with_default_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+            import std.string
+
+            fn main() -> int {
+                return string_len(read_file_or("/tmp/geo-missing-file", "fallback")) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 2, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xe8]));
+    assert!(contains_bytes(&executable, b"fallback\0"));
+}
+
+#[test]
+fn emits_direct_elf64_read_line_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+            import std.string
+
+            fn main() -> int {
+                return string_len(read_line()) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0x31, 0xc0, 0x0f, 0x05]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }

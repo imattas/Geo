@@ -220,7 +220,7 @@ Acceptance criteria:
 
 Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, string helpers, allocation-backed `string_concat`, `std.process.exit`, `std.mem.alloc`, and `std.io.read_file` using compiler-emitted Windows helpers and imports. The read path uses the Win64 ABI directly and returns a NUL-terminated buffer for Geo string operations.
 
-Current ELF64 executable progress: current-subset Linux programs now use a compiler-owned `_start` wrapper, patched internal/data relocations, direct `string_len`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.io.read_file`, `std.io.write_file`, and allocation-backed `string_concat` using Linux syscalls. Broader standard-library runtime coverage and failure-path handling remain open.
+Current ELF64 executable progress: current-subset Linux programs now use a compiler-owned `_start` wrapper, patched internal/data relocations, direct `string_len`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.io.read_file`, `std.io.read_file_or`, `std.io.read_line`, `std.io.write_file`, and allocation-backed `string_concat` using Linux syscalls. Broader standard-library runtime coverage and failure-path handling remain open.
 
 ## Phase 9: Self-Hosting Foundation Examples
 

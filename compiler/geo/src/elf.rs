@@ -71,6 +71,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         .collect();
     let mut code = Vec::new();
     let mut symbols = HashMap::new();
+    let runtime_base = BASE + TEXT_OFFSET as u64 + START_LEN as u64 + image.text.len() as u64;
     for name in image
         .relocations
         .iter()
@@ -91,12 +92,24 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "write_file" => emit_write_file_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
+            "read_line" => emit_read_line_runtime(&mut code),
+            "read_file_or" => {
+                let read_file_offset = if let Some(symbol) = symbols.get("read_file") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_read_file_runtime(&mut code);
+                    symbols.insert("read_file".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let wrapper_offset = code.len();
+                emit_read_file_or_runtime(&mut code, read_file_offset);
+                symbols.insert(name.to_string(), runtime_base + wrapper_offset as u64);
+                continue;
+            }
             _ => continue,
         }
-        symbols.insert(
-            name.to_string(),
-            BASE + TEXT_OFFSET as u64 + START_LEN as u64 + image.text.len() as u64 + offset as u64,
-        );
+        symbols.insert(name.to_string(), runtime_base + offset as u64);
     }
     RuntimeText { code, symbols }
 }
@@ -383,6 +396,68 @@ fn emit_read_file_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
     patch_near_jump(code, open_failed, failure_target);
     patch_near_jump(code, allocation_failed, failure_target);
+}
+
+fn emit_read_file_or_runtime(code: &mut Vec<u8>, read_file_offset: usize) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x18]);
+    code.extend_from_slice(&[0x48, 0x89, 0x74, 0x24, 0x08]);
+    code.push(0xe8);
+    let displacement = read_file_offset as isize - (code.len() as isize + 4);
+    code.extend_from_slice(&(displacement as i32).to_le_bytes());
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let has_value = code.len();
+    code.extend_from_slice(&[0x75, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x08]);
+    let done = code.len();
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x18, 0xc3]);
+    code[has_value + 1] = (done as isize - (has_value as isize + 2)) as i8 as u8;
+}
+
+fn emit_read_line_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[0x31, 0xff]);
+    code.extend_from_slice(&[0xbe, 0x00, 0x10, 0x00, 0x00]);
+    code.extend_from_slice(&[0xba, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xba, 0x22, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0xb8, 0x09, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x89, 0x04, 0x24]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+
+    code.extend_from_slice(&[0x31, 0xff]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x34, 0x24]);
+    code.extend_from_slice(&[0xba, 0xff, 0x0f, 0x00, 0x00]);
+    code.extend_from_slice(&[0x31, 0xc0, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let read_empty = emit_short_jump_placeholder(code, 0x7e);
+    code.extend_from_slice(&[0x49, 0x89, 0xc0]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    let scan = code.len();
+    code.extend_from_slice(&[0x4c, 0x39, 0xc1]);
+    let scan_done = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[0x80, 0x3c, 0x0e, 0x0a]);
+    let newline = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, scan);
+    let newline_target = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    let terminate = code.len();
+    code.extend_from_slice(&[0xc6, 0x04, 0x0e, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x04, 0x24]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let empty = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x34, 0x24]);
+    code.extend_from_slice(&[0xc6, 0x06, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+
+    patch_near_jump(code, allocation_failed, failure);
+    patch_short_jump(code, read_empty, empty);
+    patch_short_jump(code, scan_done, terminate);
+    patch_short_jump(code, newline, newline_target);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {

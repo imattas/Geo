@@ -40,10 +40,15 @@ mod tests {
 
 fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let image = crate::object::build_win64_code_image(program)?;
+    let needs_read_line = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "read_line");
     let needs_console_helpers = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println");
+        .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println")
+        || needs_read_line;
     let needs_string_concat = image
         .relocations
         .iter()
@@ -55,10 +60,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 "alloc" | "alloc_zeroed" | "alloc_array"
             )
         });
-    let needs_file_read = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "read_file");
+    let needs_file_read = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "read_file" | "read_file_or" | "read_line"
+        )
+    });
     let layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
@@ -495,6 +502,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "println");
+    let needs_read_line = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "read_line");
     let needs_string_concat = image
         .relocations
         .iter()
@@ -621,7 +632,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_file_read = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "read_file");
+        .any(|relocation| matches!(relocation.symbol.as_str(), "read_file" | "read_file_or"));
+    let needs_file_read_or = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "read_file_or");
     let needs_process_exit = image
         .relocations
         .iter()
@@ -680,6 +695,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_parse_int
         || needs_alloc
         || needs_file_read
+        || needs_file_read_or
+        || needs_read_line
         || needs_process_exit
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
@@ -833,6 +850,15 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.read_file = Some(layout.text_rva + code.len() as u32);
         emit_read_file_helper(&mut code, layout);
     }
+    if needs_file_read_or {
+        let read_file = helpers.read_file?;
+        helpers.read_file_or = Some(layout.text_rva + code.len() as u32);
+        emit_read_file_or_helper(&mut code, layout, read_file);
+    }
+    if needs_read_line {
+        helpers.read_line = Some(layout.text_rva + code.len() as u32);
+        emit_read_line_helper(&mut code, layout);
+    }
     patch_compiled_relocations(&mut code, layout, image, function_base, &helpers)?;
     pad_to(&mut code, FILE_ALIGNMENT as usize);
     Some(code)
@@ -971,6 +997,12 @@ fn compiled_symbol_rva(
     if symbol == "read_file" {
         return helpers.read_file;
     }
+    if symbol == "read_file_or" {
+        return helpers.read_file_or;
+    }
+    if symbol == "read_line" {
+        return helpers.read_line;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -992,6 +1024,8 @@ struct PeHelperRvas {
     exit_process: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
+    read_file_or: Option<u32>,
+    read_line: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
     string_byte_at: Option<u32>,
@@ -2023,6 +2057,71 @@ fn emit_read_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_near_jump(code, invalid_handle, no_handle);
     patch_near_jump(code, allocation_failed, failure);
     patch_near_jump(code, read_failed, failure);
+}
+
+fn emit_read_file_or_helper(code: &mut Vec<u8>, layout: &Layout, read_file_rva: u32) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x20]);
+    emit_direct_call(code, layout.text_rva, read_file_rva);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let has_value = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x20]);
+    let done = code.len();
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, has_value, done);
+}
+
+fn emit_read_line_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+
+    // GetStdHandle(STD_INPUT_HANDLE), then reserve a bounded input buffer.
+    code.extend_from_slice(&[0xb9, 0xf6, 0xff, 0xff, 0xff]);
+    emit_call_iat(code, layout, layout.get_std_handle_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    code.extend_from_slice(&[0xba, 0x00, 0x10, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x84);
+
+    // ReadFile(handle, buffer, 4095, &bytes_read, NULL).
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x40]);
+    code.extend_from_slice(&[0x41, 0xb8, 0xff, 0x0f, 0x00, 0x00]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x4c, 0x24, 0x34]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.read_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let read_failed = emit_near_jump_placeholder(code, 0x84);
+
+    // Truncate at the first newline, otherwise terminate at bytes_read.
+    code.extend_from_slice(&[0x4c, 0x8b, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x8b, 0x4c, 0x24, 0x34]);
+    code.extend_from_slice(&[0x48, 0x89, 0xca]);
+    code.extend_from_slice(&[0x31, 0xc0]);
+    let scan = code.len();
+    code.extend_from_slice(&[0x48, 0x39, 0xd0]);
+    let scan_done = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[0x41, 0x80, 0x3c, 0x00, 0x0a]);
+    let newline = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    emit_short_jump_back(code, scan);
+    let newline_target = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    let terminate = code.len();
+    code.extend_from_slice(&[0x41, 0xc6, 0x04, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_near_jump(code, allocation_failed, failure);
+    patch_near_jump(code, read_failed, failure);
+    patch_short_jump(code, scan_done, terminate);
+    patch_short_jump(code, newline, newline_target);
 }
 
 fn build_compiled_rdata(image: &ObjectImage, needs_console_helpers: bool) -> Vec<u8> {

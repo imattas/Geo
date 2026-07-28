@@ -1036,6 +1036,42 @@ fn emits_direct_pe64_file_read_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_file_read_with_default_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+            import std.string
+
+            fn main() -> int {
+                return string_len(read_file_or("C:\\geo-missing-file", "fallback")) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"CreateFileA"));
+    assert!(contains_bytes(&pe, b"ReadFile"));
+    assert!(contains_bytes(&pe, b"fallback\0"));
+}
+
+#[test]
+fn emits_direct_pe64_read_line_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+            import std.string
+
+            fn main() -> int {
+                return string_len(read_line()) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"GetStdHandle"));
+    assert!(contains_bytes(&pe, b"ReadFile"));
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"
