@@ -1054,6 +1054,23 @@ fn emits_direct_pe64_file_read_with_default_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_file_write_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return write_file("C:\\geo-write-file-test", "Geo")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"CreateFileA"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"CloseHandle"));
+}
+
+#[test]
 fn emits_direct_pe64_read_line_as_compiled_helper() {
     let pe = pe_for(
         r#"

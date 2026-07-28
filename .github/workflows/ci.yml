@@ -76,6 +76,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/mem_predicates_exit.geo --target x86_64-linux -o target/ci-mem-predicates-linux
       - name: Build compiler-owned Linux memory-reordering executable
         run: cargo run --locked --quiet -- build examples/mem_reorder_exit.geo --target x86_64-linux -o target/ci-mem-reorder-linux
+      - name: Build compiler-owned Linux file-write executable
+        run: cargo run --locked --quiet -- build examples/write_file_exit.geo --target x86_64-linux -o target/ci-write-file-linux
 
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
@@ -111,6 +113,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/mem_predicates_exit.geo --target x86_64-windows -o target/ci-mem-predicates-windows.exe
       - name: Build compiler-owned Windows memory-reordering executable
         run: cargo run --locked --quiet -- build examples/mem_reorder_exit.geo --target x86_64-windows -o target/ci-mem-reorder-windows.exe
+      - name: Build compiler-owned Windows file-write executable
+        run: cargo run --locked --quiet -- build examples/write_file_exit.geo --target x86_64-windows -o target/ci-write-file-windows.exe
 
       - name: Emit Linux object
         run: cargo run --locked --quiet -- emit-obj examples/object_backend.geo --target x86_64-linux -o target/ci-object-backend-linux.o

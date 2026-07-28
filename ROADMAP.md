@@ -224,6 +224,8 @@ Current PE64 progress: current-subset programs now use compiled Win64 machine co
 
 Current ELF64 executable progress: current-subset Linux programs now use a compiler-owned `_start` wrapper, patched internal/data relocations, direct `string_len`, `string_from_byte`, allocation-backed `string_clone`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.mem.alloc_copy`, `std.mem.mem_copy`, `std.mem.mem_move`, `std.mem.mem_zero`, `std.mem.mem_fill`, `std.mem.mem_find`, `std.mem.mem_compare`, `std.mem.mem_equal`, `std.mem.mem_is_zero`, `std.mem.mem_reverse`, `std.io.read_file`, `std.io.read_file_or`, `std.io.read_line`, `std.io.write_file`, and allocation-backed `string_concat` using Linux syscalls. Broader standard-library runtime coverage and failure-path handling remain open.
 
+Current PE64 executable progress: current-subset Windows programs now use compiler-emitted Win64 machine code for entry, internal calls, console IO, allocation, memory primitives, string helpers, file reads, line input, and `std.io.write_file` through direct `CreateFileA`/`WriteFile`/`CloseHandle` imports. Broader standard-library runtime coverage and failure-path handling remain open.
+
 ## Phase 9: Self-Hosting Foundation Examples
 
 Goal: prove Geo can express real compiler components.

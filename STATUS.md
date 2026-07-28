@@ -119,6 +119,8 @@ cargo run --quiet -- build examples\mem_predicates_exit.geo --target x86_64-linu
 cargo run --quiet -- build examples\mem_predicates_exit.geo --target x86_64-windows -o target\mem_predicates_exit.exe
 cargo run --quiet -- build examples\mem_reorder_exit.geo --target x86_64-linux -o target\mem_reorder_exit
 cargo run --quiet -- build examples\mem_reorder_exit.geo --target x86_64-windows -o target\mem_reorder_exit.exe
+cargo run --quiet -- build examples\write_file_exit.geo --target x86_64-linux -o target\write_file_exit
+cargo run --quiet -- build examples\write_file_exit.geo --target x86_64-windows -o target\write_file_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -195,6 +197,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_compare`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_equal` and `std.mem.mem_is_zero`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_reverse`
+- direct PE64 executable emission also includes compiler-owned `std.io.write_file`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
