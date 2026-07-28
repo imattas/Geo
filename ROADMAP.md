@@ -218,7 +218,7 @@ Acceptance criteria:
 - Object writer tests cover sections, symbols, and relocations.
 - CI emits a Linux object without invoking NASM.
 
-Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, `string_len`, `string_byte_at`, `string_find_byte`, `string_last_find_byte`, `string_index_of`, `string_last_index_of`, `string_count`, `string_compare`, `string_contains`, `string_starts_with`, `string_ends_with`, `string_eq`, `string_not_eq`, `string_less`, `string_less_or_equal`, `string_greater`, `string_greater_or_equal`, `string_is_empty`, `string_is_ascii`, `string_is_ascii_digit`, `string_is_ascii_hex_digit`, `string_is_ascii_alpha`, `string_is_ascii_lower`, `string_is_ascii_upper`, `string_is_ascii_alnum`, `string_is_ascii_identifier`, `string_is_ascii_whitespace`, and fixed-buffer `string_concat`.
+Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, `string_len`, `string_byte_at`, `string_find_byte`, `string_last_find_byte`, `string_index_of`, `string_last_index_of`, `string_count`, `string_parse_int`, `string_compare`, `string_contains`, `string_starts_with`, `string_ends_with`, `string_eq`, `string_not_eq`, `string_less`, `string_less_or_equal`, `string_greater`, `string_greater_or_equal`, `string_is_empty`, `string_is_ascii`, `string_is_ascii_digit`, `string_is_ascii_hex_digit`, `string_is_ascii_alpha`, `string_is_ascii_lower`, `string_is_ascii_upper`, `string_is_ascii_alnum`, `string_is_ascii_identifier`, `string_is_ascii_whitespace`, and fixed-buffer `string_concat`.
 
 ## Phase 9: Self-Hosting Foundation Examples
 

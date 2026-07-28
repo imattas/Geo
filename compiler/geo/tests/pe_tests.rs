@@ -1643,6 +1643,30 @@ fn emits_direct_pe64_string_count_as_compiled_helper() {
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }
 
+#[test]
+fn emits_direct_pe64_string_parse_int_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_parse_int(" -42")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x28, 0xe8]));
+    assert!(contains_bytes(&pe, b" -42\0"));
+    assert!(contains_bytes(&pe, &[0x49, 0x89, 0xc8, 0x49, 0x31, 0xc9]));
+    assert!(contains_bytes(&pe, &[0x4d, 0x6b, 0xc9, 0x0a]));
+    assert!(contains_bytes(&pe, &[0x4d, 0x01, 0xd9]));
+    assert!(contains_bytes(&pe, &[0x4d, 0x0f, 0xaf, 0xca]));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())

@@ -504,6 +504,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_count");
+    let needs_string_parse_int = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_parse_int");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -561,6 +565,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_index_of
         || needs_string_last_index_of
         || needs_string_count
+        || needs_string_parse_int
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -678,6 +683,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_count {
         helpers.string_count = Some(layout.text_rva + code.len() as u32);
         emit_string_count_helper(&mut code);
+    }
+    if needs_string_parse_int {
+        helpers.string_parse_int = Some(layout.text_rva + code.len() as u32);
+        emit_string_parse_int_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -818,6 +827,9 @@ fn compiled_symbol_rva(
     if symbol == "string_count" {
         return helpers.string_count;
     }
+    if symbol == "string_parse_int" {
+        return helpers.string_parse_int;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -864,6 +876,7 @@ struct PeHelperRvas {
     string_index_of: Option<u32>,
     string_last_index_of: Option<u32>,
     string_count: Option<u32>,
+    string_parse_int: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -1590,6 +1603,60 @@ fn emit_string_count_helper(code: &mut Vec<u8>) {
     patch_short_jump(code, matched, found_target);
     patch_short_jump(code, advance, return_target);
     patch_short_jump(code, mismatch, advance_target);
+}
+
+fn emit_string_parse_int_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x49, 0x89, 0xc8]);
+    code.extend_from_slice(&[0x49, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc2, 0x01, 0x00, 0x00, 0x00]);
+
+    let skip_whitespace = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x00]);
+    let mut whitespace_jumps = Vec::new();
+    for byte in [b' ', b'\t', b'\n', b'\r', 0x0b, 0x0c] {
+        code.extend_from_slice(&[0x3c, byte]);
+        whitespace_jumps.push(emit_short_jump_placeholder(code, 0x74));
+    }
+
+    code.extend_from_slice(&[0x3c, b'-']);
+    let positive_sign = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc2, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    let digit_start = emit_short_jump_placeholder(code, 0xeb);
+
+    let positive_sign_target = code.len();
+    code.extend_from_slice(&[0x3c, b'+']);
+    let no_plus_sign = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    let plus_to_digits = emit_short_jump_placeholder(code, 0xeb);
+
+    let digit_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x00]);
+    code.extend_from_slice(&[0x3c, b'0']);
+    let done_below = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x3c, b'9']);
+    let done_above = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x4c, 0x0f, 0xb6, 0xd8]);
+    code.extend_from_slice(&[0x49, 0x83, 0xeb, b'0']);
+    code.extend_from_slice(&[0x4d, 0x6b, 0xc9, 0x0a]);
+    code.extend_from_slice(&[0x4d, 0x01, 0xd9]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, digit_loop);
+
+    let done = code.len();
+    code.extend_from_slice(&[0x4d, 0x0f, 0xaf, 0xca]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc8]);
+    code.push(0xc3);
+
+    for jump in whitespace_jumps {
+        patch_short_jump(code, jump, skip_whitespace);
+    }
+    patch_short_jump(code, positive_sign, positive_sign_target);
+    patch_short_jump(code, digit_start, digit_loop);
+    patch_short_jump(code, no_plus_sign, digit_loop);
+    patch_short_jump(code, plus_to_digits, digit_loop);
+    patch_short_jump(code, done_below, done);
+    patch_short_jump(code, done_above, done);
 }
 
 fn emit_string_all_bytes_in_range_helper(code: &mut Vec<u8>, min: u8, max: u8) {
