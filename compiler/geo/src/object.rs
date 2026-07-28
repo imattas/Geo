@@ -151,6 +151,10 @@ pub(crate) fn build_win64_code_image(program: &IrProgram) -> Option<ObjectImage>
     Some(image)
 }
 
+pub(crate) fn build_linux_code_image(program: &IrProgram) -> ObjectImage {
+    build_image_for_abi(program, TargetAbi::SystemV)
+}
+
 fn coff_symbol_indices(image: &ObjectImage) -> HashMap<String, u32> {
     let mut indices = HashMap::new();
     let mut next_index = 0_u32;

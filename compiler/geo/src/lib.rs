@@ -3,6 +3,7 @@ pub mod borrow;
 pub mod cli;
 pub mod diagnostics;
 pub mod driver;
+pub mod elf;
 pub mod ir;
 pub mod lexer;
 pub mod lower;

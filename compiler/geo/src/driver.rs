@@ -252,6 +252,16 @@ fn build_executable(
             return Ok(());
         }
     }
+    if config.target.triple == TargetTriple::X86_64Linux {
+        if let Some(image) = crate::elf::emit_elf64_executable(&ir) {
+            fs::write(output, image).map_err(|err| {
+                vec![Diagnostic::error(format!(
+                    "failed to write ELF executable: {err}"
+                ))]
+            })?;
+            return Ok(());
+        }
+    }
     let asm = crate::x86_64::emit_nasm_for_target_with_runtime_entry(
         &ir,
         &config.target,

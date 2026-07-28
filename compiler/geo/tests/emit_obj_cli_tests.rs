@@ -63,6 +63,34 @@ fn cli_emit_obj_writes_win64_coff_relocatable_without_external_assembler() {
     assert!(contains_bytes(&bytes, &[0xc9, 0xc3]));
 }
 
+#[test]
+fn cli_build_writes_compiler_owned_linux_executable_subset() {
+    let input = workspace_path("examples/return_42.geo");
+    let output = std::env::temp_dir().join(format!("geo-return-42-{}.elf", std::process::id()));
+
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_geo"))
+        .args([
+            "build",
+            input.to_string_lossy().as_ref(),
+            "-o",
+            output.to_string_lossy().as_ref(),
+            "--target",
+            "x86_64-linux",
+        ])
+        .status()
+        .expect("failed to run geo build");
+    let bytes = std::fs::read(&output).unwrap_or_default();
+    let _ = std::fs::remove_file(&output);
+
+    assert!(status.success());
+    assert_eq!(&bytes[0..4], b"\x7fELF");
+    assert_eq!(read_u16(&bytes, 16), 2);
+    assert!(contains_bytes(
+        &bytes,
+        &[0x89, 0xc7, 0xb8, 60, 0, 0, 0, 0x0f, 0x05]
+    ));
+}
+
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())

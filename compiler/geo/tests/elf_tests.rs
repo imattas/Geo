@@ -1,0 +1,107 @@
+use geo::elf::emit_elf64_executable;
+use geo::lexer::lex;
+use geo::lower::lower;
+use geo::parser::parse;
+use geo::typecheck::check;
+
+fn executable_for(source: &str) -> Vec<u8> {
+    let tokens = lex(source).unwrap();
+    let program = parse(&tokens).unwrap();
+    check(&program).unwrap();
+    emit_elf64_executable(&lower(&program)).expect("program should fit direct ELF64 subset")
+}
+
+#[test]
+fn emits_direct_elf64_executable_with_exit_entry() {
+    let executable = executable_for("fn main() -> int { return 42 }");
+
+    assert_eq!(&executable[0..4], b"\x7fELF");
+    assert_eq!(executable[4], 2);
+    assert_eq!(read_u64(&executable, 24), 0x401000);
+    assert_eq!(read_u16(&executable, 18), 0x3e);
+    assert_eq!(read_u16(&executable, 56), 1);
+    assert!(contains_bytes(
+        &executable,
+        &[0x89, 0xc7, 0xb8, 60, 0, 0, 0, 0x0f, 0x05]
+    ));
+}
+
+#[test]
+fn emits_direct_elf64_string_length_runtime_helper() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_len("Geo") as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(
+        &executable,
+        &[0x48, 0x89, 0xfe, 0x31, 0xc0, 0x0f, 0xb6, 0x0e, 0x85, 0xc9]
+    ));
+    assert!(contains_bytes(
+        &executable,
+        &[0x74, 0x08, 0x48, 0xff, 0xc6, 0x48, 0xff, 0xc0, 0xeb, 0xf1]
+    ));
+}
+
+#[test]
+fn emits_direct_elf64_console_runtime_syscall() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() {
+                println("Geo")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 1, 0, 0, 0]));
+    assert!(contains_bytes(&executable, &[0xbf, 1, 0, 0, 0]));
+    assert!(contains_bytes(&executable, &[0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xba, 1, 0, 0, 0]));
+    assert!(contains_bytes(
+        &executable,
+        &[0x74, 0x07, 0x49, 0xff, 0xc0, 0xff, 0xc2, 0xeb, 0xf1]
+    ));
+    assert!(!contains_bytes(&executable, &[0x48, 0x89, 0xf2]));
+    assert!(contains_bytes(
+        &executable,
+        &[0x48, 0x83, 0xec, 0x08, 0xc6, 0x04, 0x24, b'\n', 0xb8, 1, 0, 0, 0]
+    ));
+}
+
+#[test]
+fn emits_direct_elf64_string_concat_mmap_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() {
+                let message: string = "Geo" + " compiler"
+                println(message)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0x48, 0x83, 0xec, 0x38]));
+}
+
+fn read_u16(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
+}
+
+fn read_u64(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+}
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
