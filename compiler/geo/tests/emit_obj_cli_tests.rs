@@ -33,11 +33,11 @@ fn cli_emit_obj_writes_elf64_relocatable_without_external_assembler() {
 }
 
 #[test]
-fn cli_emit_obj_rejects_windows_until_coff_writer_exists() {
+fn cli_emit_obj_writes_win64_coff_relocatable_without_external_assembler() {
     let input = workspace_path("examples/return_42.geo");
     let output = std::env::temp_dir().join(format!("geo-return-42-{}.obj", std::process::id()));
 
-    let result = std::process::Command::new(env!("CARGO_BIN_EXE_geo"))
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_geo"))
         .args([
             "emit-obj",
             input.to_string_lossy().as_ref(),
@@ -46,13 +46,17 @@ fn cli_emit_obj_rejects_windows_until_coff_writer_exists() {
             "--target",
             "x86_64-windows",
         ])
-        .output()
+        .status()
         .expect("failed to run geo emit-obj");
+    let bytes = std::fs::read(&output).unwrap_or_default();
     let _ = std::fs::remove_file(&output);
 
-    assert!(!result.status.success());
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(stderr.contains("native object emission currently supports x86_64-linux"));
+    assert!(status.success());
+    assert_eq!(read_u16(&bytes, 0), 0x8664);
+    assert_eq!(read_u16(&bytes, 2), 1);
+    assert!(contains_bytes(&bytes, b".text"));
+    assert!(contains_bytes(&bytes, b"main"));
+    assert!(contains_bytes(&bytes, &[0xb8, 42, 0, 0, 0, 0xc3]));
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {

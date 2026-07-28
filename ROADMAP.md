@@ -207,6 +207,7 @@ Deliverables:
 - Data sections for strings and globals.
 - Direct ELF64 relocatable object writer.
 - `geo emit-obj` CLI path for compiler-owned Linux ELF64 objects.
+- `geo emit-obj` CLI path for compiler-owned Windows AMD64 COFF objects.
 - PE64 writer support for runtime imports and external symbols.
 - NASM backend retained as the stable fallback.
 

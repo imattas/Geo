@@ -1,7 +1,7 @@
 use crate::cli::{Cli, Command};
 use crate::diagnostics::Diagnostic;
 use crate::source::SourceFile;
-use crate::target::{Target, TargetTriple};
+use crate::target::{ObjectFormat, Target, TargetTriple};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -117,15 +117,16 @@ pub fn compile_to_asm(path: &Path, config: &CompileConfig) -> Result<String, Vec
 }
 
 pub fn compile_to_object(path: &Path, config: &CompileConfig) -> Result<Vec<u8>, Vec<Diagnostic>> {
-    if config.target.triple != TargetTriple::X86_64Linux {
-        return Err(vec![Diagnostic::error(
-            "native object emission currently supports x86_64-linux",
-        )]);
-    }
-
     let program = load_checked_program(path)?;
     let ir = crate::lower::lower(&program);
-    Ok(crate::object::emit_elf64_relocatable(&ir))
+    match config.target.object_format {
+        ObjectFormat::Elf64 => Ok(crate::object::emit_elf64_relocatable(&ir)),
+        ObjectFormat::Win64 => crate::object::emit_coff_x64_relocatable(&ir).ok_or_else(|| {
+            vec![Diagnostic::error(
+                "x86_64-windows object emission currently supports constant-return programs",
+            )]
+        }),
+    }
 }
 
 fn check_source_file(path: &Path, _config: &CompileConfig) -> Result<(), Vec<Diagnostic>> {

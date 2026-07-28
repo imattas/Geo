@@ -1,6 +1,12 @@
 use crate::ir::{CmpOp, Instruction, IrFunction, IrProgram};
 use std::collections::HashMap;
 
+const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
+const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
+const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x20;
+const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
+const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
+const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
 const SHT_PROGBITS: u32 = 1;
 const SHT_SYMTAB: u32 = 2;
 const SHT_STRTAB: u32 = 3;
@@ -27,6 +33,76 @@ pub fn emit_elf64_relocatable(program: &IrProgram) -> Vec<u8> {
         &shstrtab.bytes,
         &shstrtab.offsets,
     )
+}
+
+pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
+    let main = program
+        .functions
+        .iter()
+        .find(|function| function.name == "main")?;
+    let text = emit_coff_constant_return_text(main)?;
+    let section_table_offset = 20_usize;
+    let text_offset = section_table_offset + 40;
+    let symbol_table_offset = text_offset + text.len();
+    let symbol_count = 1_u32;
+
+    let mut out = Vec::new();
+    out.extend_from_slice(&IMAGE_FILE_MACHINE_AMD64.to_le_bytes());
+    out.extend_from_slice(&1_u16.to_le_bytes());
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&(symbol_table_offset as u32).to_le_bytes());
+    out.extend_from_slice(&symbol_count.to_le_bytes());
+    out.extend_from_slice(&0_u16.to_le_bytes());
+    out.extend_from_slice(&0_u16.to_le_bytes());
+
+    write_coff_short_name(&mut out, b".text");
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(text_offset as u32).to_le_bytes());
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&0_u16.to_le_bytes());
+    out.extend_from_slice(&0_u16.to_le_bytes());
+    out.extend_from_slice(
+        &(IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ).to_le_bytes(),
+    );
+
+    out.extend_from_slice(&text);
+
+    write_coff_short_name(&mut out, b"main");
+    out.extend_from_slice(&0_u32.to_le_bytes());
+    out.extend_from_slice(&1_i16.to_le_bytes());
+    out.extend_from_slice(&IMAGE_SYM_DTYPE_FUNCTION.to_le_bytes());
+    out.push(IMAGE_SYM_CLASS_EXTERNAL);
+    out.push(0);
+    out.extend_from_slice(&4_u32.to_le_bytes());
+
+    Some(out)
+}
+
+fn emit_coff_constant_return_text(function: &IrFunction) -> Option<Vec<u8>> {
+    let [Instruction::Const { dst, value }, Instruction::Return { value: returned }] =
+        function.instructions.as_slice()
+    else {
+        return None;
+    };
+    if dst != returned {
+        return None;
+    }
+
+    let value = i32::try_from(*value).ok()?;
+    let mut text = Vec::new();
+    text.push(0xb8);
+    text.extend_from_slice(&value.to_le_bytes());
+    text.push(0xc3);
+    Some(text)
+}
+
+fn write_coff_short_name(out: &mut Vec<u8>, name: &[u8]) {
+    let mut bytes = [0_u8; 8];
+    bytes[..name.len()].copy_from_slice(name);
+    out.extend_from_slice(&bytes);
 }
 
 struct ObjectImage {

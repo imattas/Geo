@@ -48,6 +48,8 @@ jobs:
       - name: Emit Linux hello object
         run: cargo run --locked --quiet -- emit-obj examples/hello_world.geo --target x86_64-linux -o target/ci-hello-world-linux.o
 
+      - name: Emit Windows COFF object
+        run: cargo run --locked --quiet -- emit-obj examples/return_42.geo --target x86_64-windows -o target/ci-return-42-windows.obj
+
       - name: Emit Windows assembly
         run: cargo run --locked --quiet -- emit-asm examples/return_42.geo --target x86_64-windows -o target/ci-return-42-windows.asm
-
