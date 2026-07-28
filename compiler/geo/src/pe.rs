@@ -8,12 +8,10 @@ const IMAGE_BASE: u64 = 0x140000000;
 const MAX_PE_EVAL_STEPS: usize = 100_000;
 
 pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
-    let plan = PePlan::from_program(program)?;
-    if plan.output.is_none() {
-        if let Some(image) = emit_compiled_pe64_console(program) {
-            return Some(image);
-        }
+    if let Some(image) = emit_compiled_pe64_console(program) {
+        return Some(image);
     }
+    let plan = PePlan::from_program(program)?;
     let layout = Layout::new(plan.output.as_deref().unwrap_or(""), plan.output.is_some());
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
@@ -374,6 +372,15 @@ fn build_text(layout: &Layout, plan: &PePlan) -> Vec<u8> {
 fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> {
     let entry_len = 21_u32;
     let function_base = align_to(entry_len, 16);
+    let bounds_check_rva = if image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "__geo_bounds_check")
+    {
+        Some(layout.text_rva + align_to(function_base + image.text.len() as u32, 16))
+    } else {
+        None
+    };
     let main = image
         .functions
         .iter()
@@ -389,7 +396,13 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         code.push(0xcc);
     }
     code.extend_from_slice(&image.text);
-    patch_compiled_relocations(&mut code, layout, image, function_base)?;
+    if let Some(bounds_check_rva) = bounds_check_rva {
+        while layout.text_rva + (code.len() as u32) < bounds_check_rva {
+            code.push(0xcc);
+        }
+        emit_bounds_check_helper(&mut code, layout);
+    }
+    patch_compiled_relocations(&mut code, layout, image, function_base, bounds_check_rva)?;
     pad_to(&mut code, FILE_ALIGNMENT as usize);
     Some(code)
 }
@@ -399,10 +412,17 @@ fn patch_compiled_relocations(
     layout: &Layout,
     image: &ObjectImage,
     function_base: u32,
+    bounds_check_rva: Option<u32>,
 ) -> Option<()> {
     for relocation in &image.relocations {
         let relocation_offset = function_base + relocation.offset as u32;
-        let target_rva = compiled_symbol_rva(layout, image, function_base, &relocation.symbol)?;
+        let target_rva = compiled_symbol_rva(
+            layout,
+            image,
+            function_base,
+            bounds_check_rva,
+            &relocation.symbol,
+        )?;
         let next_rva = layout.text_rva + relocation_offset + 4;
         let addend = match relocation.kind {
             RelocationKind::Pc32 | RelocationKind::Plt32 => rel32(target_rva, next_rva),
@@ -417,8 +437,12 @@ fn compiled_symbol_rva(
     layout: &Layout,
     image: &ObjectImage,
     function_base: u32,
+    bounds_check_rva: Option<u32>,
     symbol: &str,
 ) -> Option<u32> {
+    if symbol == "__geo_bounds_check" {
+        return bounds_check_rva;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -430,6 +454,16 @@ fn compiled_symbol_rva(
         return Some(layout.rdata_rva + data.offset as u32);
     }
     None
+}
+
+fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x39, 0xd1]);
+    code.extend_from_slice(&[0x73, 0x01]);
+    code.push(0xc3);
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.push(0xb9);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    emit_call_iat(code, layout, layout.exit_process_iat);
 }
 
 fn build_compiled_rdata(image: &ObjectImage) -> Vec<u8> {

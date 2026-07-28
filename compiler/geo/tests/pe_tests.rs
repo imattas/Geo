@@ -67,6 +67,26 @@ fn emits_direct_pe64_internal_function_call_as_machine_code() {
 }
 
 #[test]
+fn emits_direct_pe64_bounds_check_as_compiled_runtime_helper() {
+    let pe = pe_for(
+        r#"
+            fn main() -> int {
+                let values: [int] = [42]
+                return values[0]
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, &[0x55, 0x48, 0x89, 0xe5]));
+    assert!(contains_bytes(&pe, &[0x48, 0x83, 0xec, 0x20, 0xe8]));
+    assert!(contains_bytes(&pe, &[0x48, 0x39, 0xd1]));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
 fn emits_direct_pe64_prefixed_and_underscored_integer_literals() {
     let pe = pe_for("fn main() -> int { return 0xff + 0b1010 + 1_000 }");
 
