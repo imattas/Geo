@@ -199,6 +199,40 @@ fn emits_direct_elf64_read_line_runtime() {
     assert!(contains_bytes(&executable, &[0x31, 0xc0, 0x0f, 0x05]));
 }
 
+#[test]
+fn emits_direct_elf64_memory_copy_and_zero_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let memory: *u8 = alloc(8)
+                mem_zero(memory, 8)
+                return mem_copy(memory, memory, 8)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xf3, 0xaa]));
+}
+
+#[test]
+fn emits_direct_elf64_memory_move_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let memory: *u8 = alloc(8)
+                return mem_move(memory, memory, 8)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xf3, 0xa4]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }

@@ -629,6 +629,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             "alloc" | "alloc_zeroed" | "alloc_array"
         )
     });
+    let needs_mem_copy = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "mem_copy");
+    let needs_mem_zero = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "mem_zero");
+    let needs_mem_move = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "mem_move");
     let needs_file_read = image
         .relocations
         .iter()
@@ -694,6 +706,9 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_count
         || needs_string_parse_int
         || needs_alloc
+        || needs_mem_copy
+        || needs_mem_zero
+        || needs_mem_move
         || needs_file_read
         || needs_file_read_or
         || needs_read_line
@@ -841,6 +856,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             .iter()
             .any(|relocation| relocation.symbol == "alloc_array");
         emit_alloc_helper(&mut code, layout, array);
+    }
+    if needs_mem_copy {
+        helpers.mem_copy = Some(layout.text_rva + code.len() as u32);
+        emit_mem_copy_helper(&mut code);
+    }
+    if needs_mem_zero {
+        helpers.mem_zero = Some(layout.text_rva + code.len() as u32);
+        emit_mem_zero_helper(&mut code);
+    }
+    if needs_mem_move {
+        helpers.mem_move = Some(layout.text_rva + code.len() as u32);
+        emit_mem_move_helper(&mut code);
     }
     if needs_process_exit {
         helpers.exit_process = Some(layout.text_rva + code.len() as u32);
@@ -1003,6 +1030,15 @@ fn compiled_symbol_rva(
     if symbol == "read_line" {
         return helpers.read_line;
     }
+    if symbol == "mem_copy" {
+        return helpers.mem_copy;
+    }
+    if symbol == "mem_zero" {
+        return helpers.mem_zero;
+    }
+    if symbol == "mem_move" {
+        return helpers.mem_move;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -1026,6 +1062,9 @@ struct PeHelperRvas {
     read_file: Option<u32>,
     read_file_or: Option<u32>,
     read_line: Option<u32>,
+    mem_copy: Option<u32>,
+    mem_zero: Option<u32>,
+    mem_move: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
     string_byte_at: Option<u32>,
@@ -1996,6 +2035,84 @@ fn emit_alloc_helper(code: &mut Vec<u8>, layout: &Layout, array: bool) {
     code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
     emit_call_iat(code, layout, layout.virtual_alloc_iat);
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+}
+
+fn emit_mem_copy_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x49, 0x89, 0xca]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd3]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x13]);
+    code.extend_from_slice(&[0x41, 0x88, 0x12]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc3]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc8]);
+    code.extend_from_slice(&[
+        0x75,
+        (loop_start as isize - (code.len() as isize + 2)) as i8 as u8,
+    ]);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, done, done_target);
+}
+
+fn emit_mem_zero_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x49, 0x89, 0xca]);
+    code.extend_from_slice(&[0x48, 0x89, 0xd0]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x41, 0xc6, 0x02, 0x00]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc8]);
+    code.extend_from_slice(&[
+        0x75,
+        (loop_start as isize - (code.len() as isize + 2)) as i8 as u8,
+    ]);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, done, done_target);
+}
+
+fn emit_mem_move_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x39, 0xd1]);
+    let forward = emit_short_jump_placeholder(code, 0x76);
+    code.extend_from_slice(&[0x49, 0x89, 0xca]);
+    code.extend_from_slice(&[0x4d, 0x01, 0xc2]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd3]);
+    code.extend_from_slice(&[0x4d, 0x01, 0xc3]);
+    code.extend_from_slice(&[0x49, 0xff, 0xca]);
+    code.extend_from_slice(&[0x49, 0xff, 0xcb]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
+    let backward_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x13]);
+    code.extend_from_slice(&[0x41, 0x88, 0x12]);
+    code.extend_from_slice(&[0x49, 0xff, 0xca]);
+    code.extend_from_slice(&[0x49, 0xff, 0xcb]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc8]);
+    code.extend_from_slice(&[
+        0x75,
+        (backward_loop as isize - (code.len() as isize + 2)) as i8 as u8,
+    ]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let forward_target = code.len();
+    code.extend_from_slice(&[0x49, 0x89, 0xca]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd3]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
+    let forward_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x13]);
+    code.extend_from_slice(&[0x41, 0x88, 0x12]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc3]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc8]);
+    code.extend_from_slice(&[
+        0x75,
+        (forward_loop as isize - (code.len() as isize + 2)) as i8 as u8,
+    ]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, forward, forward_target);
 }
 
 fn emit_read_file_helper(code: &mut Vec<u8>, layout: &Layout) {

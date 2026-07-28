@@ -1072,6 +1072,41 @@ fn emits_direct_pe64_read_line_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_memory_copy_and_zero_as_compiled_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let memory: *u8 = alloc(8)
+                mem_zero(memory, 8)
+                return mem_copy(memory, memory, 8)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0x49, 0x89, 0xca]));
+}
+
+#[test]
+fn emits_direct_pe64_memory_move_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let memory: *u8 = alloc(8)
+                return mem_move(memory, memory, 8)
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0x49, 0x89, 0xca]));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"

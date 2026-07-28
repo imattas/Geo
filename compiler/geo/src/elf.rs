@@ -90,6 +90,9 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "exit_geo" => emit_exit_runtime(&mut code),
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
+            "mem_copy" => emit_mem_copy_runtime(&mut code),
+            "mem_zero" => emit_mem_zero_runtime(&mut code),
+            "mem_move" => emit_mem_move_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
@@ -458,6 +461,38 @@ fn emit_read_line_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, read_empty, empty);
     patch_short_jump(code, scan_done, terminate);
     patch_short_jump(code, newline, newline_target);
+}
+
+fn emit_mem_copy_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x89, 0xd1]);
+    code.extend_from_slice(&[0xf3, 0xa4]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+}
+
+fn emit_mem_zero_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x89, 0xf1]);
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.extend_from_slice(&[0xf3, 0xaa]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+}
+
+fn emit_mem_move_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x39, 0xf7]);
+    let forward = emit_short_jump_placeholder(code, 0x76);
+    code.extend_from_slice(&[0x48, 0x8d, 0x3c, 0x17]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x34, 0x16]);
+    code.extend_from_slice(&[0x48, 0xff, 0xcf]);
+    code.extend_from_slice(&[0x48, 0xff, 0xce]);
+    code.extend_from_slice(&[0x48, 0x89, 0xd1]);
+    code.push(0xfd);
+    code.extend_from_slice(&[0xf3, 0xa4]);
+    code.push(0xfc);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let forward_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0xd1]);
+    code.extend_from_slice(&[0xf3, 0xa4]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, forward, forward_target);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {

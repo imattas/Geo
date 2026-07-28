@@ -1220,6 +1220,17 @@ int mem_copy(void *dst, const void *src, uint64_t len) {
     return 0;
 }
 
+int mem_zero(void *dst, uint64_t len) {
+    if (len == 0) {
+        return 0;
+    }
+    if (dst == NULL) {
+        return 1;
+    }
+    memset(dst, 0, (size_t)len);
+    return 0;
+}
+
 int mem_find(const void *ptr, uint64_t len, uint8_t value) {
     if (ptr == NULL || len == 0) {
         return -1;

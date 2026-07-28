@@ -473,6 +473,15 @@ pub fn functions_for_import(path: &[String]) -> Result<Vec<RuntimeFunction>, Dia
             ),
             runtime_fn(
                 path,
+                "mem_zero",
+                vec![
+                    param("dst", Type::Pointer(Box::new(Type::U8))),
+                    param("len", Type::Usize),
+                ],
+                Type::Int,
+            ),
+            runtime_fn(
+                path,
                 "mem_find",
                 vec![
                     param("ptr", Type::Pointer(Box::new(Type::U8))),
