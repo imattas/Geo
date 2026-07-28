@@ -12158,6 +12158,44 @@ fn v1_examples_check_and_emit_for_linux_and_windows() {
     }
 }
 
+#[test]
+fn v1_examples_build_with_compiler_owned_executable_writers() {
+    for path in v1_example_paths() {
+        let input = workspace_path(path);
+        let input_arg = input.to_string_lossy();
+        for target in ["x86_64-linux", "x86_64-windows"] {
+            let extension = if target.ends_with("windows") {
+                "exe"
+            } else {
+                "bin"
+            };
+            let output = std::env::temp_dir().join(format!(
+                "geo-v1-{}-{}-{}.{}",
+                target,
+                std::process::id(),
+                path.replace(['/', '\\'], "-"),
+                extension
+            ));
+            let build = std::process::Command::new(env!("CARGO_BIN_EXE_geo"))
+                .args([
+                    "build",
+                    input_arg.as_ref(),
+                    "-o",
+                    output.to_string_lossy().as_ref(),
+                    "--target",
+                    target,
+                ])
+                .status()
+                .expect("failed to run geo build");
+            let _ = std::fs::remove_file(&output);
+            assert!(
+                build.success(),
+                "direct build failed for {path} on {target}"
+            );
+        }
+    }
+}
+
 fn v1_example_paths() -> [&'static str; 6] {
     [
         "examples/v1/buffer.geo",

@@ -136,6 +136,31 @@ jobs:
       - name: Build compiler-owned Windows handle-read executable
         run: cargo run --locked --quiet -- build examples/file_read_handle_len_exit.geo --target x86_64-windows -o target/ci-file-read-handle-windows.exe
 
+      - name: Build v1 buffer example with direct Linux writer
+        run: cargo run --locked --quiet -- build examples/v1/buffer.geo --target x86_64-linux -o target/ci-v1-buffer-linux
+      - name: Build v1 lexer example with direct Linux writer
+        run: cargo run --locked --quiet -- build examples/v1/lexer.geo --target x86_64-linux -o target/ci-v1-lexer-linux
+      - name: Build v1 diagnostics example with direct Linux writer
+        run: cargo run --locked --quiet -- build examples/v1/diagnostics.geo --target x86_64-linux -o target/ci-v1-diagnostics-linux
+      - name: Build v1 AST example with direct Linux writer
+        run: cargo run --locked --quiet -- build examples/v1/ast.geo --target x86_64-linux -o target/ci-v1-ast-linux
+      - name: Build v1 file echo example with direct Linux writer
+        run: cargo run --locked --quiet -- build examples/v1/file_echo.geo --target x86_64-linux -o target/ci-v1-file-echo-linux
+      - name: Build v1 parser example with direct Linux writer
+        run: cargo run --locked --quiet -- build examples/v1/mini_parser.geo --target x86_64-linux -o target/ci-v1-mini-parser-linux
+      - name: Build v1 buffer example with direct Windows writer
+        run: cargo run --locked --quiet -- build examples/v1/buffer.geo --target x86_64-windows -o target/ci-v1-buffer-windows.exe
+      - name: Build v1 lexer example with direct Windows writer
+        run: cargo run --locked --quiet -- build examples/v1/lexer.geo --target x86_64-windows -o target/ci-v1-lexer-windows.exe
+      - name: Build v1 diagnostics example with direct Windows writer
+        run: cargo run --locked --quiet -- build examples/v1/diagnostics.geo --target x86_64-windows -o target/ci-v1-diagnostics-windows.exe
+      - name: Build v1 AST example with direct Windows writer
+        run: cargo run --locked --quiet -- build examples/v1/ast.geo --target x86_64-windows -o target/ci-v1-ast-windows.exe
+      - name: Build v1 file echo example with direct Windows writer
+        run: cargo run --locked --quiet -- build examples/v1/file_echo.geo --target x86_64-windows -o target/ci-v1-file-echo-windows.exe
+      - name: Build v1 parser example with direct Windows writer
+        run: cargo run --locked --quiet -- build examples/v1/mini_parser.geo --target x86_64-windows -o target/ci-v1-mini-parser-windows.exe
+
       - name: Emit Linux object
         run: cargo run --locked --quiet -- emit-obj examples/object_backend.geo --target x86_64-linux -o target/ci-object-backend-linux.o
 

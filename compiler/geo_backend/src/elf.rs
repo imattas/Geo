@@ -83,6 +83,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         }
         let offset = code.len();
         match name {
+            "__geo_bounds_check" => emit_bounds_check_runtime(&mut code),
             "string_len" => emit_string_len_runtime(&mut code),
             "print" => emit_print_runtime(&mut code, false),
             "println" => emit_print_runtime(&mut code, true),
@@ -111,7 +112,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_open_append" => emit_file_open_runtime(&mut code, 0x441),
             "file_write" => emit_file_write_runtime(&mut code),
             "file_close" => emit_file_close_runtime(&mut code),
-            "file_read_to_string" => emit_file_read_to_string_runtime(&mut code),
+            "file_read" | "file_read_to_string" => emit_file_read_to_string_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
             "read_file_or" => {
@@ -191,6 +192,17 @@ fn emit_string_len_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0xff, 0xc6]);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xf1, 0xc3]);
+}
+
+fn emit_bounds_check_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x39, 0xf7]);
+    let failed = emit_short_jump_placeholder(code, 0x73);
+    code.push(0xc3);
+    let failure = code.len();
+    code.extend_from_slice(&[0xbf, 0x01, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0xb8, 0x3c, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.push(0xc3);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_print_runtime(code: &mut Vec<u8>, newline: bool) {

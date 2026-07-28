@@ -75,7 +75,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_file_read = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "read_file" | "read_file_or" | "read_line" | "write_file" | "file_read_to_string"
+            "read_file"
+                | "read_file_or"
+                | "read_line"
+                | "write_file"
+                | "file_read"
+                | "file_read_to_string"
         )
     });
     let needs_file_ops = image.relocations.iter().any(|relocation| {
@@ -726,7 +731,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_file_read = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "read_file" | "read_file_or" | "file_read_to_string"
+            "read_file" | "read_file_or" | "file_read" | "file_read_to_string"
         )
     });
     let needs_file_read_or = image
@@ -759,10 +764,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "file_close");
-    let needs_file_read_to_string = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "file_read_to_string");
+    let needs_file_read_to_string = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "file_read" | "file_read_to_string"
+        )
+    });
     let needs_process_exit = image
         .relocations
         .iter()
@@ -1279,6 +1286,9 @@ fn compiled_symbol_rva(
         return helpers.file_close;
     }
     if symbol == "file_read_to_string" {
+        return helpers.file_read_to_string;
+    }
+    if symbol == "file_read" {
         return helpers.file_read_to_string;
     }
     if symbol == "read_line" {

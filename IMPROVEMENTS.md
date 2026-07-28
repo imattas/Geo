@@ -173,6 +173,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add `docs/runtime/` for runtime ABI and standard library design.
 - Add `tests/ui/` for diagnostic snapshot tests.
 - Add `tests/run-pass/`, `tests/check-pass/`, and `tests/check-fail/` for Geo source tests.
+- Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently rely on the assembly/C-runtime fallback.
 - Move generated `.exe` and `.asm` artifacts out of the repository root and into `target/`.
 
 ## Tooling Improvements

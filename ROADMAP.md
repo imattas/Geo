@@ -243,6 +243,7 @@ Acceptance criteria:
 
 - Each example checks.
 - Each example emits Linux and Windows assembly.
+- Each example builds through the compiler-owned Linux ELF64 and Windows PE64 executable writers.
 - Runtime-using examples link on supported hosts.
 - The examples use the public standard library, not private runtime symbols.
 
