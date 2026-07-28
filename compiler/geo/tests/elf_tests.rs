@@ -187,6 +187,32 @@ fn emits_direct_elf64_touch_and_remove_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_handle_file_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                let handle = file_open_write("/tmp/geo-elf-handle-test")
+                if handle < 0 {
+                    return 1
+                }
+                let write_status = file_write(handle, "Geo")
+                let close_status = file_close(handle)
+                if write_status != 0 {
+                    return write_status
+                }
+                return close_status
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 0x01, 0x01, 0, 0]));
+    assert!(contains_bytes(&executable, &[0xb8, 1, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xb8, 3, 0, 0, 0, 0x0f, 0x05]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

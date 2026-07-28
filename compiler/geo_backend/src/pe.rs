@@ -50,10 +50,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         .iter()
         .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println")
         || needs_read_line
-        || image
-            .relocations
-            .iter()
-            .any(|relocation| matches!(relocation.symbol.as_str(), "write_file" | "append_file"));
+        || image.relocations.iter().any(|relocation| {
+            matches!(
+                relocation.symbol.as_str(),
+                "write_file" | "append_file" | "file_write"
+            )
+        });
     let needs_string_concat = image
         .relocations
         .iter()
@@ -79,7 +81,14 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_file_ops = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "append_file" | "touch_file" | "remove_file"
+            "append_file"
+                | "touch_file"
+                | "remove_file"
+                | "file_open"
+                | "file_open_write"
+                | "file_open_append"
+                | "file_write"
+                | "file_close"
         )
     });
     let layout = Layout::new(
@@ -734,6 +743,20 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "remove_file");
+    let needs_file_open = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "file_open" | "file_open_write" | "file_open_append"
+        )
+    });
+    let needs_file_write = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "file_write");
+    let needs_file_close = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "file_close");
     let needs_process_exit = image
         .relocations
         .iter()
@@ -808,6 +831,9 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_append_file
         || needs_touch_file
         || needs_remove_file
+        || needs_file_open
+        || needs_file_write
+        || needs_file_close
         || needs_read_line
         || needs_process_exit
     {
@@ -1035,6 +1061,40 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.remove_file = Some(layout.text_rva + code.len() as u32);
         emit_remove_file_helper(&mut code, layout);
     }
+    if needs_file_open {
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_open")
+        {
+            helpers.file_open = Some(layout.text_rva + code.len() as u32);
+            emit_file_open_helper(&mut code, layout, 0x8000_0000, 1, 3);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_open_write")
+        {
+            helpers.file_open_write = Some(layout.text_rva + code.len() as u32);
+            emit_file_open_helper(&mut code, layout, 0x4000_0000, 0, 2);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_open_append")
+        {
+            helpers.file_open_append = Some(layout.text_rva + code.len() as u32);
+            emit_file_open_helper(&mut code, layout, 4, 0, 4);
+        }
+    }
+    if needs_file_write {
+        helpers.file_write = Some(layout.text_rva + code.len() as u32);
+        emit_file_write_helper(&mut code, layout);
+    }
+    if needs_file_close {
+        helpers.file_close = Some(layout.text_rva + code.len() as u32);
+        emit_file_close_helper(&mut code, layout);
+    }
     if needs_read_line {
         helpers.read_line = Some(layout.text_rva + code.len() as u32);
         emit_read_line_helper(&mut code, layout);
@@ -1192,6 +1252,21 @@ fn compiled_symbol_rva(
     if symbol == "remove_file" {
         return helpers.remove_file;
     }
+    if symbol == "file_open" {
+        return helpers.file_open;
+    }
+    if symbol == "file_open_write" {
+        return helpers.file_open_write;
+    }
+    if symbol == "file_open_append" {
+        return helpers.file_open_append;
+    }
+    if symbol == "file_write" {
+        return helpers.file_write;
+    }
+    if symbol == "file_close" {
+        return helpers.file_close;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -1257,6 +1332,11 @@ struct PeHelperRvas {
     append_file: Option<u32>,
     touch_file: Option<u32>,
     remove_file: Option<u32>,
+    file_open: Option<u32>,
+    file_open_write: Option<u32>,
+    file_open_append: Option<u32>,
+    file_write: Option<u32>,
+    file_close: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -2736,6 +2816,77 @@ fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
     patch_short_jump(code, null_path, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_file_open_helper(
+    code: &mut Vec<u8>,
+    layout: &Layout,
+    access: u32,
+    share_mode: u32,
+    creation: u32,
+) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    code.extend_from_slice(&[0xba]);
+    code.extend_from_slice(&access.to_le_bytes());
+    code.extend_from_slice(&[0x41, 0xb8]);
+    code.extend_from_slice(&share_mode.to_le_bytes());
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20]);
+    code.extend_from_slice(&creation.to_le_bytes());
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0, 0, 0, 0]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x30, 0, 0, 0, 0]);
+    emit_call_iat(code, layout, layout.create_file_iat);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_near_jump(code, null_path, failure);
+}
+
+fn emit_file_write_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd2]);
+    code.extend_from_slice(&[0x45, 0x31, 0xdb]);
+    code.extend_from_slice(&[0x48, 0x85, 0xd2]);
+    let null_data = emit_near_jump_placeholder(code, 0x84);
+    let length_loop = code.len();
+    code.extend_from_slice(&[0x45, 0x80, 0x3a, 0x00]);
+    let length_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc3]);
+    emit_short_jump_back(code, length_loop);
+    let length_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0x5c, 0x24, 0x50]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x44, 0x8b, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x4c, 0x24, 0x3c]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0, 0, 0, 0]);
+    emit_call_iat(code, layout, layout.write_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let write_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x8b, 0x44, 0x24, 0x3c]);
+    code.extend_from_slice(&[0x3b, 0x44, 0x24, 0x50]);
+    let short_write = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    patch_near_jump(code, null_data, length_target);
+    patch_near_jump(code, write_failed, failure);
+    patch_near_jump(code, short_write, failure);
+    patch_short_jump(code, length_done, length_target);
+}
+
+fn emit_file_close_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
 }
 
 fn emit_read_file_or_helper(code: &mut Vec<u8>, layout: &Layout, read_file_rva: u32) {

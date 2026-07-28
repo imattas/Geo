@@ -1109,6 +1109,32 @@ fn emits_direct_pe64_touch_and_remove_as_compiled_helpers() {
 }
 
 #[test]
+fn emits_direct_pe64_handle_file_as_compiled_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                let handle = file_open_write("C:\\geo-handle-file-test")
+                if handle < 0 {
+                    return 1
+                }
+                let write_status = file_write(handle, "Geo")
+                let close_status = file_close(handle)
+                if write_status != 0 {
+                    return write_status
+                }
+                return close_status
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"CreateFileA"));
+    assert!(contains_bytes(&pe, b"WriteFile"));
+    assert!(contains_bytes(&pe, b"CloseHandle"));
+}
+
+#[test]
 fn emits_direct_pe64_read_line_as_compiled_helper() {
     let pe = pe_for(
         r#"
