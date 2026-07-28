@@ -75,7 +75,7 @@ Acceptance criteria:
 - Root `cargo run -- check examples\return_42.geo` still works.
 - Compiler phase tests live next to the crates they validate.
 
-Progress: `compiler/geo_syntax` now owns the AST, token model, lexer, and parser, and `compiler/geo_ir` owns the typed machine-independent IR. The CLI crate keeps compatibility re-exports while the remaining semantic and backend phases are split.
+Progress: `compiler/geo_syntax` now owns the AST, token model, lexer, and parser, `compiler/geo_ir` owns the typed machine-independent IR, and `compiler/geo_semantic` owns resolution, type checking, borrow checking, and runtime symbol metadata. The CLI crate keeps compatibility re-exports while backend phases are split.
 
 ## Phase 2: Clean Core Syntax
 

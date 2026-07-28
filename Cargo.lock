@@ -105,6 +105,7 @@ dependencies = [
  "clap",
  "geo-diagnostics",
  "geo-ir",
+ "geo-semantic",
  "geo-source",
  "geo-syntax",
 ]
@@ -120,6 +121,15 @@ version = "0.0.0"
 [[package]]
 name = "geo-ir"
 version = "0.0.0"
+
+[[package]]
+name = "geo-semantic"
+version = "0.0.0"
+dependencies = [
+ "geo-diagnostics",
+ "geo-source",
+ "geo-syntax",
+]
 
 [[package]]
 name = "geo-source"

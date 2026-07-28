@@ -1,16 +1,9 @@
 [package]
-name = "geo"
+name = "geo-semantic"
 version = "0.0.0"
 edition = "2021"
 
-[[bin]]
-name = "geo"
-path = "src/main.rs"
-
 [dependencies]
-clap = { version = "4", features = ["derive"] }
 geo-diagnostics = { path = "../geo_diagnostics" }
 geo-source = { path = "../geo_source" }
 geo-syntax = { path = "../geo_syntax" }
-geo-ir = { path = "../geo_ir" }
-geo-semantic = { path = "../geo_semantic" }
