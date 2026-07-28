@@ -1016,6 +1016,26 @@ fn emits_direct_pe64_process_exit_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_file_read_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+            import std.string
+
+            fn main() -> int {
+                return string_len(read_file("C:\\geo-read-file-test")) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"CreateFileA"));
+    assert!(contains_bytes(&pe, b"GetFileSize"));
+    assert!(contains_bytes(&pe, b"ReadFile"));
+    assert!(contains_bytes(&pe, b"CloseHandle"));
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"

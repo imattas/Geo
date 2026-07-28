@@ -18,6 +18,7 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
             .map_or(0, |message| message.len() as u32 + 1),
         plan.output.is_some(),
         false,
+        false,
     );
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
@@ -31,7 +32,7 @@ mod tests {
 
     #[test]
     fn layout_places_write_file_count_after_compiled_rodata() {
-        let layout = Layout::new(9, true, false);
+        let layout = Layout::new(9, true, false, false);
 
         assert_eq!(layout.written_rva, 0x2010);
     }
@@ -54,10 +55,15 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 "alloc" | "alloc_zeroed" | "alloc_array"
             )
         });
+    let needs_file_read = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "read_file");
     let layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
-        needs_virtual_alloc,
+        needs_virtual_alloc || needs_file_read,
+        needs_file_read,
     );
     let text = build_compiled_text(&layout, &image)?;
     let rdata = build_compiled_rdata(&image, needs_console_helpers);
@@ -349,10 +355,20 @@ struct Layout {
     virtual_alloc_iat: u32,
     has_console_io: bool,
     has_virtual_alloc: bool,
+    has_file_read: bool,
+    create_file_iat: u32,
+    get_file_size_iat: u32,
+    read_file_iat: u32,
+    close_handle_iat: u32,
 }
 
 impl Layout {
-    fn new(data_len: u32, has_console_io: bool, has_virtual_alloc: bool) -> Self {
+    fn new(
+        data_len: u32,
+        has_console_io: bool,
+        has_virtual_alloc: bool,
+        has_file_read: bool,
+    ) -> Self {
         let headers_raw = 0x200;
         let text_rva = 0x1000;
         let rdata_rva = 0x2000;
@@ -362,16 +378,61 @@ impl Layout {
         let written_rva = align_to(message_rva + data_len, 8);
         let import_descriptor_rva = idata_rva;
         let oft_rva = import_descriptor_rva + 40;
-        let import_count = u32::from(has_console_io) * 2 + 1 + u32::from(has_virtual_alloc);
+        let import_count = u32::from(has_console_io) * 2
+            + 1
+            + u32::from(has_virtual_alloc)
+            + u32::from(has_file_read) * 4;
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
-
-        let (get_std_handle_iat, write_file_iat, exit_process_iat, virtual_alloc_iat) =
-            if has_console_io {
-                (ft_rva, ft_rva + 8, ft_rva + 16, ft_rva + 24)
-            } else {
-                (ft_rva, ft_rva, ft_rva, ft_rva + 8)
-            };
+        let mut next_iat = ft_rva;
+        let get_std_handle_iat = if has_console_io {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let write_file_iat = if has_console_io {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let exit_process_iat = {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        };
+        let virtual_alloc_iat = if has_virtual_alloc {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let create_file_iat = if has_file_read {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let get_file_size_iat = if has_file_read {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let read_file_iat = if has_file_read {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let close_handle_iat = if has_file_read { next_iat } else { ft_rva };
         Self {
             text_rva,
             rdata_rva,
@@ -388,6 +449,11 @@ impl Layout {
             virtual_alloc_iat,
             has_console_io,
             has_virtual_alloc,
+            has_file_read,
+            create_file_iat,
+            get_file_size_iat,
+            read_file_iat,
+            close_handle_iat,
         }
     }
 }
@@ -552,6 +618,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             "alloc" | "alloc_zeroed" | "alloc_array"
         )
     });
+    let needs_file_read = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "read_file");
     let needs_process_exit = image
         .relocations
         .iter()
@@ -609,6 +679,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_count
         || needs_string_parse_int
         || needs_alloc
+        || needs_file_read
         || needs_process_exit
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
@@ -758,6 +829,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.exit_process = Some(layout.text_rva + code.len() as u32);
         emit_process_exit_helper(&mut code, layout);
     }
+    if needs_file_read {
+        helpers.read_file = Some(layout.text_rva + code.len() as u32);
+        emit_read_file_helper(&mut code, layout);
+    }
     patch_compiled_relocations(&mut code, layout, image, function_base, &helpers)?;
     pad_to(&mut code, FILE_ALIGNMENT as usize);
     Some(code)
@@ -893,6 +968,9 @@ fn compiled_symbol_rva(
     if symbol == "exit_geo" {
         return helpers.exit_process;
     }
+    if symbol == "read_file" {
+        return helpers.read_file;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -913,6 +991,7 @@ struct PeHelperRvas {
     println: Option<u32>,
     exit_process: Option<u32>,
     alloc: Option<u32>,
+    read_file: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
     string_byte_at: Option<u32>,
@@ -1790,6 +1869,18 @@ fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
     code.len() - 1
 }
 
+fn emit_near_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
+    code.extend_from_slice(&[0x0f, opcode, 0, 0, 0, 0]);
+    code.len() - 4
+}
+
+fn patch_near_jump(code: &mut [u8], displacement_offset: usize, target: usize) {
+    let next = displacement_offset + 4;
+    let displacement = target as i64 - next as i64;
+    code[displacement_offset..displacement_offset + 4]
+        .copy_from_slice(&(displacement as i32).to_le_bytes());
+}
+
 fn emit_short_jump_back(code: &mut Vec<u8>, target: usize) {
     code.push(0xeb);
     let displacement_offset = code.len();
@@ -1873,6 +1964,67 @@ fn emit_alloc_helper(code: &mut Vec<u8>, layout: &Layout, array: bool) {
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
 }
 
+fn emit_read_file_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // Win64 ABI: reserve shadow space plus locals for the handle, size, buffer, and byte count.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+
+    // CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL).
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0xba, 0x00, 0x00, 0x00, 0x80]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x01, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x30, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.create_file_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let invalid_handle = emit_near_jump_placeholder(code, 0x84);
+
+    // size = GetFileSize(handle, NULL), then allocate size + 1 bytes.
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x31, 0xd2]);
+    emit_call_iat(code, layout, layout.get_file_size_iat);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x89, 0xc2]);
+    code.extend_from_slice(&[0x31, 0xc9]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x84);
+
+    // ReadFile(handle, buffer, size, &bytes_read, NULL).
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x44, 0x8b, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x4c, 0x24, 0x3c]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.read_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let read_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x8b, 0x4c, 0x24, 0x3c]);
+    code.extend_from_slice(&[0x88, 0x0c, 0x08]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    let no_handle = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    patch_near_jump(code, invalid_handle, no_handle);
+    patch_near_jump(code, allocation_failed, failure);
+    patch_near_jump(code, read_failed, failure);
+}
+
 fn build_compiled_rdata(image: &ObjectImage, needs_console_helpers: bool) -> Vec<u8> {
     let mut data = image.rodata.clone();
     if needs_console_helpers {
@@ -1934,6 +2086,12 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     imports.push(b"ExitProcess\0".as_slice());
     if layout.has_virtual_alloc {
         imports.push(b"VirtualAlloc\0".as_slice());
+    }
+    if layout.has_file_read {
+        imports.push(b"CreateFileA\0".as_slice());
+        imports.push(b"GetFileSize\0".as_slice());
+        imports.push(b"ReadFile\0".as_slice());
+        imports.push(b"CloseHandle\0".as_slice());
     }
 
     let mut name_offset = first_name;
