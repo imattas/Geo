@@ -1178,6 +1178,28 @@ fn emits_direct_pe64_file_exists_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_file_metadata_as_compiled_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                if file_is_file("C:\\geo-file-metadata") {
+                    return file_size("C:\\geo-file-metadata") as int
+                }
+                if file_is_dir("C:\\") && file_is_empty("C:\\geo-file-metadata") {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"GetFileAttributesA"));
+    assert!(contains_bytes(&pe, b"GetFileSize"));
+}
+
+#[test]
 fn emits_direct_pe64_read_line_as_compiled_helper() {
     let pe = pe_for(
         r#"

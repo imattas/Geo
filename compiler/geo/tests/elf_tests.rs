@@ -257,6 +257,27 @@ fn emits_direct_elf64_file_exists_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_file_metadata_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                if file_is_file("/tmp/geo-elf-file-metadata") {
+                    return file_size("/tmp/geo-elf-file-metadata") as int
+                }
+                if file_is_dir("/tmp") && file_is_empty("/tmp/geo-elf-file-metadata") {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 6, 1, 0, 0, 0x0f, 0x05]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

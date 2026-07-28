@@ -82,6 +82,8 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "write_file"
                 | "file_read"
                 | "file_read_to_string"
+                | "file_size"
+                | "file_is_empty"
         )
     });
     let needs_file_ops = image.relocations.iter().any(|relocation| {
@@ -97,10 +99,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_close"
         )
     });
-    let needs_file_metadata = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "file_exists");
+    let needs_file_metadata = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "file_exists" | "file_is_file" | "file_is_dir" | "file_is_empty" | "file_size"
+        )
+    });
     let layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
@@ -783,13 +787,15 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_file_read_to_string = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "file_read" | "file_read_to_string"
+            "file_read" | "file_read_to_string" | "file_size" | "file_is_empty"
         )
     });
-    let needs_file_metadata = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "file_exists");
+    let needs_file_metadata = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "file_exists" | "file_is_file" | "file_is_dir" | "file_is_empty" | "file_size"
+        )
+    });
     let needs_process_exit = image
         .relocations
         .iter()
@@ -1135,6 +1141,41 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         emit_file_read_to_string_helper(&mut code, layout);
     }
     if needs_file_metadata {
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| matches!(relocation.symbol.as_str(), "file_size" | "file_is_empty"))
+        {
+            helpers.file_size = Some(layout.text_rva + code.len() as u32);
+            emit_file_size_helper(&mut code, layout);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_is_empty")
+        {
+            let file_size = helpers.file_size?;
+            helpers.file_is_empty = Some(layout.text_rva + code.len() as u32);
+            emit_file_is_empty_helper(&mut code, layout, file_size);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_is_file")
+        {
+            helpers.file_is_file = Some(layout.text_rva + code.len() as u32);
+            emit_file_attribute_helper(&mut code, layout, false);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_is_dir")
+        {
+            helpers.file_is_dir = Some(layout.text_rva + code.len() as u32);
+            emit_file_attribute_helper(&mut code, layout, true);
+        }
+    }
+    if needs_file_metadata {
         helpers.file_exists = Some(layout.text_rva + code.len() as u32);
         emit_file_exists_helper(&mut code, layout);
     }
@@ -1319,6 +1360,18 @@ fn compiled_symbol_rva(
     if symbol == "file_exists" {
         return helpers.file_exists;
     }
+    if symbol == "file_is_file" {
+        return helpers.file_is_file;
+    }
+    if symbol == "file_is_dir" {
+        return helpers.file_is_dir;
+    }
+    if symbol == "file_is_empty" {
+        return helpers.file_is_empty;
+    }
+    if symbol == "file_size" {
+        return helpers.file_size;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -1391,6 +1444,10 @@ struct PeHelperRvas {
     file_close: Option<u32>,
     file_read_to_string: Option<u32>,
     file_exists: Option<u32>,
+    file_is_file: Option<u32>,
+    file_is_dir: Option<u32>,
+    file_is_empty: Option<u32>,
+    file_size: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -2956,6 +3013,62 @@ fn emit_file_exists_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, non_null, call_target);
     patch_short_jump(code, missing, missing_target);
+}
+
+fn emit_file_attribute_helper(code: &mut Vec<u8>, layout: &Layout, directory: bool) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_short_jump_placeholder(code, 0x74);
+    emit_call_iat(code, layout, layout.get_file_attributes_iat);
+    code.extend_from_slice(&[0x83, 0xf8, 0xff]);
+    let missing = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0xf7, 0xc0, 0x10, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(if directory {
+        &[0x0f, 0x95, 0xc0]
+    } else {
+        &[0x0f, 0x94, 0xc0]
+    });
+    code.extend_from_slice(&[0x0f, 0xb6, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, missing, failure);
+}
+
+fn emit_file_size_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0xba, 0x00, 0x00, 0x00, 0x80]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x01, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x30, 0x00, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.create_file_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let invalid_handle = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    code.extend_from_slice(&[0x31, 0xd2]);
+    emit_call_iat(code, layout, layout.get_file_size_iat);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x8b, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, invalid_handle, failure);
+}
+
+fn emit_file_is_empty_helper(code: &mut Vec<u8>, layout: &Layout, file_size: u32) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_direct_call(code, layout.text_rva, file_size);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    code.extend_from_slice(&[0x0f, 0x94, 0xc0, 0x0f, 0xb6, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
 }
 
 fn emit_file_read_to_string_helper(code: &mut Vec<u8>, layout: &Layout) {

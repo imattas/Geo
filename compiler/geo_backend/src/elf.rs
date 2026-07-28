@@ -114,6 +114,10 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_close" => emit_file_close_runtime(&mut code),
             "file_read" | "file_read_to_string" => emit_file_read_to_string_runtime(&mut code),
             "file_exists" => emit_file_exists_runtime(&mut code),
+            "file_is_file" => emit_file_stat_runtime(&mut code, FileStatKind::File),
+            "file_is_dir" => emit_file_stat_runtime(&mut code, FileStatKind::Directory),
+            "file_is_empty" => emit_file_stat_runtime(&mut code, FileStatKind::Empty),
+            "file_size" => emit_file_stat_runtime(&mut code, FileStatKind::Size),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
             "read_file_or" => {
@@ -135,6 +139,54 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         symbols.insert(name.to_string(), runtime_base + offset as u64);
     }
     RuntimeText { code, symbols }
+}
+
+#[derive(Clone, Copy)]
+enum FileStatKind {
+    File,
+    Directory,
+    Empty,
+    Size,
+}
+
+fn emit_file_stat_runtime(code: &mut Vec<u8>, kind: FileStatKind) {
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0xa0, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_path = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x89, 0xfe]);
+    code.extend_from_slice(&[0xbf, 0x9c, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x14, 0x24]);
+    code.extend_from_slice(&[0x45, 0x31, 0xd2]);
+    code.extend_from_slice(&[0xb8, 0x06, 0x01, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x78);
+
+    match kind {
+        FileStatKind::File | FileStatKind::Directory => {
+            code.extend_from_slice(&[0x8b, 0x44, 0x24, 0x18]);
+            code.extend_from_slice(&[0x25, 0x00, 0xf0, 0x00, 0x00]);
+            code.extend_from_slice(&[0x3d]);
+            let mode = if matches!(kind, FileStatKind::File) {
+                0x8000_u32
+            } else {
+                0x4000_u32
+            };
+            code.extend_from_slice(&mode.to_le_bytes());
+            code.extend_from_slice(&[0x0f, 0x94, 0xc0, 0x0f, 0xb6, 0xc0]);
+        }
+        FileStatKind::Empty => {
+            code.extend_from_slice(&[0x48, 0x83, 0x7c, 0x24, 0x30, 0x00]);
+            code.extend_from_slice(&[0x0f, 0x94, 0xc0, 0x0f, 0xb6, 0xc0]);
+        }
+        FileStatKind::Size => {
+            code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x30]);
+        }
+    }
+    code.extend_from_slice(&[0x48, 0x81, 0xc4, 0xa0, 0x00, 0x00, 0x00, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0xa0, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_file_exists_runtime(code: &mut Vec<u8>) {

@@ -174,7 +174,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add `tests/run-pass/`, `tests/check-pass/`, and `tests/check-fail/` for Geo source tests.
 - Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently regress to a non-native build path.
 - Move generated `.exe` and `.asm` artifacts out of the repository root and into `target/`.
-- Add native runtime coverage for file metadata queries such as `file_size`, `file_is_file`, and `file_is_dir`.
+- Add native runtime coverage for file metadata timestamps, directory enumeration, copy/rename, and directory mutation APIs.
 
 ## Tooling Improvements
 
