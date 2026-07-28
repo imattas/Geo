@@ -133,6 +133,11 @@ pub fn emit_coff_x64_relocatable(program: &IrProgram) -> Option<Vec<u8>> {
 }
 
 fn build_coff_image_subset(program: &IrProgram) -> Option<ObjectImage> {
+    let image = build_win64_code_image(program)?;
+    Some(image)
+}
+
+pub(crate) fn build_win64_code_image(program: &IrProgram) -> Option<ObjectImage> {
     let image = build_image_for_abi(program, TargetAbi::Win64);
     if image.relocations.iter().any(|relocation| {
         !matches!(
@@ -200,33 +205,33 @@ fn write_coff_symbol_name(out: &mut Vec<u8>, name: &[u8], string_table: &mut Vec
     out.extend_from_slice(&offset.to_le_bytes());
 }
 
-struct ObjectImage {
-    text: Vec<u8>,
-    rodata: Vec<u8>,
-    functions: Vec<FunctionSymbol>,
-    data_symbols: Vec<DataSymbol>,
-    relocations: Vec<TextRelocation>,
+pub(crate) struct ObjectImage {
+    pub(crate) text: Vec<u8>,
+    pub(crate) rodata: Vec<u8>,
+    pub(crate) functions: Vec<FunctionSymbol>,
+    pub(crate) data_symbols: Vec<DataSymbol>,
+    pub(crate) relocations: Vec<TextRelocation>,
 }
 
-struct FunctionSymbol {
-    name: String,
-    offset: u64,
-    size: u64,
+pub(crate) struct FunctionSymbol {
+    pub(crate) name: String,
+    pub(crate) offset: u64,
+    pub(crate) size: u64,
 }
 
-struct DataSymbol {
-    name: String,
-    offset: u64,
-    size: u64,
+pub(crate) struct DataSymbol {
+    pub(crate) name: String,
+    pub(crate) offset: u64,
+    pub(crate) size: u64,
 }
 
-struct TextRelocation {
-    offset: u64,
-    symbol: String,
-    kind: RelocationKind,
+pub(crate) struct TextRelocation {
+    pub(crate) offset: u64,
+    pub(crate) symbol: String,
+    pub(crate) kind: RelocationKind,
 }
 
-enum RelocationKind {
+pub(crate) enum RelocationKind {
     Pc32,
     Plt32,
 }

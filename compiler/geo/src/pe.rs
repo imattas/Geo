@@ -1,4 +1,5 @@
 use crate::ir::{CmpOp, Instruction, IrProgram};
+use crate::object::{ObjectImage, RelocationKind};
 use std::collections::HashMap;
 
 const FILE_ALIGNMENT: u32 = 0x200;
@@ -8,9 +9,23 @@ const MAX_PE_EVAL_STEPS: usize = 100_000;
 
 pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let plan = PePlan::from_program(program)?;
+    if plan.output.is_none() {
+        if let Some(image) = emit_compiled_pe64_console(program) {
+            return Some(image);
+        }
+    }
     let layout = Layout::new(plan.output.as_deref().unwrap_or(""), plan.output.is_some());
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
+    let idata = build_idata(&layout);
+    Some(build_image(&layout, &text, &rdata, &idata))
+}
+
+fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
+    let image = crate::object::build_win64_code_image(program)?;
+    let layout = Layout::new("", false);
+    let text = build_compiled_text(&layout, &image)?;
+    let rdata = build_compiled_rdata(&image);
     let idata = build_idata(&layout);
     Some(build_image(&layout, &text, &rdata, &idata))
 }
@@ -354,6 +369,79 @@ fn build_text(layout: &Layout, plan: &PePlan) -> Vec<u8> {
     emit_call_iat(&mut code, layout, layout.exit_process_iat);
     pad_to(&mut code, FILE_ALIGNMENT as usize);
     code
+}
+
+fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> {
+    let entry_len = 21_u32;
+    let function_base = align_to(entry_len, 16);
+    let main = image
+        .functions
+        .iter()
+        .find(|function| function.name == "main")?;
+    let main_rva = layout.text_rva + function_base + main.offset as u32;
+
+    let mut code = Vec::new();
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_direct_call(&mut code, layout.text_rva, main_rva);
+    code.extend_from_slice(&[0x89, 0xc1]);
+    emit_call_iat(&mut code, layout, layout.exit_process_iat);
+    while code.len() < function_base as usize {
+        code.push(0xcc);
+    }
+    code.extend_from_slice(&image.text);
+    patch_compiled_relocations(&mut code, layout, image, function_base)?;
+    pad_to(&mut code, FILE_ALIGNMENT as usize);
+    Some(code)
+}
+
+fn patch_compiled_relocations(
+    code: &mut [u8],
+    layout: &Layout,
+    image: &ObjectImage,
+    function_base: u32,
+) -> Option<()> {
+    for relocation in &image.relocations {
+        let relocation_offset = function_base + relocation.offset as u32;
+        let target_rva = compiled_symbol_rva(layout, image, function_base, &relocation.symbol)?;
+        let next_rva = layout.text_rva + relocation_offset + 4;
+        let addend = match relocation.kind {
+            RelocationKind::Pc32 | RelocationKind::Plt32 => rel32(target_rva, next_rva),
+        };
+        let offset = relocation_offset as usize;
+        code[offset..offset + 4].copy_from_slice(&addend.to_le_bytes());
+    }
+    Some(())
+}
+
+fn compiled_symbol_rva(
+    layout: &Layout,
+    image: &ObjectImage,
+    function_base: u32,
+    symbol: &str,
+) -> Option<u32> {
+    if let Some(function) = image
+        .functions
+        .iter()
+        .find(|function| function.name == symbol)
+    {
+        return Some(layout.text_rva + function_base + function.offset as u32);
+    }
+    if let Some(data) = image.data_symbols.iter().find(|data| data.name == symbol) {
+        return Some(layout.rdata_rva + data.offset as u32);
+    }
+    None
+}
+
+fn build_compiled_rdata(image: &ObjectImage) -> Vec<u8> {
+    let mut data = image.rodata.clone();
+    pad_to(&mut data, FILE_ALIGNMENT as usize);
+    data
+}
+
+fn emit_direct_call(code: &mut Vec<u8>, text_rva: u32, target_rva: u32) {
+    let next_rva = text_rva + code.len() as u32 + 5;
+    code.push(0xe8);
+    code.extend_from_slice(&rel32(target_rva, next_rva).to_le_bytes());
 }
 
 fn emit_call_iat(code: &mut Vec<u8>, layout: &Layout, target_rva: u32) {
