@@ -157,7 +157,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 ## Backend Improvements
 
 - Expand ELF64 object writing to cover aggregate layout and linkable runtime calls.
-- Expand the Linux ELF64 executable writer and Windows COFF writer beyond the current object subsets, and make both targets handle broader runtime imports, allocation-backed strings, and external symbols through compiled machine code. The direct helper set now includes first and last substring search, non-overlapping counting, decimal parsing, allocation-backed `string_concat`, `std.process.exit`, and `std.mem.alloc`; next prioritize Linux file I/O, richer process APIs, and allocation-backed substring/array results.
+- Expand the Linux ELF64 executable writer and Windows COFF writer beyond the current object subsets, and make both targets handle broader runtime imports, allocation-backed strings, and external symbols through compiled machine code. The direct helper set now includes first and last substring search, non-overlapping counting, decimal parsing, allocation-backed `string_concat`, `std.process.exit`, `std.mem.alloc`, and `std.io.write_file`; next prioritize Linux read-side file I/O, richer process APIs, and allocation-backed substring/array results.
 - Add relocation tests for object writers.
 - Harden stack-passed argument support beyond the first four Windows x64 registers.
 - Add a simple register allocator after the IR and ABI boundaries are stable.

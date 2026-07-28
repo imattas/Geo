@@ -129,6 +129,23 @@ fn emits_direct_elf64_memory_alloc_runtime() {
     assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
 }
 
+#[test]
+fn emits_direct_elf64_file_write_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return write_file("/tmp/geo-elf-write-test", "Geo")
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 2, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xb8, 1, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xb8, 3, 0, 0, 0, 0x0f, 0x05]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }
