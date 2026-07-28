@@ -202,6 +202,7 @@ Goal: make Linux and Windows first-class targets without depending on accidental
 Deliverables:
 
 - ABI lowering layer for System V AMD64 and Windows x64.
+- System V register parameter spills for compiler-owned ELF64 function bodies.
 - Stack-passed arguments beyond register limits.
 - Data sections for strings and globals.
 - Direct ELF64 relocatable object writer.

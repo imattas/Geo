@@ -1,3 +1,7 @@
+fn combine(a: int, b: int) -> int {
+    return a + b
+}
+
 fn main() -> int {
     var x: int = 0
     while x < 3 {
@@ -7,5 +11,5 @@ fn main() -> int {
         let p: *int = &x
         *p = *p + 1
     }
-    return (25 / 4) + (25 % 4) + (1 << 3 >> 1) + x
+    return combine((25 / 4) + (25 % 4), (1 << 3 >> 1) + x)
 }

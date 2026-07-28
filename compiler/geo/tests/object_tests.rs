@@ -99,6 +99,26 @@ fn emits_call_argument_register_for_string_literal_runtime_call() {
 }
 
 #[test]
+fn emits_machine_code_for_function_parameter_register_spills() {
+    let object = object_for(
+        r#"
+            fn add(a: int, b: int) -> int {
+                return a + b
+            }
+
+            fn main() -> int {
+                return add(40, 2)
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x89, 0x7d]));
+    assert!(contains_bytes(text, &[0x48, 0x89, 0x75]));
+    assert!(contains_bytes(text, &[0xe8]));
+}
+
+#[test]
 fn emits_relocation_for_bounds_check_runtime_call() {
     let object = object_for(
         r#"

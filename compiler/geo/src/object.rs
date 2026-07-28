@@ -105,6 +105,7 @@ fn emit_function_text(
     let mut jumps = Vec::new();
     bytes.extend_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
     emit_stack_alloc(bytes, frame.stack_size);
+    emit_parameter_spills(bytes, &frame, &function.params);
 
     for instruction in &function.instructions {
         match instruction {
@@ -270,7 +271,7 @@ struct FrameLayout {
 impl FrameLayout {
     fn new(function: &IrFunction) -> Self {
         let mut max_value = None;
-        let mut locals = Vec::new();
+        let mut locals = function.params.clone();
 
         for instruction in &function.instructions {
             collect_instruction_values(instruction, &mut max_value);
@@ -554,6 +555,12 @@ fn emit_call_args(bytes: &mut Vec<u8>, frame: &FrameLayout, args: &[crate::ir::V
     }
 }
 
+fn emit_parameter_spills(bytes: &mut Vec<u8>, frame: &FrameLayout, params: &[String]) {
+    for (index, param) in params.iter().enumerate().take(6) {
+        emit_store_arg_register(bytes, index, frame.local_offset(param));
+    }
+}
+
 fn emit_load_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
     match index {
         0 => {
@@ -578,6 +585,36 @@ fn emit_load_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
         }
         5 => {
             bytes.extend_from_slice(&[0x4c, 0x8b]);
+            emit_rbp_operand(bytes, 1, offset);
+        }
+        _ => {}
+    }
+}
+
+fn emit_store_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
+    match index {
+        0 => {
+            bytes.extend_from_slice(&[0x48, 0x89]);
+            emit_rbp_operand(bytes, 7, offset);
+        }
+        1 => {
+            bytes.extend_from_slice(&[0x48, 0x89]);
+            emit_rbp_operand(bytes, 6, offset);
+        }
+        2 => {
+            bytes.extend_from_slice(&[0x48, 0x89]);
+            emit_rbp_operand(bytes, 2, offset);
+        }
+        3 => {
+            bytes.extend_from_slice(&[0x48, 0x89]);
+            emit_rbp_operand(bytes, 1, offset);
+        }
+        4 => {
+            bytes.extend_from_slice(&[0x4c, 0x89]);
+            emit_rbp_operand(bytes, 0, offset);
+        }
+        5 => {
+            bytes.extend_from_slice(&[0x4c, 0x89]);
             emit_rbp_operand(bytes, 1, offset);
         }
         _ => {}
