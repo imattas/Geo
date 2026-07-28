@@ -412,6 +412,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_contains");
+    let needs_string_starts_with = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_starts_with");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -446,6 +450,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_byte_at
         || needs_string_compare
         || needs_string_contains
+        || needs_string_starts_with
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -471,6 +476,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_contains {
         helpers.string_contains = Some(layout.text_rva + code.len() as u32);
         emit_string_contains_helper(&mut code);
+    }
+    if needs_string_starts_with {
+        helpers.string_starts_with = Some(layout.text_rva + code.len() as u32);
+        emit_string_starts_with_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -542,6 +551,9 @@ fn compiled_symbol_rva(
     if symbol == "string_contains" {
         return helpers.string_contains;
     }
+    if symbol == "string_starts_with" {
+        return helpers.string_starts_with;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -565,6 +577,7 @@ struct PeHelperRvas {
     string_byte_at: Option<u32>,
     string_compare: Option<u32>,
     string_contains: Option<u32>,
+    string_starts_with: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -667,6 +680,32 @@ fn emit_string_contains_helper(code: &mut Vec<u8>) {
     patch_short_jump(code, haystack_end, false_target);
     patch_short_jump(code, advance, advance_target);
     patch_short_jump(code, mismatch, advance_target);
+}
+
+fn emit_string_starts_with_helper(code: &mut Vec<u8>) {
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x8a, 0x02]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let prefix_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x44, 0x8a, 0x01]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let source_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x38, 0xc0]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let true_target = code.len();
+    code.push(0xb8);
+    code.extend_from_slice(&1_u32.to_le_bytes());
+    code.push(0xc3);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0]);
+    code.push(0xc3);
+
+    patch_short_jump(code, prefix_done, true_target);
+    patch_short_jump(code, source_done, false_target);
+    patch_short_jump(code, mismatch, false_target);
 }
 
 fn emit_short_jump_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
