@@ -53,6 +53,7 @@ Verification:
 - `cargo run -p xtask --quiet -- layout`
 - `cargo run --quiet -- check examples\return_42.geo --target x86_64-linux`
 - `cargo run --quiet -- emit-obj examples\object_backend.geo --target x86_64-linux -o target\workspace_object_backend_linux.o`
+- `cargo run --quiet -- emit-obj examples\hello_world.geo --target x86_64-linux -o target\workspace_hello_world_linux.o`
 - `cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\workspace_return_42_win.asm`
 
 ## Phase 1: Workspace Hardening

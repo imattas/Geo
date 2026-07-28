@@ -7,18 +7,20 @@ const SHT_STRTAB: u32 = 3;
 const SHT_RELA: u32 = 4;
 const SHF_ALLOC: u64 = 0x2;
 const SHF_EXECINSTR: u64 = 0x4;
+const R_X86_64_PC32: u32 = 2;
 const R_X86_64_PLT32: u32 = 4;
 
 pub fn emit_elf64_relocatable(program: &IrProgram) -> Vec<u8> {
-    let text = build_text(program);
-    let names = build_names(program, &text);
+    let image = build_image(program);
+    let names = build_names(program, &image);
     let strtab = names.strtab;
     let shstrtab = section_name_table();
-    let symtab = build_symtab(&text, &names.symbol_offsets);
-    let rela_text = build_relocations(&text, &names.symbol_indices);
+    let symtab = build_symtab(&image, &names.symbol_offsets);
+    let rela_text = build_relocations(&image, &names.symbol_indices);
 
     build_elf(
-        &text.bytes,
+        &image.text,
+        &image.rodata,
         &rela_text,
         &symtab,
         &strtab,
@@ -27,10 +29,12 @@ pub fn emit_elf64_relocatable(program: &IrProgram) -> Vec<u8> {
     )
 }
 
-struct TextImage {
-    bytes: Vec<u8>,
+struct ObjectImage {
+    text: Vec<u8>,
+    rodata: Vec<u8>,
     functions: Vec<FunctionSymbol>,
-    relocations: Vec<CallRelocation>,
+    data_symbols: Vec<DataSymbol>,
+    relocations: Vec<TextRelocation>,
 }
 
 struct FunctionSymbol {
@@ -39,20 +43,40 @@ struct FunctionSymbol {
     size: u64,
 }
 
-struct CallRelocation {
+struct DataSymbol {
+    name: String,
     offset: u64,
-    symbol: String,
+    size: u64,
 }
 
-fn build_text(program: &IrProgram) -> TextImage {
-    let mut bytes = Vec::new();
+struct TextRelocation {
+    offset: u64,
+    symbol: String,
+    kind: RelocationKind,
+}
+
+enum RelocationKind {
+    Pc32,
+    Plt32,
+}
+
+fn build_image(program: &IrProgram) -> ObjectImage {
+    let mut text = Vec::new();
+    let mut rodata = Vec::new();
     let mut functions = Vec::new();
+    let mut data_symbols = Vec::new();
     let mut relocations = Vec::new();
 
     for function in &program.functions {
-        let offset = bytes.len() as u64;
-        emit_function_text(function, &mut bytes, &mut relocations);
-        let size = bytes.len() as u64 - offset;
+        let offset = text.len() as u64;
+        emit_function_text(
+            function,
+            &mut text,
+            &mut rodata,
+            &mut data_symbols,
+            &mut relocations,
+        );
+        let size = text.len() as u64 - offset;
         functions.push(FunctionSymbol {
             name: function.name.clone(),
             offset,
@@ -60,9 +84,11 @@ fn build_text(program: &IrProgram) -> TextImage {
         });
     }
 
-    TextImage {
-        bytes,
+    ObjectImage {
+        text,
+        rodata,
         functions,
+        data_symbols,
         relocations,
     }
 }
@@ -70,7 +96,9 @@ fn build_text(program: &IrProgram) -> TextImage {
 fn emit_function_text(
     function: &IrFunction,
     bytes: &mut Vec<u8>,
-    relocations: &mut Vec<CallRelocation>,
+    rodata: &mut Vec<u8>,
+    data_symbols: &mut Vec<DataSymbol>,
+    relocations: &mut Vec<TextRelocation>,
 ) {
     let frame = FrameLayout::new(function);
     let mut labels = HashMap::new();
@@ -82,6 +110,18 @@ fn emit_function_text(
         match instruction {
             Instruction::Const { dst, value } => {
                 emit_mov_mem_imm32(bytes, frame.value_offset(*dst), *value as i32);
+            }
+            Instruction::StringConst { dst, label, value } => {
+                let offset = rodata.len() as u64;
+                rodata.extend_from_slice(value.as_bytes());
+                rodata.push(0);
+                data_symbols.push(DataSymbol {
+                    name: label.clone(),
+                    offset,
+                    size: value.len() as u64 + 1,
+                });
+                emit_lea_rax_symbol(bytes, label, relocations);
+                emit_store_rax(bytes, frame.value_offset(*dst));
             }
             Instruction::Add { dst, left, right } => {
                 emit_binary_mem_op(bytes, 0x03, &frame, *dst, *left, *right);
@@ -153,13 +193,15 @@ fn emit_function_text(
             } => {
                 emit_compare(bytes, *op, &frame, *dst, *left, *right);
             }
-            Instruction::Call { function, .. } => {
+            Instruction::Call { function, args, .. } => {
+                emit_call_args(bytes, &frame, args);
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
                 bytes.extend_from_slice(&0_i32.to_le_bytes());
-                relocations.push(CallRelocation {
+                relocations.push(TextRelocation {
                     offset: call_offset + 1,
                     symbol: function.clone(),
+                    kind: RelocationKind::Plt32,
                 });
                 if let Instruction::Call { dst, .. } = instruction {
                     emit_store_rax(bytes, frame.value_offset(*dst));
@@ -169,9 +211,10 @@ fn emit_function_text(
                 let call_offset = bytes.len() as u64;
                 bytes.push(0xe8);
                 bytes.extend_from_slice(&0_i32.to_le_bytes());
-                relocations.push(CallRelocation {
+                relocations.push(TextRelocation {
                     offset: call_offset + 1,
                     symbol: "__geo_bounds_check".to_string(),
+                    kind: RelocationKind::Plt32,
                 });
             }
             Instruction::Jump { label } => {
@@ -189,10 +232,7 @@ fn emit_function_text(
                 emit_load_rax(bytes, frame.value_offset(*value));
                 bytes.extend_from_slice(&[0xc9, 0xc3]);
             }
-            Instruction::StringConst { .. }
-            | Instruction::And { .. }
-            | Instruction::Or { .. }
-            | Instruction::BitNot { .. } => {}
+            Instruction::And { .. } | Instruction::Or { .. } | Instruction::BitNot { .. } => {}
         }
     }
 
@@ -448,6 +488,17 @@ fn emit_jump_if_equal(bytes: &mut Vec<u8>, label: &str, jumps: &mut Vec<JumpPatc
     });
 }
 
+fn emit_lea_rax_symbol(bytes: &mut Vec<u8>, symbol: &str, relocations: &mut Vec<TextRelocation>) {
+    bytes.extend_from_slice(&[0x48, 0x8d, 0x05]);
+    let displacement_offset = bytes.len();
+    bytes.extend_from_slice(&0_i32.to_le_bytes());
+    relocations.push(TextRelocation {
+        offset: displacement_offset as u64,
+        symbol: symbol.to_string(),
+        kind: RelocationKind::Pc32,
+    });
+}
+
 fn patch_jumps(bytes: &mut [u8], labels: &HashMap<String, u64>, jumps: &[JumpPatch]) {
     for jump in jumps {
         let target = *labels
@@ -497,6 +548,42 @@ fn emit_load_r10(bytes: &mut Vec<u8>, offset: u32) {
     emit_rbp_operand(bytes, 2, offset);
 }
 
+fn emit_call_args(bytes: &mut Vec<u8>, frame: &FrameLayout, args: &[crate::ir::ValueId]) {
+    for (index, arg) in args.iter().enumerate().take(6) {
+        emit_load_arg_register(bytes, index, frame.value_offset(*arg));
+    }
+}
+
+fn emit_load_arg_register(bytes: &mut Vec<u8>, index: usize, offset: u32) {
+    match index {
+        0 => {
+            bytes.extend_from_slice(&[0x48, 0x8b]);
+            emit_rbp_operand(bytes, 7, offset);
+        }
+        1 => {
+            bytes.extend_from_slice(&[0x48, 0x8b]);
+            emit_rbp_operand(bytes, 6, offset);
+        }
+        2 => {
+            bytes.extend_from_slice(&[0x48, 0x8b]);
+            emit_rbp_operand(bytes, 2, offset);
+        }
+        3 => {
+            bytes.extend_from_slice(&[0x48, 0x8b]);
+            emit_rbp_operand(bytes, 1, offset);
+        }
+        4 => {
+            bytes.extend_from_slice(&[0x4c, 0x8b]);
+            emit_rbp_operand(bytes, 0, offset);
+        }
+        5 => {
+            bytes.extend_from_slice(&[0x4c, 0x8b]);
+            emit_rbp_operand(bytes, 1, offset);
+        }
+        _ => {}
+    }
+}
+
 fn emit_lea_rax_local(bytes: &mut Vec<u8>, offset: u32) {
     bytes.extend_from_slice(&[0x48, 0x8d]);
     emit_rbp_operand(bytes, 0, offset);
@@ -528,7 +615,7 @@ struct Names {
     symbol_indices: HashMap<String, u32>,
 }
 
-fn build_names(program: &IrProgram, text: &TextImage) -> Names {
+fn build_names(program: &IrProgram, image: &ObjectImage) -> Names {
     let mut strtab = vec![0];
     let mut symbol_offsets = HashMap::new();
     let mut symbol_indices = HashMap::new();
@@ -543,7 +630,16 @@ fn build_names(program: &IrProgram, text: &TextImage) -> Names {
             &mut next_index,
         );
     }
-    for relocation in &text.relocations {
+    for symbol in &image.data_symbols {
+        add_symbol_name(
+            &mut strtab,
+            &mut symbol_offsets,
+            &mut symbol_indices,
+            &symbol.name,
+            &mut next_index,
+        );
+    }
+    for relocation in &image.relocations {
         add_symbol_name(
             &mut strtab,
             &mut symbol_offsets,
@@ -578,12 +674,12 @@ fn add_symbol_name(
     *next_index += 1;
 }
 
-fn build_symtab(text: &TextImage, symbol_offsets: &HashMap<String, u32>) -> Vec<u8> {
+fn build_symtab(image: &ObjectImage, symbol_offsets: &HashMap<String, u32>) -> Vec<u8> {
     let mut out = Vec::new();
     write_symbol(&mut out, 0, 0, 0, 0, 0, 0);
     write_symbol(&mut out, 0, 0x03, 0, 1, 0, 0);
 
-    for function in &text.functions {
+    for function in &image.functions {
         write_symbol(
             &mut out,
             *symbol_offsets.get(&function.name).expect("function symbol"),
@@ -595,13 +691,26 @@ fn build_symtab(text: &TextImage, symbol_offsets: &HashMap<String, u32>) -> Vec<
         );
     }
 
-    let defined: Vec<&str> = text
+    for symbol in &image.data_symbols {
+        write_symbol(
+            &mut out,
+            *symbol_offsets.get(&symbol.name).expect("data symbol"),
+            0x11,
+            0,
+            2,
+            symbol.offset,
+            symbol.size,
+        );
+    }
+
+    let defined: Vec<&str> = image
         .functions
         .iter()
         .map(|function| function.name.as_str())
+        .chain(image.data_symbols.iter().map(|symbol| symbol.name.as_str()))
         .collect();
     let mut emitted = Vec::new();
-    for relocation in &text.relocations {
+    for relocation in &image.relocations {
         if defined.contains(&relocation.symbol.as_str()) || emitted.contains(&relocation.symbol) {
             continue;
         }
@@ -639,14 +748,18 @@ fn write_symbol(
     out.extend_from_slice(&size.to_le_bytes());
 }
 
-fn build_relocations(text: &TextImage, symbol_indices: &HashMap<String, u32>) -> Vec<u8> {
+fn build_relocations(image: &ObjectImage, symbol_indices: &HashMap<String, u32>) -> Vec<u8> {
     let mut out = Vec::new();
-    for relocation in &text.relocations {
+    for relocation in &image.relocations {
         let symbol = *symbol_indices
             .get(&relocation.symbol)
             .expect("relocation symbol index") as u64;
+        let kind = match relocation.kind {
+            RelocationKind::Pc32 => R_X86_64_PC32,
+            RelocationKind::Plt32 => R_X86_64_PLT32,
+        };
         out.extend_from_slice(&relocation.offset.to_le_bytes());
-        out.extend_from_slice(&((symbol << 32) | u64::from(R_X86_64_PLT32)).to_le_bytes());
+        out.extend_from_slice(&((symbol << 32) | u64::from(kind)).to_le_bytes());
         out.extend_from_slice(&(-4_i64).to_le_bytes());
     }
     out
@@ -660,7 +773,14 @@ struct SectionNameTable {
 fn section_name_table() -> SectionNameTable {
     let mut bytes = vec![0];
     let mut offsets = HashMap::new();
-    for name in [".text", ".rela.text", ".symtab", ".strtab", ".shstrtab"] {
+    for name in [
+        ".text",
+        ".rodata",
+        ".rela.text",
+        ".symtab",
+        ".strtab",
+        ".shstrtab",
+    ] {
         offsets.insert(name, bytes.len() as u32);
         bytes.extend_from_slice(name.as_bytes());
         bytes.push(0);
@@ -670,6 +790,7 @@ fn section_name_table() -> SectionNameTable {
 
 fn build_elf(
     text: &[u8],
+    rodata: &[u8],
     rela_text: &[u8],
     symtab: &[u8],
     strtab: &[u8],
@@ -678,6 +799,7 @@ fn build_elf(
 ) -> Vec<u8> {
     let mut out = vec![0; 64];
     let text_offset = append_section(&mut out, text, 16);
+    let rodata_offset = append_section(&mut out, rodata, 8);
     let rela_offset = append_section(&mut out, rela_text, 8);
     let symtab_offset = append_section(&mut out, symtab, 8);
     let strtab_offset = append_section(&mut out, strtab, 1);
@@ -700,12 +822,24 @@ fn build_elf(
     );
     write_section(
         &mut out,
+        shstr_offsets[".rodata"],
+        SHT_PROGBITS,
+        SHF_ALLOC,
+        rodata_offset,
+        rodata.len() as u64,
+        0,
+        0,
+        8,
+        0,
+    );
+    write_section(
+        &mut out,
         shstr_offsets[".rela.text"],
         SHT_RELA,
         0,
         rela_offset,
         rela_text.len() as u64,
-        3,
+        4,
         1,
         8,
         24,
@@ -717,7 +851,7 @@ fn build_elf(
         0,
         symtab_offset,
         symtab.len() as u64,
-        4,
+        5,
         2,
         8,
         24,
@@ -775,8 +909,8 @@ fn write_elf_header(out: &mut [u8], section_header_offset: u64) {
     out[40..48].copy_from_slice(&section_header_offset.to_le_bytes());
     out[52..54].copy_from_slice(&64_u16.to_le_bytes());
     out[58..60].copy_from_slice(&64_u16.to_le_bytes());
-    out[60..62].copy_from_slice(&6_u16.to_le_bytes());
-    out[62..64].copy_from_slice(&5_u16.to_le_bytes());
+    out[60..62].copy_from_slice(&7_u16.to_le_bytes());
+    out[62..64].copy_from_slice(&6_u16.to_le_bytes());
 }
 
 fn write_null_section(out: &mut Vec<u8>) {

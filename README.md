@@ -38,6 +38,7 @@ cargo run -p xtask --quiet -- from-scratch
 cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
 cargo run --quiet -- emit-obj examples\object_backend.geo --target x86_64-linux -o target\object_backend_linux.o
+cargo run --quiet -- emit-obj examples\hello_world.geo --target x86_64-linux -o target\hello_world_linux.o
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\return_42_windows.asm
 ```
 

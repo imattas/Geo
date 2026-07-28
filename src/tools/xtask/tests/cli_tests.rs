@@ -44,3 +44,17 @@ fn verify_includes_compiler_owned_linux_object_emission() {
 
     assert!(has_emit_obj);
 }
+
+#[test]
+fn verify_includes_compiler_owned_string_object_emission() {
+    let commands = verify_commands();
+    let has_emit_obj = commands.iter().any(|(program, args)| {
+        *program == "cargo"
+            && args.contains(&"emit-obj")
+            && args.contains(&"examples/hello_world.geo")
+            && args.contains(&"x86_64-linux")
+            && args.contains(&"target/xtask-hello-world-linux.o")
+    });
+
+    assert!(has_emit_obj);
+}

@@ -44,6 +44,61 @@ fn emits_relocation_for_runtime_call() {
 }
 
 #[test]
+fn emits_rodata_for_string_literals() {
+    let object = object_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                println("Geo")
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&object, b".rodata"));
+    assert!(contains_bytes(&object, b"Geo\0"));
+    assert!(contains_bytes(&object, b"__geo_str_main_0"));
+}
+
+#[test]
+fn emits_text_relocation_for_string_literal_address() {
+    let object = object_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                println("Geo")
+                return 0
+            }
+        "#,
+    );
+
+    assert!(rela_text_payload_size(&object) >= 48);
+    assert!(contains_bytes(
+        section_payload(&object, 1),
+        &[0x48, 0x8d, 0x05]
+    ));
+}
+
+#[test]
+fn emits_call_argument_register_for_string_literal_runtime_call() {
+    let object = object_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                println("Geo")
+                return 0
+            }
+        "#,
+    );
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, &[0x48, 0x8b, 0x7d]));
+}
+
+#[test]
 fn emits_relocation_for_bounds_check_runtime_call() {
     let object = object_for(
         r#"
