@@ -265,6 +265,27 @@ fn emits_direct_elf64_string_clone_runtime() {
     assert!(contains_bytes(&executable, &[0xf3, 0xa4]));
 }
 
+#[test]
+fn emits_direct_elf64_alloc_copy_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let source: *u8 = alloc(8)
+                let copy: *u8 = alloc_copy(source, 8)
+                if copy != null {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(&executable, &[0xf3, 0xa4]));
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }

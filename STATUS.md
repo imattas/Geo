@@ -79,6 +79,8 @@ cargo run --quiet -- build examples\string_from_byte_len_exit.geo --target x86_6
 cargo run --quiet -- build examples\string_from_byte_len_exit.geo --target x86_64-windows -o target\string_from_byte_len_exit.exe
 cargo run --quiet -- build examples\string_clone_len_exit.geo --target x86_64-linux -o target\string_clone_len_exit
 cargo run --quiet -- build examples\string_clone_len_exit.geo --target x86_64-windows -o target\string_clone_len_exit.exe
+cargo run --quiet -- build examples\alloc_copy_exit.geo --target x86_64-linux -o target\alloc_copy_exit
+cargo run --quiet -- build examples\alloc_copy_exit.geo --target x86_64-windows -o target\alloc_copy_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -149,6 +151,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_copy`, `std.mem.mem_move`, and `std.mem.mem_zero` buffer primitives
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.string.string_from_byte`
 - direct ELF64 and PE64 executable emission also includes compiler-owned allocation-backed `std.string.string_clone`
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.alloc_copy`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
@@ -175,7 +178,7 @@ Current repository-level tooling:
 The compiler pipeline is implemented in this repository. The active workspace has no LLVM, Cranelift, MLIR, GCCJIT, or similar compiler backend framework dependency.
 
 External tools such as NASM and the platform linker are currently allowed as build-tool steps. They are not the compiler pipeline. `geo emit-obj --target x86_64-linux` exercises a compiler-owned ELF64 relocatable writer with stack-slot machine code, System V register and stack-passed parameter handling, bounds-check runtime ABI setup, branch patching, `.rodata` strings, and text relocations for the current object subset. `geo emit-obj --target x86_64-windows` emits a compiler-owned AMD64 COFF relocatable for the current object subset, including stack code, `.rdata` strings, function/data symbols, internal function calls, Windows x64 argument registers, call shadow space, and text relocations. The Linux `build` path now has a compiler-owned ELF64 executable writer for current-subset programs, with a `_start` exit wrapper, internal/data relocation patching, direct `string_len`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.io.read_file`, `std.io.read_file_or`, `std.io.write_file`, and allocation-backed `string_concat` runtime helpers. The direct PE64 path uses compiled Win64 machine code for current-subset programs, patches internal and data relocations, includes local bounds-check, string length, string byte access, byte search helpers, first and last substring-index helpers, non-overlapping substring counting, decimal string-to-integer parsing, string comparison, string containment, string prefix/suffix checks, equality and ordering string wrappers, empty and ASCII string predicates, ASCII digit/hex/alpha/lower/upper/alnum/identifier/whitespace classifiers, allocation-backed string concatenation through the compiler-owned `VirtualAlloc` import, `std.process.exit`, `std.mem.alloc`, console print helpers, `std.io.read_file`, and `std.io.read_file_or` through direct Win32 imports. Broader Linux runtime coverage and broader Windows COFF/PE object coverage remain roadmap work.
-- The direct native paths now also provide compiler-owned `std.io.read_line` helpers with bounded buffers and newline termination.
+- The direct native paths now also provide compiler-owned `std.io.read_line` helpers with bounded buffers and newline termination, plus `std.mem.alloc_copy` for native buffer duplication.
 
 ## Documentation Status
 

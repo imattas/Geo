@@ -1135,7 +1135,28 @@ fn emits_direct_pe64_string_clone_as_compiled_helper() {
     );
 
     assert!(contains_bytes(&pe, b"VirtualAlloc"));
-    assert!(contains_bytes(&pe, &[0x42, 0x8a, 0x1c, 0x1a, 0x43, 0x88]));
+    assert!(contains_bytes(&pe, &[0x46, 0x8a, 0x0c, 0x1a, 0x47, 0x88]));
+}
+
+#[test]
+fn emits_direct_pe64_alloc_copy_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.mem
+
+            fn main() -> int {
+                let source: *u8 = alloc(8)
+                let copy: *u8 = alloc_copy(source, 8)
+                if copy != null {
+                    return 42
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0x46, 0x8a, 0x0c, 0x1a]));
 }
 
 #[test]
