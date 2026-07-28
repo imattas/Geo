@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "compiler/geo",
-    "compiler/geo_layout",
+    "compiler/geo_diagnostics",
+    "compiler/geo_source",
     "src/bootstrap",
     "src/tools/xtask",
 ]

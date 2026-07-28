@@ -36,7 +36,8 @@ Deliverables:
 - Rust-style workspace root.
 - Compiler located under `compiler/geo`.
 - Compiler-managed native runtime implementation located under `library/geo_runtime`.
-- Layout validation crate located under `compiler/geo_layout`.
+- Diagnostic support crate located under `compiler/geo_diagnostics`.
+- Source management crate located under `compiler/geo_source`.
 - Bootstrap model located under `src/bootstrap`.
 - Workspace automation tool located under `src/tools/xtask`.
 - Source-level standard library modules located under `library/std/src`.
@@ -59,7 +60,7 @@ Deliverables:
 
 - Expand `xtask` into the main developer workflow for repeatable commands.
 - Add `compiler/geo_syntax` for source, tokens, lexer, parser, and AST.
-- Add `compiler/geo_diagnostics` for diagnostic data and rendering.
+- Move remaining source/syntax responsibilities out of `compiler/geo` into real compiler crates.
 - Add `compiler/geo_driver` for check/build/run orchestration.
 - Keep `compiler/geo` as the CLI binary crate.
 - Add workspace-level developer docs.

@@ -1,4 +1,3 @@
-use geo_layout::validate_workspace;
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
@@ -53,26 +52,51 @@ pub fn help_text() -> String {
 }
 
 fn run_layout(root: &Path) -> Result<String, String> {
-    let report = validate_workspace(root);
-    if report.is_ok() {
+    let missing = required_paths()
+        .into_iter()
+        .filter(|path| !root.join(path).exists())
+        .collect::<Vec<_>>();
+
+    if missing.is_empty() {
         return Ok("layout ok".to_string());
     }
 
     let mut message = String::from("layout missing required entries:\n");
-    for entry in report.missing {
-        let _ = writeln!(message, "- {} ({})", entry.path.display(), entry.purpose);
+    for path in missing {
+        let _ = writeln!(message, "- {path}");
     }
     Err(message)
 }
 
 fn run_status(root: &Path) -> String {
-    let layout = validate_workspace(root);
-    let state = if layout.is_ok() { "ok" } else { "incomplete" };
+    let state = if required_paths()
+        .into_iter()
+        .all(|path| root.join(path).exists())
+    {
+        "ok"
+    } else {
+        "incomplete"
+    };
     format!(
-        "Geo workspace\nroot: {}\nlayout: {}\ncompiler: compiler/geo\nruntime: library/geo_runtime\nstdlib: library/std\ntools: src/tools/xtask",
+        "Geo workspace\nroot: {}\nlayout: {}\ncompiler: compiler/geo\nfrontend: compiler/geo_source\nruntime: library/geo_runtime\nstdlib: library/std\ntools: src/tools/xtask",
         root.display(),
         state
     )
+}
+
+fn required_paths() -> Vec<&'static str> {
+    vec![
+        "compiler/geo",
+        "compiler/geo_diagnostics",
+        "compiler/geo_source",
+        "library/geo_runtime",
+        "library/std",
+        "src/bootstrap",
+        "src/tools/xtask",
+        "examples",
+        "docs",
+        "Cargo.toml",
+    ]
 }
 
 fn run_verify(root: &Path) -> Result<String, String> {

@@ -1,0 +1,12 @@
+[package]
+name = "geo-source"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+name = "geo_source"
+path = "src/lib.rs"
+
+[dependencies]
+geo-diagnostics = { path = "../geo_diagnostics" }
+

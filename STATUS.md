@@ -14,7 +14,11 @@ compiler/
     Cargo.toml
     src/
     tests/
-  geo_layout/
+  geo_diagnostics/
+    Cargo.toml
+    src/
+    tests/
+  geo_source/
     Cargo.toml
     src/
     tests/
@@ -45,7 +49,8 @@ target/
 Workspace members:
 
 - `compiler/geo`
-- `compiler/geo_layout`
+- `compiler/geo_diagnostics`
+- `compiler/geo_source`
 - `src/bootstrap`
 - `src/tools/xtask`
 
@@ -87,7 +92,7 @@ The compiler currently has modules for:
 - AST
 - borrow checking
 - CLI
-- diagnostics
+- diagnostics through `compiler/geo_diagnostics`
 - driver orchestration
 - IR
 - lexer
@@ -97,7 +102,7 @@ The compiler currently has modules for:
 - PE support
 - name/module resolution
 - runtime integration
-- source loading
+- source loading through `compiler/geo_source`
 - target handling
 - tokens
 - type checking
@@ -138,7 +143,8 @@ Current repository-level tooling:
 
 - `src/bootstrap`: declares bootstrap stages for host compiler, native runtime, standard library, self-hosting examples, and distribution.
 - `src/tools/xtask`: provides `layout`, `status`, and `verify` commands.
-- `compiler/geo_layout`: validates that the expected compiler/library/src workspace shape exists.
+- `compiler/geo_diagnostics`: owns diagnostic data structures and rendering.
+- `compiler/geo_source`: owns source file loading, source locations, and module path mapping.
 
 ## Documentation Status
 

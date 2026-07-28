@@ -12,4 +12,3 @@ name = "xtask"
 path = "src/lib.rs"
 
 [dependencies]
-geo-layout = { path = "../../../compiler/geo_layout" }

@@ -28,7 +28,8 @@ Use `cargo test --workspace --quiet` during local iteration when lockfile checki
 ## Repository Areas
 
 - `compiler/geo`: current compiler crate and CLI.
-- `compiler/geo_layout`: repository layout validation crate.
+- `compiler/geo_diagnostics`: diagnostic types and rendering.
+- `compiler/geo_source`: source loading and module path mapping.
 - `library/geo_runtime`: compiler-managed native runtime implementation.
 - `library/std`: source-level Geo standard library package.
 - `src/bootstrap`: bootstrap stage model.

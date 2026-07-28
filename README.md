@@ -17,7 +17,8 @@ fn main() {
 ```text
 compiler/
   geo/              Rust compiler crate and CLI
-  geo_layout/       Repository layout validation crate
+  geo_diagnostics/  Diagnostic types and rendering
+  geo_source/       Source file loading and module path mapping
 library/
   geo_runtime/      Compiler-managed native runtime implementation
   std/              Source-level Geo standard library modules

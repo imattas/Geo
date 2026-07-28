@@ -9,3 +9,5 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+geo-diagnostics = { path = "../geo_diagnostics" }
+geo-source = { path = "../geo_source" }

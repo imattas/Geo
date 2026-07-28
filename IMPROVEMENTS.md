@@ -6,7 +6,7 @@ This file tracks practical improvements that would make Geo easier to expand, te
 
 ### 1. Split Compiler Internals Into Smaller Crates
 
-Current state: the compiler crate is already isolated at `compiler/geo`, and `compiler/geo_layout` validates the repository shape. Most compiler phases still live inside one crate.
+Current state: the compiler crate is isolated at `compiler/geo`, diagnostics live in `compiler/geo_diagnostics`, and source loading lives in `compiler/geo_source`. Most syntax, semantic, IR, and backend phases still live inside the main compiler crate.
 
 Recommended split:
 

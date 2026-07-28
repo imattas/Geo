@@ -103,6 +103,8 @@ name = "geo"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "geo-diagnostics",
+ "geo-source",
 ]
 
 [[package]]
@@ -110,8 +112,15 @@ name = "geo-bootstrap"
 version = "0.0.0"
 
 [[package]]
-name = "geo-layout"
+name = "geo-diagnostics"
 version = "0.0.0"
+
+[[package]]
+name = "geo-source"
+version = "0.0.0"
+dependencies = [
+ "geo-diagnostics",
+]
 
 [[package]]
 name = "heck"
@@ -196,6 +205,3 @@ dependencies = [
 [[package]]
 name = "xtask"
 version = "0.0.0"
-dependencies = [
- "geo-layout",
-]
