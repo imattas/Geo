@@ -1,0 +1,9 @@
+[package]
+name = "geo-codegen"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+geo-ir = { path = "../geo_ir" }
+geo-semantic = { path = "../geo_semantic" }
+geo-syntax = { path = "../geo_syntax" }

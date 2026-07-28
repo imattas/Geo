@@ -14,3 +14,4 @@ geo-source = { path = "../geo_source" }
 geo-syntax = { path = "../geo_syntax" }
 geo-ir = { path = "../geo_ir" }
 geo-semantic = { path = "../geo_semantic" }
+geo-codegen = { path = "../geo_codegen" }

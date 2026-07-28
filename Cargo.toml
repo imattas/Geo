@@ -4,6 +4,7 @@ members = [
     "compiler/geo_syntax",
     "compiler/geo_ir",
     "compiler/geo_semantic",
+    "compiler/geo_codegen",
     "compiler/geo_diagnostics",
     "compiler/geo_source",
     "src/bootstrap",
