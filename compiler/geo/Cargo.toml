@@ -9,4 +9,3 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-geo-runtime = { path = "../../library/geo_runtime" }

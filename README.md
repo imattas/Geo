@@ -19,7 +19,7 @@ compiler/
   geo/              Rust compiler crate and CLI
   geo_layout/       Repository layout validation crate
 library/
-  geo_runtime/      Runtime crate and C runtime shim
+  geo_runtime/      Compiler-managed native runtime implementation
   std/              Source-level Geo standard library modules
 src/
   bootstrap/        Bootstrap stage model

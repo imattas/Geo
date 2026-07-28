@@ -24,7 +24,7 @@ Reason: self-hosting work needs stable internal boundaries. Smaller crates also 
 
 ### 2. Add A Real Standard Library Source Tree
 
-Current state: the C runtime lives in `library/geo_runtime`, and first-pass source-level standard library module declarations live in `library/std/src`.
+Current state: the compiler owns runtime metadata directly in `compiler/geo/src/runtime.rs`; the native runtime implementation lives in `library/geo_runtime`, and first-pass source-level standard library module declarations live in `library/std/src`.
 
 Recommended layout:
 
@@ -128,6 +128,7 @@ fn main() {
 
 ### Core Runtime
 
+- Keep runtime link integration in the compiler driver instead of a separate resolver crate.
 - Stable runtime ABI for printing, allocation, process exit, panic, and file IO.
 - Platform-specific implementations hidden behind a common ABI.
 - Explicit runtime entry point for unit-returning `main`.

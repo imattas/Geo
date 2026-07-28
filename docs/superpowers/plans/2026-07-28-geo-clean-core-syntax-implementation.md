@@ -6,7 +6,7 @@
 
 **Architecture:** Extend the existing AST/parser/typechecker/lowerer rather than replacing the compiler pipeline. Unit-returning functions lower to an integer process status of `0` when no explicit integer return is present. Standard library printing becomes statement-oriented by returning `unit`.
 
-**Tech Stack:** Rust 2021, current Geo lexer/parser/typechecker/borrow/lower/x86_64 pipeline, C runtime shim for existing build path.
+**Tech Stack:** Rust 2021, current Geo lexer/parser/typechecker/borrow/lower/x86_64 pipeline, compiler-managed native runtime for existing build path.
 
 ## Global Constraints
 

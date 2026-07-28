@@ -32,7 +32,10 @@ pub fn required_layout() -> Vec<LayoutEntry> {
         dir("compiler/geo/tests", "compiler boundary tests"),
         dir("compiler/geo_layout", "workspace layout validation crate"),
         dir("library", "language libraries and runtime area"),
-        dir("library/geo_runtime", "native runtime support crate"),
+        dir(
+            "library/geo_runtime",
+            "compiler-managed native runtime implementation",
+        ),
         dir("library/std", "Geo standard library source package"),
         dir("library/std/src", "standard library Geo modules"),
         dir(

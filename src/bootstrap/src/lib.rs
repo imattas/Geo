@@ -27,7 +27,7 @@ pub fn bootstrap_stages() -> Vec<BootstrapStage> {
             name: "runtime",
             kind: StageKind::Runtime,
             path: "library/geo_runtime",
-            description: "make native runtime symbols available to generated Geo programs",
+            description: "compile and link compiler-managed native runtime symbols",
         },
         BootstrapStage {
             name: "std",

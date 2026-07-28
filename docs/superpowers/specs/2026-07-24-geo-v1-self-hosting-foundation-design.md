@@ -153,7 +153,7 @@ Runtime responsibilities:
 - WinAPI-backed runtime on Windows
 - ABI adapters for calls between Geo code and runtime functions
 
-The runtime may begin as Rust or C shim code linked beside generated Geo output. Its public ABI must stay simple enough to rewrite pieces in Geo later.
+The runtime begins as a compiler-managed native implementation linked beside generated Geo output. Its public ABI must stay simple enough to rewrite pieces in Geo later.
 
 ## Backend and Platform Targets
 

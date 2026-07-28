@@ -46,7 +46,6 @@ Workspace members:
 
 - `compiler/geo`
 - `compiler/geo_layout`
-- `library/geo_runtime`
 - `src/bootstrap`
 - `src/tools/xtask`
 
@@ -128,17 +127,16 @@ The exact implemented behavior is covered by the Rust test suite under `compiler
 
 Current runtime layout:
 
-- Runtime Rust crate: `library/geo_runtime`
-- Runtime C shim: `library/geo_runtime/geo_runtime.c`
+- Compiler-managed native runtime implementation: `library/geo_runtime/geo_runtime.c`
 - Source-level standard library modules: `library/std/src`
 
-The compiler resolves the C runtime path through the `geo-runtime` crate instead of hard-coding a compiler-local runtime directory.
+The compiler owns runtime metadata in `compiler/geo/src/runtime.rs`. No separate runtime Cargo crate remains in the workspace.
 
 ## Tooling Status
 
 Current repository-level tooling:
 
-- `src/bootstrap`: declares bootstrap stages for host compiler, runtime, standard library, self-hosting examples, and distribution.
+- `src/bootstrap`: declares bootstrap stages for host compiler, native runtime, standard library, self-hosting examples, and distribution.
 - `src/tools/xtask`: provides `layout`, `status`, and `verify` commands.
 - `compiler/geo_layout`: validates that the expected compiler/library/src workspace shape exists.
 

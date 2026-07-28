@@ -1,6 +1,12 @@
 use crate::ast::{Param, Type};
 use crate::diagnostics::Diagnostic;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeRuntime {
+    pub name: &'static str,
+    pub source_path: PathBuf,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeFunction {
@@ -3167,8 +3173,22 @@ pub fn functions_for_import(path: &[String]) -> Result<Vec<RuntimeFunction>, Dia
     }
 }
 
+pub fn native_runtime() -> NativeRuntime {
+    NativeRuntime {
+        name: "geo_native_runtime",
+        source_path: workspace_root()
+            .join("library")
+            .join("geo_runtime")
+            .join("geo_runtime.c"),
+    }
+}
+
 pub fn c_runtime_path() -> PathBuf {
-    geo_runtime::c_runtime_path()
+    native_runtime().source_path
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
 fn runtime_fn(

@@ -35,7 +35,7 @@ Deliverables:
 
 - Rust-style workspace root.
 - Compiler located under `compiler/geo`.
-- Runtime crate located under `library/geo_runtime`.
+- Compiler-managed native runtime implementation located under `library/geo_runtime`.
 - Layout validation crate located under `compiler/geo_layout`.
 - Bootstrap model located under `src/bootstrap`.
 - Workspace automation tool located under `src/tools/xtask`.
@@ -120,6 +120,7 @@ Goal: stabilize the boundary between generated Geo code and platform runtime cod
 Deliverables:
 
 - Define runtime symbols for print, println, allocation, free, realloc, exit, panic, file open/read/write/close.
+- Keep runtime metadata and link integration inside the custom compiler, not in a resolver crate.
 - Add Linux and Windows implementations behind the same public ABI.
 - Add runtime entry support for unit-returning `main`.
 - Add trap path for bounds errors.

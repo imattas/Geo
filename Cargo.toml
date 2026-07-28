@@ -2,7 +2,6 @@
 members = [
     "compiler/geo",
     "compiler/geo_layout",
-    "library/geo_runtime",
     "src/bootstrap",
     "src/tools/xtask",
 ]
