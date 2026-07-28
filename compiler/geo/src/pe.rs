@@ -496,6 +496,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_index_of");
+    let needs_string_last_index_of = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_last_index_of");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -551,6 +555,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_find_byte
         || needs_string_last_find_byte
         || needs_string_index_of
+        || needs_string_last_index_of
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -660,6 +665,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_index_of {
         helpers.string_index_of = Some(layout.text_rva + code.len() as u32);
         emit_string_index_of_helper(&mut code);
+    }
+    if needs_string_last_index_of {
+        helpers.string_last_index_of = Some(layout.text_rva + code.len() as u32);
+        emit_string_last_index_of_helper(&mut code);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -794,6 +803,9 @@ fn compiled_symbol_rva(
     if symbol == "string_index_of" {
         return helpers.string_index_of;
     }
+    if symbol == "string_last_index_of" {
+        return helpers.string_last_index_of;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -838,6 +850,7 @@ struct PeHelperRvas {
     string_find_byte: Option<u32>,
     string_last_find_byte: Option<u32>,
     string_index_of: Option<u32>,
+    string_last_index_of: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, buffer_rva: u32) {
@@ -1486,6 +1499,44 @@ fn emit_string_index_of_helper(code: &mut Vec<u8>) {
     patch_short_jump(code, matched, found_target);
     patch_short_jump(code, haystack_end, not_found_target);
     patch_short_jump(code, source_ended, not_found_target);
+    patch_short_jump(code, mismatch, advance_target);
+}
+
+fn emit_string_last_index_of_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x49, 0x89, 0xc8]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc3, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x80, 0x3a, 0x00]);
+    let empty_needle = emit_short_jump_placeholder(code, 0x74);
+    let outer = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0x38, 0x00]);
+    let source_end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x49, 0x89, 0xd2]);
+    let inner = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x02]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0x39, 0x00]);
+    let advance = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x3a, 0x01]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    emit_short_jump_back(code, inner);
+    let found_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x89, 0xc3]);
+    code.extend_from_slice(&[0x4d, 0x29, 0xcb]);
+    let advance_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    emit_short_jump_back(code, outer);
+    let return_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0xd8]);
+    code.push(0xc3);
+
+    patch_short_jump(code, empty_needle, return_target);
+    patch_short_jump(code, source_end, return_target);
+    patch_short_jump(code, matched, found_target);
+    patch_short_jump(code, advance, advance_target);
     patch_short_jump(code, mismatch, advance_target);
 }
 
