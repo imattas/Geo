@@ -96,6 +96,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "mem_move" => emit_mem_move_runtime(&mut code),
             "mem_fill" => emit_mem_fill_runtime(&mut code),
             "mem_find" => emit_mem_find_runtime(&mut code),
+            "mem_compare" => emit_mem_compare_runtime(&mut code),
             "string_from_byte" => emit_string_from_byte_runtime(&mut code),
             "string_clone" => emit_string_clone_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
@@ -555,6 +556,31 @@ fn emit_mem_find_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
     patch_short_jump(code, empty, not_found);
     patch_short_jump(code, found, found_target);
+}
+
+fn emit_mem_compare_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x89, 0xd1]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x0f, 0xb6, 0x07]);
+    code.extend_from_slice(&[0x0f, 0xb6, 0x16]);
+    code.extend_from_slice(&[0x39, 0xd0]);
+    let less = emit_short_jump_placeholder(code, 0x72);
+    let greater = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x48, 0xff, 0xc7]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc6]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc9]);
+    emit_short_jump_back(code, loop_start);
+    let equal_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let less_target = code.len();
+    code.extend_from_slice(&[0xb8, 0xff, 0xff, 0xff, 0xff, 0xc3]);
+    let greater_target = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, empty, equal_target);
+    patch_short_jump(code, less, less_target);
+    patch_short_jump(code, greater, greater_target);
 }
 
 fn emit_string_from_byte_runtime(code: &mut Vec<u8>) {

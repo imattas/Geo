@@ -654,6 +654,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "mem_find");
+    let needs_mem_compare = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "mem_compare");
     let needs_string_from_byte = image
         .relocations
         .iter()
@@ -736,6 +740,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_mem_move
         || needs_mem_fill
         || needs_mem_find
+        || needs_mem_compare
         || needs_string_from_byte
         || needs_string_clone
         || needs_alloc_copy
@@ -906,6 +911,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_mem_find {
         helpers.mem_find = Some(layout.text_rva + code.len() as u32);
         emit_mem_find_helper(&mut code);
+    }
+    if needs_mem_compare {
+        helpers.mem_compare = Some(layout.text_rva + code.len() as u32);
+        emit_mem_compare_helper(&mut code);
     }
     if needs_string_from_byte {
         helpers.string_from_byte = Some(layout.text_rva + code.len() as u32);
@@ -1095,6 +1104,9 @@ fn compiled_symbol_rva(
     if symbol == "mem_find" {
         return helpers.mem_find;
     }
+    if symbol == "mem_compare" {
+        return helpers.mem_compare;
+    }
     if symbol == "string_from_byte" {
         return helpers.string_from_byte;
     }
@@ -1132,6 +1144,7 @@ struct PeHelperRvas {
     mem_move: Option<u32>,
     mem_fill: Option<u32>,
     mem_find: Option<u32>,
+    mem_compare: Option<u32>,
     string_from_byte: Option<u32>,
     string_clone: Option<u32>,
     alloc_copy: Option<u32>,
@@ -2209,6 +2222,29 @@ fn emit_mem_find_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
     patch_short_jump(code, empty, not_found);
     patch_short_jump(code, found, found_target);
+}
+
+fn emit_mem_compare_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x4d, 0x85, 0xc0]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x8a, 0x01]);
+    code.extend_from_slice(&[0x3a, 0x02]);
+    let less = emit_short_jump_placeholder(code, 0x72);
+    let greater = emit_short_jump_placeholder(code, 0x77);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc8]);
+    emit_short_jump_back(code, loop_start);
+    let equal_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let less_target = code.len();
+    code.extend_from_slice(&[0xb8, 0xff, 0xff, 0xff, 0xff, 0xc3]);
+    let greater_target = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, empty, equal_target);
+    patch_short_jump(code, less, less_target);
+    patch_short_jump(code, greater, greater_target);
 }
 
 fn emit_string_from_byte_helper(code: &mut Vec<u8>, layout: &Layout) {

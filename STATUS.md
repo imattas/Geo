@@ -113,6 +113,8 @@ cargo run --quiet -- build examples\alloc_copy_exit.geo --target x86_64-linux -o
 cargo run --quiet -- build examples\alloc_copy_exit.geo --target x86_64-windows -o target\alloc_copy_exit.exe
 cargo run --quiet -- build examples\mem_fill_exit.geo --target x86_64-linux -o target\mem_fill_exit
 cargo run --quiet -- build examples\mem_fill_exit.geo --target x86_64-windows -o target\mem_fill_exit.exe
+cargo run --quiet -- build examples\mem_compare_exit.geo --target x86_64-linux -o target\mem_compare_exit
+cargo run --quiet -- build examples\mem_compare_exit.geo --target x86_64-windows -o target\mem_compare_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -186,6 +188,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.alloc_copy`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_fill`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_find`
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_compare`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 
