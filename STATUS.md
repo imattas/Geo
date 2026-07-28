@@ -81,6 +81,8 @@ cargo run --quiet -- build examples\string_clone_len_exit.geo --target x86_64-li
 cargo run --quiet -- build examples\string_clone_len_exit.geo --target x86_64-windows -o target\string_clone_len_exit.exe
 cargo run --quiet -- build examples\alloc_copy_exit.geo --target x86_64-linux -o target\alloc_copy_exit
 cargo run --quiet -- build examples\alloc_copy_exit.geo --target x86_64-windows -o target\alloc_copy_exit.exe
+cargo run --quiet -- build examples\mem_fill_exit.geo --target x86_64-linux -o target\mem_fill_exit
+cargo run --quiet -- build examples\mem_fill_exit.geo --target x86_64-windows -o target\mem_fill_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -152,6 +154,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.string.string_from_byte`
 - direct ELF64 and PE64 executable emission also includes compiler-owned allocation-backed `std.string.string_clone`
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.alloc_copy`
+- direct ELF64 and PE64 executable emission also includes compiler-owned `std.mem.mem_fill`
 
 The exact implemented behavior is covered by the Rust test suite under `compiler/geo/tests` and the Geo examples under `examples`.
 

@@ -94,6 +94,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "mem_copy" => emit_mem_copy_runtime(&mut code),
             "mem_zero" => emit_mem_zero_runtime(&mut code),
             "mem_move" => emit_mem_move_runtime(&mut code),
+            "mem_fill" => emit_mem_fill_runtime(&mut code),
             "string_from_byte" => emit_string_from_byte_runtime(&mut code),
             "string_clone" => emit_string_clone_runtime(&mut code),
             "write_file" => emit_write_file_runtime(&mut code),
@@ -527,6 +528,14 @@ fn emit_mem_move_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xf3, 0xa4]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, forward, forward_target);
+}
+
+fn emit_mem_fill_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x89, 0xf9]);
+    code.extend_from_slice(&[0x48, 0x89, 0xf1]);
+    code.extend_from_slice(&[0x88, 0xd0]);
+    code.extend_from_slice(&[0xf3, 0xaa]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
 }
 
 fn emit_string_from_byte_runtime(code: &mut Vec<u8>) {

@@ -1160,6 +1160,20 @@ fn emits_direct_pe64_alloc_copy_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_mem_fill_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.mem
+            fn main() -> int {
+                let buffer: *u8 = alloc(8)
+                return mem_fill(buffer, 8, 65)
+            }
+        "#,
+    );
+    assert!(contains_bytes(&pe, &[0xf3, 0xaa]));
+}
+
+#[test]
 fn emits_direct_pe64_string_byte_at_as_compiled_helper() {
     let pe = pe_for(
         r#"

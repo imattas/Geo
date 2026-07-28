@@ -66,6 +66,9 @@ jobs:
       - name: Build compiler-owned Linux alloc-copy executable
         run: cargo run --locked --quiet -- build examples/alloc_copy_exit.geo --target x86_64-linux -o target/ci-alloc-copy-linux
 
+      - name: Build compiler-owned Linux mem-fill executable
+        run: cargo run --locked --quiet -- build examples/mem_fill_exit.geo --target x86_64-linux -o target/ci-mem-fill-linux
+
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
 
@@ -89,6 +92,9 @@ jobs:
 
       - name: Build compiler-owned Windows alloc-copy executable
         run: cargo run --locked --quiet -- build examples/alloc_copy_exit.geo --target x86_64-windows -o target/ci-alloc-copy-windows.exe
+
+      - name: Build compiler-owned Windows mem-fill executable
+        run: cargo run --locked --quiet -- build examples/mem_fill_exit.geo --target x86_64-windows -o target/ci-mem-fill-windows.exe
 
       - name: Emit Linux object
         run: cargo run --locked --quiet -- emit-obj examples/object_backend.geo --target x86_64-linux -o target/ci-object-backend-linux.o

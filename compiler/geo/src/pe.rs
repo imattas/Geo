@@ -646,6 +646,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "mem_move");
+    let needs_mem_fill = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "mem_fill");
     let needs_string_from_byte = image
         .relocations
         .iter()
@@ -726,6 +730,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_mem_copy
         || needs_mem_zero
         || needs_mem_move
+        || needs_mem_fill
         || needs_string_from_byte
         || needs_string_clone
         || needs_alloc_copy
@@ -888,6 +893,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_mem_move {
         helpers.mem_move = Some(layout.text_rva + code.len() as u32);
         emit_mem_move_helper(&mut code);
+    }
+    if needs_mem_fill {
+        helpers.mem_fill = Some(layout.text_rva + code.len() as u32);
+        emit_mem_fill_helper(&mut code);
     }
     if needs_string_from_byte {
         helpers.string_from_byte = Some(layout.text_rva + code.len() as u32);
@@ -1071,6 +1080,9 @@ fn compiled_symbol_rva(
     if symbol == "mem_move" {
         return helpers.mem_move;
     }
+    if symbol == "mem_fill" {
+        return helpers.mem_fill;
+    }
     if symbol == "string_from_byte" {
         return helpers.string_from_byte;
     }
@@ -1106,6 +1118,7 @@ struct PeHelperRvas {
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
     mem_move: Option<u32>,
+    mem_fill: Option<u32>,
     string_from_byte: Option<u32>,
     string_clone: Option<u32>,
     alloc_copy: Option<u32>,
@@ -2157,6 +2170,14 @@ fn emit_mem_move_helper(code: &mut Vec<u8>) {
     ]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     patch_short_jump(code, forward, forward_target);
+}
+
+fn emit_mem_fill_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x89, 0xcf]);
+    code.extend_from_slice(&[0x48, 0x89, 0xd1]);
+    code.extend_from_slice(&[0x44, 0x88, 0xc0]);
+    code.extend_from_slice(&[0xf3, 0xaa]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
 }
 
 fn emit_string_from_byte_helper(code: &mut Vec<u8>, layout: &Layout) {
