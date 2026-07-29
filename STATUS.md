@@ -272,11 +272,12 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows string runtime coverage also includes UTF-8 codepoint lookup for valid UTF-8.
 - Direct Linux and Windows array runtime coverage now includes byte-element allocation, length/capacity, indexed read/write, and push within the initial capacity.
 - Direct Linux and Windows array lifecycle coverage now includes capacity growth, payload-preserving clone, clear, and native release.
+- Direct Linux and Windows byte-array algorithm coverage now includes first/last element access, fill, reverse, index search, last-index search, contains, and count.
 - Typed pointer dereferences and stores now use the pointee width for byte-oriented memory instead of always reading or writing a full machine word.
 - `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
-- Generic element copying, removal, and the remaining array algorithms are still open runtime work.
+- Generic element copying, removal, resizing, and the remaining typed-array algorithms are still open runtime work.
 
 ## Current Priority
 

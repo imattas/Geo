@@ -35,14 +35,47 @@ fn main() -> int {
         if cloned_first != 3 {
             return 7
         }
-        if array_clear(grown) != 0 || array_len(grown) != 0usize {
+        if array_index_of(grown, &replacement) != 0 {
             return 8
         }
-        if array_capacity(grown) != 4usize {
+        if array_last_index_of(grown, &replacement) != 0 {
             return 9
         }
-        if array_free(cloned) != 0 || array_free(grown) != 0 {
+        if !array_contains(grown, &replacement) {
             return 10
+        }
+        if array_reverse(grown) != 0 {
+            return 12
+        }
+        let after_first: *u8 = array_first(grown)
+        let after_last: *u8 = array_last(grown)
+        if after_first == null || after_last == null {
+            return 13
+        }
+        let after_first_value: u8 = *after_first
+        let after_last_value: u8 = *after_last
+        if after_first_value != second || after_last_value != replacement {
+            return 14
+        }
+        if array_count(grown, &replacement) != 1usize {
+            return 11
+        }
+        if array_fill(grown, &replacement) != 0 {
+            return 15
+        }
+        let filled_first: u8 = *array_first(grown)
+        let filled_last: u8 = *array_last(grown)
+        if filled_first != replacement || filled_last != replacement {
+            return 16
+        }
+        if array_clear(grown) != 0 || array_len(grown) != 0usize {
+            return 17
+        }
+        if array_capacity(grown) != 4usize {
+            return 18
+        }
+        if array_free(cloned) != 0 || array_free(grown) != 0 {
+            return 19
         }
     }
     return 0

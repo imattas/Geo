@@ -8,6 +8,10 @@ extern fn array_push(array: *u8, value: *u8) -> int
 extern fn array_get(array: *u8, index: usize) -> *u8
 extern fn array_first(array: *u8) -> *u8
 extern fn array_last(array: *u8) -> *u8
+extern fn array_index_of(array: *u8, value: *u8) -> int
+extern fn array_last_index_of(array: *u8, value: *u8) -> int
+extern fn array_contains(array: *u8, value: *u8) -> bool
+extern fn array_count(array: *u8, value: *u8) -> usize
 extern fn array_set(array: *u8, index: usize, value: *u8) -> int
 extern fn array_fill(array: *u8, value: *u8) -> int
 extern fn array_extend(array: *u8, other: *u8) -> int

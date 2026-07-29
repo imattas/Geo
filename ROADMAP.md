@@ -260,6 +260,7 @@ Acceptance criteria:
 - The v1 parser example validates a token sequence with explicit cursor and error state through both compiler-owned writers.
 - A compiler-owned byte-array runtime path is covered by a direct executable fixture on ELF64 and PE64.
 - A compiler-owned array lifecycle path is covered by direct ELF64 and PE64 builds, including reserve, clone, clear, and release.
+- Native byte-array algorithms are covered by direct ELF64 and PE64 builds, including first/last access, fill, reverse, index search, last-index search, contains, and count.
 
 ## Phase 10: Distribution
 

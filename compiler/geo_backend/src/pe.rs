@@ -618,6 +618,38 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "array_reserve");
+    let needs_array_first = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_first");
+    let needs_array_last = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_last");
+    let needs_array_fill = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_fill");
+    let needs_array_reverse = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_reverse");
+    let needs_array_index_of = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_index_of");
+    let needs_array_last_index_of = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_last_index_of");
+    let needs_array_contains = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_contains");
+    let needs_array_count = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_count");
     let needs_array_len = image
         .relocations
         .iter()
@@ -898,6 +930,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_array_new
         || needs_array_clone
         || needs_array_reserve
+        || needs_array_first
+        || needs_array_last
+        || needs_array_fill
+        || needs_array_reverse
+        || needs_array_index_of
+        || needs_array_last_index_of
+        || needs_array_contains
+        || needs_array_count
         || needs_array_len
         || needs_array_capacity
         || needs_array_is_empty
@@ -988,6 +1028,38 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_array_reserve {
         helpers.array_reserve = Some(layout.text_rva + code.len() as u32);
         emit_array_reserve_helper(&mut code, layout);
+    }
+    if needs_array_first {
+        helpers.array_first = Some(layout.text_rva + code.len() as u32);
+        emit_array_first_helper(&mut code);
+    }
+    if needs_array_last {
+        helpers.array_last = Some(layout.text_rva + code.len() as u32);
+        emit_array_last_helper(&mut code);
+    }
+    if needs_array_fill {
+        helpers.array_fill = Some(layout.text_rva + code.len() as u32);
+        emit_array_fill_helper(&mut code);
+    }
+    if needs_array_reverse {
+        helpers.array_reverse = Some(layout.text_rva + code.len() as u32);
+        emit_array_reverse_helper(&mut code);
+    }
+    if needs_array_index_of {
+        helpers.array_index_of = Some(layout.text_rva + code.len() as u32);
+        emit_array_index_helper(&mut code, false, false);
+    }
+    if needs_array_last_index_of {
+        helpers.array_last_index_of = Some(layout.text_rva + code.len() as u32);
+        emit_array_index_helper(&mut code, true, false);
+    }
+    if needs_array_contains {
+        helpers.array_contains = Some(layout.text_rva + code.len() as u32);
+        emit_array_index_helper(&mut code, false, true);
+    }
+    if needs_array_count {
+        helpers.array_count = Some(layout.text_rva + code.len() as u32);
+        emit_array_index_helper(&mut code, false, true);
     }
     if needs_array_len {
         helpers.array_len = Some(layout.text_rva + code.len() as u32);
@@ -1388,6 +1460,30 @@ fn compiled_symbol_rva(
     if symbol == "array_reserve" {
         return helpers.array_reserve;
     }
+    if symbol == "array_first" {
+        return helpers.array_first;
+    }
+    if symbol == "array_last" {
+        return helpers.array_last;
+    }
+    if symbol == "array_fill" {
+        return helpers.array_fill;
+    }
+    if symbol == "array_reverse" {
+        return helpers.array_reverse;
+    }
+    if symbol == "array_index_of" {
+        return helpers.array_index_of;
+    }
+    if symbol == "array_last_index_of" {
+        return helpers.array_last_index_of;
+    }
+    if symbol == "array_contains" {
+        return helpers.array_contains;
+    }
+    if symbol == "array_count" {
+        return helpers.array_count;
+    }
     if symbol == "array_len" {
         return helpers.array_len;
     }
@@ -1653,6 +1749,14 @@ struct PeHelperRvas {
     array_new: Option<u32>,
     array_clone: Option<u32>,
     array_reserve: Option<u32>,
+    array_first: Option<u32>,
+    array_last: Option<u32>,
+    array_fill: Option<u32>,
+    array_reverse: Option<u32>,
+    array_index_of: Option<u32>,
+    array_last_index_of: Option<u32>,
+    array_contains: Option<u32>,
+    array_count: Option<u32>,
     array_len: Option<u32>,
     array_capacity: Option<u32>,
     array_is_empty: Option<u32>,
@@ -1978,6 +2082,120 @@ fn emit_array_free_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, null, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_array_first_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x83, 0x79, 0x08, 0x00]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x01, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, failed, failure);
+    patch_short_jump(code, empty, failure);
+}
+
+fn emit_array_last_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x85, 0xc0]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc8, 0x48, 0x8b, 0x09, 0x48, 0x01, 0xc8, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, failed, failure);
+    patch_short_jump(code, empty, failure);
+}
+
+fn emit_array_fill_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x45, 0x8a, 0x1a, 0x48, 0x8b, 0x41, 0x08, 0x4c, 0x8b, 0x01]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x45, 0x88, 0x18, 0x49, 0xff, 0xc0, 0x48, 0xff, 0xc8]);
+    emit_short_jump_back(code, loop_start);
+    let success = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, failed, failure);
+    patch_short_jump(code, done, success);
+}
+
+fn emit_array_reverse_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x85, 0xc0]);
+    let empty = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc8, 0x4c, 0x8b, 0x01, 0x4d, 0x8d, 0x0c, 0x00]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x4d, 0x39, 0xc8]);
+    let done = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[
+        0x45, 0x8a, 0x10, 0x45, 0x8a, 0x19, 0x45, 0x88, 0x18, 0x45, 0x88, 0x11, 0x49, 0xff, 0xc0,
+        0x49, 0xff, 0xc9,
+    ]);
+    emit_short_jump_back(code, loop_start);
+    let success = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, failed, failure);
+    patch_short_jump(code, empty, success);
+    patch_short_jump(code, done, success);
+}
+
+fn emit_array_index_helper(code: &mut Vec<u8>, last: bool, count: bool) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[
+        0x45, 0x8a, 0x1a, 0x4c, 0x8b, 0x49, 0x08, 0x4c, 0x8b, 0x01, 0x45, 0x31, 0xd2,
+    ]);
+    if last {
+        code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    } else {
+        code.extend_from_slice(&[0x31, 0xc0]);
+    }
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x4d, 0x85, 0xc9]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x45, 0x38, 0x18]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0xff, 0xc0, 0x49, 0xff, 0xc2, 0x49, 0xff, 0xc9]);
+    emit_short_jump_back(code, loop_start);
+    let match_target = code.len();
+    if count {
+        code.extend_from_slice(&[
+            0x48, 0xff, 0xc0, 0x49, 0xff, 0xc0, 0x49, 0xff, 0xc2, 0x49, 0xff, 0xc9,
+        ]);
+        emit_short_jump_back(code, loop_start);
+    } else if last {
+        code.extend_from_slice(&[
+            0x4c, 0x89, 0xd8, 0x49, 0xff, 0xc0, 0x49, 0xff, 0xc2, 0x49, 0xff, 0xc9,
+        ]);
+        emit_short_jump_back(code, loop_start);
+    } else {
+        code.extend_from_slice(&[0x4c, 0x89, 0xd8, 0xc3]);
+    }
+    let result_done = if last || count {
+        let target = code.len();
+        code.push(0xc3);
+        Some(target)
+    } else {
+        None
+    };
+    let failure = code.len();
+    if count {
+        code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    } else {
+        code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
+    }
+    patch_short_jump(code, failed, failure);
+    patch_short_jump(code, done, result_done.unwrap_or(failure));
+    patch_short_jump(code, matched, match_target);
 }
 
 fn emit_array_len_helper(code: &mut Vec<u8>) {
