@@ -13,4 +13,5 @@ extern fn change_dir(path: str) -> int
 extern fn path_file_name(path: str) -> str
 extern fn path_parent(path: str) -> str
 extern fn path_extension(path: str) -> str
+extern fn path_stem(path: str) -> str
 extern fn path_is_absolute(path: str) -> bool
