@@ -446,32 +446,46 @@ jobs:
         shell: pwsh
         run: |
           & target/ci-smoke-hello.exe
+          Write-Host "hello status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-clone-len.exe
+          Write-Host "clone-len status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 3) { exit $LASTEXITCODE }
           & target/ci-smoke-clone-free.exe
+          Write-Host "clone-free status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-concat-free.exe
+          Write-Host "concat-free status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-slice-free.exe
+          Write-Host "slice-free status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-read-free.exe
+          Write-Host "read-free status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-handle-read-free.exe
+          Write-Host "handle-read-free status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-from-utf8.exe
+          Write-Host "from-utf8 status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-runtime.exe
+          Write-Host "array-runtime status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-lifecycle.exe
+          Write-Host "array-lifecycle status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-mutation.exe
+          Write-Host "array-mutation status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-typed-composition.exe
+          Write-Host "array-typed-composition status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-resize.exe
+          Write-Host "array-resize status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-typed-search.exe
+          Write-Host "array-typed-search status=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-truncate-file.exe
           $truncateStatus = $LASTEXITCODE
