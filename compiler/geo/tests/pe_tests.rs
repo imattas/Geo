@@ -1542,6 +1542,24 @@ fn emits_direct_pe64_file_timestamps_as_compiled_helpers() {
 }
 
 #[test]
+fn emits_direct_pe64_directory_count_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> usize {
+                return dir_entry_count("target")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"FindFirstFileA"));
+    assert!(contains_bytes(&pe, b"FindNextFileA"));
+    assert!(contains_bytes(&pe, b"FindClose"));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

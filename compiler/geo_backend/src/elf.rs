@@ -240,6 +240,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_accessed_time" => emit_file_stat_runtime(&mut code, FileStatKind::AccessedTime),
             "file_modified_time" => emit_file_stat_runtime(&mut code, FileStatKind::ModifiedTime),
             "file_created_time" => emit_file_stat_runtime(&mut code, FileStatKind::CreatedTime),
+            "dir_entry_count" => emit_dir_entry_count_runtime(&mut code),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
             "read_file_or" => {
@@ -374,6 +375,67 @@ fn emit_file_stat_runtime(code: &mut Vec<u8>, kind: FileStatKind) {
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0xa0, 0x00, 0x00, 0x00, 0xc3]);
     patch_short_jump(code, null_path, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_dir_entry_count_runtime(code: &mut Vec<u8>) {
+    // Count Linux getdents64 records, excluding the implicit . and .. entries.
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0x40, 0x10, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x89, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x48, 0xc7, 0xc6, 0x00, 0x00, 0x01, 0x00]);
+    code.extend_from_slice(&[0x31, 0xd2, 0xb8, 0x02, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x08, 0x48, 0x85, 0xc0]);
+    let open_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x89, 0x44, 0x24, 0x10]);
+
+    let read_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x08]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x74, 0x24, 0x40]);
+    code.extend_from_slice(&[0xba, 0x00, 0x10, 0x00, 0x00]);
+    code.extend_from_slice(&[0xb8, 0xd9, 0x00, 0x00, 0x00, 0x0f, 0x05, 0x48, 0x85, 0xc0]);
+    let read_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    let read_empty = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x18]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x44, 0x24, 0x40, 0x48, 0x89, 0x44, 0x24, 0x20]);
+
+    let entry_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x83, 0x7c, 0x24, 0x18, 0x00]);
+    let next_batch = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x20]);
+    code.extend_from_slice(&[0x0f, 0xb7, 0x48, 0x10, 0x85, 0xc9]);
+    let malformed = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x3b, 0x4c, 0x24, 0x18]);
+    let oversized = emit_near_jump_placeholder(code, 0x0f, 0x87);
+    code.extend_from_slice(&[0x48, 0x01, 0x4c, 0x24, 0x20, 0x48, 0x29, 0x4c, 0x24, 0x18]);
+    code.extend_from_slice(&[0x48, 0xff, 0x44, 0x24, 0x10]);
+    let next_entry = emit_near_unconditional_placeholder(code);
+
+    let finish = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x7c, 0x24, 0x08, 0xb8, 0x03, 0x00, 0x00, 0x00, 0x0f, 0x05,
+    ]);
+    code.extend_from_slice(&[0x48, 0x83, 0x7c, 0x24, 0x10, 0x02]);
+    let no_dot_entries = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x48, 0x83, 0x6c, 0x24, 0x10, 0x02]);
+    let return_count = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x44, 0x24, 0x10, 0x48, 0x81, 0xc4, 0x40, 0x10, 0x00, 0x00, 0xc3,
+    ]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x7c, 0x24, 0x08, 0xb8, 0x03, 0x00, 0x00, 0x00, 0x0f, 0x05,
+    ]);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0x40, 0x10, 0x00, 0x00, 0xc3]);
+
+    patch_near_jump(code, open_failed, failure);
+    patch_near_jump(code, read_failed, failure);
+    patch_near_jump(code, read_empty, finish);
+    patch_near_jump(code, next_batch, read_loop);
+    patch_near_jump(code, malformed, failure);
+    patch_near_jump(code, oversized, failure);
+    patch_near_jump(code, next_entry, entry_loop);
+    patch_short_jump(code, no_dot_entries, return_count);
 }
 
 fn emit_string_byte_at_runtime(code: &mut Vec<u8>) {

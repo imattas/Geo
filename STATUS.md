@@ -296,6 +296,9 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
   execution fixtures.
 - Direct native file timestamp queries now return Unix seconds on both targets:
   Linux reads `stat` fields, while PE64 converts Win32 `FILETIME` values.
+- Direct native `dir_entry_count` now traverses Linux `getdents64` records and
+  Win32 `FindFirstFileA`/`FindNextFileA` results, with cleanup fixtures on both
+  executable writers.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
 - Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.

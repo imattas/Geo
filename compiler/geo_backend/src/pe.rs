@@ -150,6 +150,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_modified_time"
                 | "file_accessed_time"
                 | "file_created_time"
+                | "dir_entry_count"
         )
     });
     let mut layout = Layout::new(
@@ -474,6 +475,9 @@ struct Layout {
     has_file_ops: bool,
     get_file_attributes_iat: u32,
     get_file_attributes_ex_iat: u32,
+    find_first_file_iat: u32,
+    find_next_file_iat: u32,
+    find_close_iat: u32,
     has_file_metadata: bool,
 }
 
@@ -514,7 +518,7 @@ impl Layout {
             + u32::from(has_file_ops) * 4
             + u32::from(has_file_truncate) * 2
             + u32::from(has_file_truncate)
-            + u32::from(has_file_metadata) * 2;
+            + u32::from(has_file_metadata) * 5;
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
         let mut next_iat = ft_rva;
@@ -625,6 +629,18 @@ impl Layout {
             next_iat += 8;
         }
         let get_file_attributes_ex_iat = if has_file_metadata { next_iat } else { ft_rva };
+        if has_file_metadata {
+            next_iat += 8;
+        }
+        let find_first_file_iat = if has_file_metadata { next_iat } else { ft_rva };
+        if has_file_metadata {
+            next_iat += 8;
+        }
+        let find_next_file_iat = if has_file_metadata { next_iat } else { ft_rva };
+        if has_file_metadata {
+            next_iat += 8;
+        }
+        let find_close_iat = if has_file_metadata { next_iat } else { ft_rva };
         Self {
             text_rva,
             rdata_rva,
@@ -659,6 +675,9 @@ impl Layout {
             has_file_ops,
             get_file_attributes_iat,
             get_file_attributes_ex_iat,
+            find_first_file_iat,
+            find_next_file_iat,
+            find_close_iat,
             has_file_metadata,
         }
     }
@@ -689,6 +708,9 @@ impl Layout {
         self.flush_file_iat += delta;
         self.get_file_attributes_iat += delta;
         self.get_file_attributes_ex_iat += delta;
+        self.find_first_file_iat += delta;
+        self.find_next_file_iat += delta;
+        self.find_close_iat += delta;
     }
 }
 
@@ -1178,6 +1200,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
                 | "file_modified_time"
                 | "file_accessed_time"
                 | "file_created_time"
+                | "dir_entry_count"
         )
     });
     let needs_process_exit = image
@@ -1887,6 +1910,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             helpers.file_created_time = Some(layout.text_rva + code.len() as u32);
             emit_file_time_helper(&mut code, layout, 4);
         }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "dir_entry_count")
+        {
+            helpers.dir_entry_count = Some(layout.text_rva + code.len() as u32);
+            emit_dir_entry_count_helper(&mut code, layout);
+        }
     }
     if needs_file_metadata {
         helpers.file_exists = Some(layout.text_rva + code.len() as u32);
@@ -2238,6 +2269,9 @@ fn compiled_symbol_rva(
     if symbol == "file_created_time" {
         return helpers.file_created_time;
     }
+    if symbol == "dir_entry_count" {
+        return helpers.dir_entry_count;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -2346,6 +2380,7 @@ struct PeHelperRvas {
     file_modified_time: Option<u32>,
     file_accessed_time: Option<u32>,
     file_created_time: Option<u32>,
+    dir_entry_count: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -5212,7 +5247,7 @@ fn emit_file_flush_helper(code: &mut Vec<u8>, layout: &Layout) {
 
 fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x85, 0xc9]);
-    let null_path = emit_short_jump_placeholder(code, 0x74);
+    let null_path = emit_near_jump_placeholder(code, 0x84);
     emit_call_iat(code, layout, layout.delete_file_iat);
     code.extend_from_slice(&[0x85, 0xc0]);
     let failed = emit_short_jump_placeholder(code, 0x74);
@@ -5413,6 +5448,54 @@ fn emit_file_time_helper(code: &mut Vec<u8>, layout: &Layout, filetime_offset: u
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
     patch_short_jump(code, null_path, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_dir_entry_count_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // FindFirstFileA/FindNextFileA enumerate a directory when given path\\*.
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0x88, 0x03, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0xce, 0x48, 0x8d, 0x7c, 0x24, 0x20, 0x31, 0xc0]);
+    let copy_path = code.len();
+    code.extend_from_slice(&[0x8a, 0x14, 0x06, 0x88, 0x14, 0x07, 0x84, 0xd2]);
+    let path_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    emit_short_jump_back(code, copy_path);
+    let path_target = code.len();
+    code.extend_from_slice(&[0xc6, 0x04, 0x07, 0x5c, 0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[
+        0xc6, 0x04, 0x07, 0x2a, 0x48, 0xff, 0xc0, 0xc6, 0x04, 0x07, 0x00,
+    ]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x4c, 0x24, 0x20, 0x48, 0x8d, 0x54, 0x24, 0x80]);
+    emit_call_iat(code, layout, layout.find_first_file_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x84, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let find_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x89, 0x84, 0x24, 0xe8, 0x02, 0x00, 0x00]);
+
+    let next_entry = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0x84, 0x24, 0xe8, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x54, 0x24, 0x80]);
+    emit_call_iat(code, layout, layout.find_next_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let more_entries = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.find_close_iat);
+    code.extend_from_slice(&[0x48, 0x8b, 0x84, 0x24, 0xe8, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0x02]);
+    let few_entries = emit_short_jump_placeholder(code, 0x72);
+    code.extend_from_slice(&[0x48, 0x83, 0xe8, 0x02]);
+    let return_count = code.len();
+    code.extend_from_slice(&[0x48, 0x81, 0xc4, 0x88, 0x03, 0x00, 0x00, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0x88, 0x03, 0x00, 0x00, 0xc3]);
+
+    patch_near_jump(code, null_path, failure);
+    patch_short_jump(code, path_done, path_target);
+    patch_near_jump(code, find_failed, failure);
+    patch_near_jump(code, more_entries, next_entry);
+    patch_short_jump(code, few_entries, return_count);
 }
 
 fn emit_file_size_helper(code: &mut Vec<u8>, layout: &Layout) {
@@ -5647,6 +5730,9 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     if layout.has_file_metadata {
         imports.push(b"GetFileAttributesA\0".as_slice());
         imports.push(b"GetFileAttributesExA\0".as_slice());
+        imports.push(b"FindFirstFileA\0".as_slice());
+        imports.push(b"FindNextFileA\0".as_slice());
+        imports.push(b"FindClose\0".as_slice());
     }
 
     let mut data_len = first_name;
