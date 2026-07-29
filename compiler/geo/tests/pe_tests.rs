@@ -1644,6 +1644,30 @@ fn emits_direct_pe64_platform_path_separator() {
 }
 
 #[test]
+fn emits_direct_pe64_owned_platform_strings() {
+    let pe = pe_for(
+        r#"
+            import std.platform
+            import std.string
+
+            fn main() -> int {
+                let os = platform_os()
+                let arch = platform_arch()
+                let newline = platform_newline()
+                string_free(os)
+                string_free(arch)
+                string_free(newline)
+                return 0
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, b"VirtualFree"));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

@@ -196,6 +196,9 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "exit_geo" => emit_exit_runtime(&mut code),
             "process_id" => emit_process_id_runtime(&mut code),
             "platform_path_separator" => emit_platform_path_separator_runtime(&mut code),
+            "platform_os" => emit_owned_constant_runtime(&mut code, b"linux\0"),
+            "platform_arch" => emit_owned_constant_runtime(&mut code, b"x86_64\0"),
+            "platform_newline" => emit_owned_constant_runtime(&mut code, b"\n\0"),
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "free_geo" => emit_free_runtime(&mut code),
@@ -2186,6 +2189,59 @@ fn emit_process_id_runtime(code: &mut Vec<u8>) {
 
 fn emit_platform_path_separator_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, b'/', 0x00, 0x00, 0x00, 0xc3]);
+}
+
+fn emit_owned_constant_runtime(code: &mut Vec<u8>, bytes: &[u8]) {
+    let allocation_size = 8 + bytes.len() as u32;
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
+    code.extend_from_slice(&[
+        0x31,
+        0xff,
+        0xbe,
+        allocation_size as u8,
+        (allocation_size >> 8) as u8,
+        (allocation_size >> 16) as u8,
+        (allocation_size >> 24) as u8,
+        0xba,
+        0x03,
+        0x00,
+        0x00,
+        0x00,
+        0x41,
+        0xba,
+        0x22,
+        0x00,
+        0x00,
+        0x00,
+        0x49,
+        0xc7,
+        0xc0,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0x45,
+        0x31,
+        0xc9,
+        0xb8,
+        0x09,
+        0x00,
+        0x00,
+        0x00,
+        0x0f,
+        0x05,
+    ]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x48, 0x89, 0x04, 0x24, 0x48, 0xc7, 0x00]);
+    code.extend_from_slice(&allocation_size.to_le_bytes());
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        code.extend_from_slice(&[0xc6, 0x40, 8 + index as u8, byte]);
+    }
+    code.extend_from_slice(&[0x48, 0x83, 0xc0, 0x08, 0x48, 0x83, 0xc4, 0x08, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x08, 0xc3]);
+    patch_near_jump(code, failed, failure);
 }
 
 fn emit_alloc_runtime(code: &mut Vec<u8>, array: bool) {

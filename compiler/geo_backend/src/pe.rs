@@ -105,6 +105,9 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "usize_to_string"
                     | "bool_to_string"
                     | "dir_entry_name"
+                    | "platform_os"
+                    | "platform_arch"
+                    | "platform_newline"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -771,6 +774,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             "string_concat" | "dir_entry_path"
         )
     });
+    let needs_platform_os = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "platform_os");
+    let needs_platform_arch = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "platform_arch");
+    let needs_platform_newline = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "platform_newline");
     let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1524,6 +1539,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.string_concat = Some(layout.text_rva + code.len() as u32);
         emit_string_concat_helper(&mut code, layout, string_len);
     }
+    if needs_platform_os {
+        helpers.platform_os = Some(layout.text_rva + code.len() as u32);
+        emit_owned_constant_helper(&mut code, layout, b"windows\0");
+    }
+    if needs_platform_arch {
+        helpers.platform_arch = Some(layout.text_rva + code.len() as u32);
+        emit_owned_constant_helper(&mut code, layout, b"x86_64\0");
+    }
+    if needs_platform_newline {
+        helpers.platform_newline = Some(layout.text_rva + code.len() as u32);
+        emit_owned_constant_helper(&mut code, layout, b"\r\n\0");
+    }
     if needs_string_byte_at {
         helpers.string_byte_at = Some(layout.text_rva + code.len() as u32);
         emit_string_byte_at_helper(&mut code);
@@ -2240,6 +2267,15 @@ fn compiled_symbol_rva(
     if symbol == "platform_path_separator" {
         return helpers.path_separator;
     }
+    if symbol == "platform_os" {
+        return helpers.platform_os;
+    }
+    if symbol == "platform_arch" {
+        return helpers.platform_arch;
+    }
+    if symbol == "platform_newline" {
+        return helpers.platform_newline;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2415,6 +2451,9 @@ struct PeHelperRvas {
     exit_process: Option<u32>,
     process_id: Option<u32>,
     path_separator: Option<u32>,
+    platform_os: Option<u32>,
+    platform_arch: Option<u32>,
+    platform_newline: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -4438,6 +4477,43 @@ fn emit_process_id_helper(code: &mut Vec<u8>) {
 
 fn emit_path_separator_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, b'\\', 0x00, 0x00, 0x00, 0xc3]);
+}
+
+fn emit_owned_constant_helper(code: &mut Vec<u8>, layout: &Layout, bytes: &[u8]) {
+    let allocation_size = 8 + bytes.len() as u32;
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[
+        0x31,
+        0xc9,
+        0xba,
+        allocation_size as u8,
+        (allocation_size >> 8) as u8,
+        (allocation_size >> 16) as u8,
+        (allocation_size >> 24) as u8,
+        0x41,
+        0xb8,
+        0x00,
+        0x30,
+        0x00,
+        0x00,
+        0x41,
+        0xb9,
+        0x04,
+        0x00,
+        0x00,
+        0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x89, 0x00]);
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        code.extend_from_slice(&[0xc6, 0x40, 8 + index as u8, byte]);
+    }
+    code.extend_from_slice(&[0x48, 0x83, 0xc0, 0x08, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {

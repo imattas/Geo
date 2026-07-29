@@ -308,6 +308,8 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
   keeping the executable writers free of a C runtime or process-ID import.
 - Direct native `platform_path_separator` now returns the target separator
   constant from both executable writers.
+- Direct native `platform_os`, `platform_arch`, and `platform_newline` now
+  return owned strings on both executable writers.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
 - Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.

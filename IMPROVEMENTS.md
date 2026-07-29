@@ -186,7 +186,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add `tests/run-pass/`, `tests/check-pass/`, and `tests/check-fail/` for Geo source tests.
 - Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently regress to a non-native build path.
 - Move generated `.exe` and `.asm` artifacts out of the repository root and into `target/`.
-- Add native runtime coverage for recursive directory mutation and the remaining directory APIs. Basic `create_dir`/`remove_dir` mutation, `rename_file`, `copy_file`, file timestamp queries, `dir_entry_count`, `dir_entry_name`, `dir_entry_path`, `process_id`, and `platform_path_separator` now have direct two-target coverage.
+- Add native runtime coverage for recursive directory mutation and the remaining directory APIs. Basic `create_dir`/`remove_dir` mutation, `rename_file`, `copy_file`, file timestamp queries, `dir_entry_count`, `dir_entry_name`, `dir_entry_path`, `process_id`, `platform_path_separator`, and owned platform strings now have direct two-target coverage.
 - Add native runtime coverage for string comparison, substring, Unicode, formatting, and conversion APIs.
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
