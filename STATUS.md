@@ -280,15 +280,16 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows array mutation coverage now includes indexed insertion/removal, swap-based removal, bounds failures, and capacity failures.
 - Direct Linux and Windows array buffer coverage now includes native extend and bounded indexed copy operations.
 - A two-byte-element direct fixture now exercises element-scaled offsets and copy sizes on ELF64, with matching PE64 compilation coverage.
+- Direct Linux and Windows array runtime coverage now includes byte-array resize growth, shrink, fill, capacity failure, and release.
 - Direct Linux and Windows byte-array algorithm coverage now includes first/last element access, fill, reverse, index search, last-index search, contains, and count.
 - Typed pointer dereferences and stores now use the pointee width for byte-oriented memory instead of always reading or writing a full machine word.
 - `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
-- Generic element-width handling, resizing, and the remaining typed-array algorithms are still open runtime work.
+- Wider element initialization, PE64 execution validation, and the remaining typed-array algorithms are still open runtime work.
 
 ## Current Priority
 
-The next best technical move is generic array copying/resizing and UTF-8 conversion/formatting support, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
+The next best technical move is wider typed-array initialization and UTF-8 conversion/formatting support, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.

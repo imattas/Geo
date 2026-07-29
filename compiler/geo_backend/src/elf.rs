@@ -156,6 +156,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "array_insert" => emit_array_insert_runtime(&mut code),
             "array_extend" => emit_array_extend_runtime(&mut code),
             "array_copy" => emit_array_copy_runtime(&mut code),
+            "array_resize" => emit_array_resize_runtime(&mut code),
             "array_first" => emit_array_first_runtime(&mut code),
             "array_last" => emit_array_last_runtime(&mut code),
             "array_fill" => emit_array_fill_runtime(&mut code),
@@ -1613,6 +1614,36 @@ fn emit_array_copy_runtime(code: &mut Vec<u8>) {
     patch_near_jump(code, dst_range, failure);
     patch_near_jump(code, src_invalid, failure);
     patch_near_jump(code, src_range, failure);
+}
+
+fn emit_array_resize_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let failed = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x3b, 0x77, 0x10]);
+    let too_large = emit_near_jump_placeholder(code, 0x0f, 0x87);
+    code.extend_from_slice(&[0x48, 0x8b, 0x47, 0x08, 0x48, 0x39, 0xc6]);
+    let shrink = emit_near_jump_placeholder(code, 0x0f, 0x86);
+    code.extend_from_slice(&[
+        0x44, 0x8a, 0x02, 0x48, 0x89, 0x77, 0x08, 0x48, 0x29, 0xc6, 0x48, 0x85, 0xf6,
+    ]);
+    let no_fill = emit_short_jump_placeholder(code, 0x74);
+    let fill_loop = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4f, 0x18, 0x48, 0x0f, 0xaf, 0xc8, 0x48, 0x8b, 0x17, 0x48, 0x01, 0xca, 0x44,
+        0x88, 0x02, 0x48, 0xff, 0xc0, 0x48, 0xff, 0xce,
+    ]);
+    let fill_again = emit_short_jump_placeholder(code, 0x75);
+    let fill_done = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    let shrink_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0x77, 0x08, 0x31, 0xc0, 0xc3]);
+    patch_near_jump(code, failed, failure);
+    patch_near_jump(code, too_large, failure);
+    patch_near_jump(code, shrink, shrink_target);
+    patch_short_jump(code, no_fill, fill_done);
+    patch_short_jump(code, fill_again, fill_loop);
 }
 
 fn emit_array_first_runtime(code: &mut Vec<u8>) {

@@ -757,6 +757,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "array_copy");
+    let needs_array_resize = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_resize");
     let needs_array_clear = image
         .relocations
         .iter()
@@ -1048,6 +1052,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_array_insert
         || needs_array_extend
         || needs_array_copy
+        || needs_array_resize
         || needs_array_clear
         || needs_array_free
         || needs_string_byte_at
@@ -1252,6 +1257,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_array_copy {
         helpers.array_copy = Some(layout.text_rva + code.len() as u32);
         emit_array_copy_helper(&mut code);
+    }
+    if needs_array_resize {
+        helpers.array_resize = Some(layout.text_rva + code.len() as u32);
+        emit_array_resize_helper(&mut code);
     }
     if needs_array_clear {
         helpers.array_clear = Some(layout.text_rva + code.len() as u32);
@@ -1741,6 +1750,9 @@ fn compiled_symbol_rva(
     if symbol == "array_copy" {
         return helpers.array_copy;
     }
+    if symbol == "array_resize" {
+        return helpers.array_resize;
+    }
     if symbol == "array_clear" {
         return helpers.array_clear;
     }
@@ -2030,6 +2042,7 @@ struct PeHelperRvas {
     array_insert: Option<u32>,
     array_extend: Option<u32>,
     array_copy: Option<u32>,
+    array_resize: Option<u32>,
     array_clear: Option<u32>,
     array_free: Option<u32>,
     string_byte_at: Option<u32>,
@@ -3000,6 +3013,34 @@ fn emit_array_copy_helper(code: &mut Vec<u8>) {
     ] {
         patch_near_jump(code, jump, failure);
     }
+}
+
+fn emit_array_resize_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x3b, 0x51, 0x10]);
+    let too_large = emit_near_jump_placeholder(code, 0x87);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x39, 0xc2]);
+    let shrink = emit_near_jump_placeholder(code, 0x86);
+    code.extend_from_slice(&[
+        0x45, 0x8a, 0x08, 0x48, 0x89, 0x51, 0x08, 0x48, 0x29, 0xc2, 0x4c, 0x8b, 0x11, 0x49, 0x01,
+        0xc2, 0x48, 0x85, 0xd2,
+    ]);
+    let no_fill = emit_short_jump_placeholder(code, 0x74);
+    let fill_loop = code.len();
+    code.extend_from_slice(&[0x45, 0x88, 0x0a, 0x49, 0xff, 0xc2, 0x48, 0xff, 0xca]);
+    let fill_again = emit_short_jump_placeholder(code, 0x75);
+    let fill_done = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    let shrink_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0x51, 0x08, 0x31, 0xc0, 0xc3]);
+    patch_near_jump(code, failed, failure);
+    patch_near_jump(code, too_large, failure);
+    patch_near_jump(code, shrink, shrink_target);
+    patch_short_jump(code, no_fill, fill_done);
+    patch_short_jump(code, fill_again, fill_loop);
 }
 
 fn emit_string_byte_at_helper(code: &mut Vec<u8>) {

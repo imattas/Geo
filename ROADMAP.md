@@ -268,6 +268,7 @@ Acceptance criteria:
 - A compiler-owned indexed array mutation path is covered by direct ELF64 and PE64 builds, including insertion, removal, swap-based removal, bounds failures, and capacity failures.
 - A compiler-owned array composition path is covered by direct ELF64 and PE64 builds, including payload extension and bounded indexed copying.
 - Element-scaled array offsets and copy sizes are covered by a two-byte direct ELF64 fixture; extend the same runtime execution coverage to PE64.
+- Byte-array resize growth, shrink, fill, capacity failure, and release are covered by direct ELF64 execution and PE64 compilation.
 - Native byte-array algorithms are covered by direct ELF64 and PE64 builds, including first/last access, fill, reverse, index search, last-index search, contains, and count.
 
 ## Phase 10: Distribution
