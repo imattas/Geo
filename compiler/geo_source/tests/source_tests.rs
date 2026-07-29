@@ -29,3 +29,20 @@ fn computes_source_location_from_byte_offset() {
     assert_eq!(location.line_text, "    return");
     assert_eq!(location.underline_len, 6);
 }
+
+#[test]
+fn attaches_diagnostic_spans_to_source_locations() {
+    let source = SourceFile {
+        path: "sample.geo".into(),
+        text: "fn main() {\n    @\n}".to_string(),
+    };
+    let diagnostics = source.attach_diagnostics(vec![geo_diagnostics::Diagnostic::error(
+        "unexpected character '@'",
+    )
+    .with_span(16, 1)]);
+
+    let location = diagnostics[0].source.as_ref().expect("source location");
+    assert_eq!(location.line, 2);
+    assert_eq!(location.column, 5);
+    assert_eq!(location.line_text, "    @");
+}

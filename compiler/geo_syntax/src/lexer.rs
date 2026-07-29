@@ -167,8 +167,10 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 other => {
-                    self.diagnostics
-                        .push(Diagnostic::error(format!("unexpected character '{other}'")));
+                    self.diagnostics.push(
+                        Diagnostic::error(format!("unexpected character '{other}'"))
+                            .with_span(self.offset, other.len_utf8()),
+                    );
                     self.advance();
                 }
             }
@@ -325,15 +327,17 @@ impl<'a> Lexer<'a> {
                     .chars()
                     .any(|ch| ch.is_ascii_alphanumeric()))
         {
-            self.diagnostics.push(Diagnostic::error(format!(
-                "invalid {prefix}integer literal '{text}'"
-            )));
+            self.diagnostics.push(
+                Diagnostic::error(format!("invalid {prefix}integer literal '{text}'"))
+                    .with_span(span.offset, span.len),
+            );
             return;
         }
         let Ok(value) = i64::from_str_radix(&cleaned, base) else {
-            self.diagnostics.push(Diagnostic::error(format!(
-                "integer literal '{text}' is out of range"
-            )));
+            self.diagnostics.push(
+                Diagnostic::error(format!("integer literal '{text}' is out of range"))
+                    .with_span(span.offset, span.len),
+            );
             return;
         };
         let kind = match suffix {

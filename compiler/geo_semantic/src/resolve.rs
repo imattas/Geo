@@ -58,8 +58,8 @@ impl ResolveCtx {
 }
 
 fn parse_source(source: &SourceFile) -> Result<Program, Vec<Diagnostic>> {
-    let tokens = lex(&source.text)?;
-    parse(&tokens)
+    let tokens = lex(&source.text).map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
+    parse(&tokens).map_err(|diagnostics| source.attach_diagnostics(diagnostics))
 }
 
 fn is_std_import(import: &Import) -> bool {

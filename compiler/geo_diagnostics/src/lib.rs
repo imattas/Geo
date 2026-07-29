@@ -22,12 +22,19 @@ pub struct SourceLocation {
     pub underline_len: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiagnosticSpan {
+    pub offset: usize,
+    pub len: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub message: String,
     pub source: Option<SourceLocation>,
     pub notes: Vec<String>,
+    pub span: Option<DiagnosticSpan>,
 }
 
 impl Diagnostic {
@@ -37,6 +44,7 @@ impl Diagnostic {
             message: message.into(),
             source: None,
             notes: Vec::new(),
+            span: None,
         }
     }
 
@@ -47,6 +55,16 @@ impl Diagnostic {
 
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
         self.notes.push(note.into());
+        self
+    }
+
+    pub fn with_span(mut self, offset: usize, len: usize) -> Self {
+        self.span = Some(DiagnosticSpan { offset, len });
+        self
+    }
+
+    pub fn attach_source(mut self, source: SourceLocation) -> Self {
+        self.source = Some(source);
         self
     }
 

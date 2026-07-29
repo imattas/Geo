@@ -147,9 +147,9 @@ impl<'a> Parser<'a> {
             let variant_name = self.expect_ident()?;
             let value = if self.matches(&TokenKind::Equal) {
                 let TokenKind::IntLiteral(value) = self.peek().kind else {
-                    return Err(vec![Diagnostic::error(
-                        "enum discriminant must be an integer literal",
-                    )]);
+                    return Err(vec![
+                        self.error_at_current("enum discriminant must be an integer literal")
+                    ]);
                 };
                 self.advance();
                 Some(value)
@@ -392,7 +392,7 @@ impl<'a> Parser<'a> {
             let name = self.parse_qualified_ident()?;
             Ok(Type::Named(name))
         } else {
-            Err(vec![Diagnostic::error("expected type")])
+            Err(vec![self.error_at_current("expected type")])
         }
     }
 
@@ -739,7 +739,7 @@ impl<'a> Parser<'a> {
                 Ok(expr)
             }
             TokenKind::LeftBrace => self.parse_expr_block(),
-            _ => Err(vec![Diagnostic::error("expected expression")]),
+            _ => Err(vec![self.error_at_current("expected expression")]),
         }?;
 
         loop {
@@ -946,7 +946,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(_) => {
                 let segments = self.parse_qualified_ident_segments()?;
                 if segments.len() < 2 {
-                    return Err(vec![Diagnostic::error("expected enum variant pattern")]);
+                    return Err(vec![self.error_at_current("expected enum variant pattern")]);
                 }
                 let variant = segments.last().expect("len checked").clone();
                 let enum_name = segments[..segments.len() - 1].join(".");
@@ -965,7 +965,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(MatchPattern::Bool(false))
             }
-            _ => Err(vec![Diagnostic::error("expected match pattern")]),
+            _ => Err(vec![self.error_at_current("expected match pattern")]),
         }
     }
 
@@ -975,7 +975,7 @@ impl<'a> Parser<'a> {
             self.advance();
             Ok(name)
         } else {
-            Err(vec![Diagnostic::error("expected identifier")])
+            Err(vec![self.error_at_current("expected identifier")])
         }
     }
 
@@ -1002,7 +1002,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok("string".to_string())
             }
-            _ => Err(vec![Diagnostic::error("expected import path segment")]),
+            _ => Err(vec![self.error_at_current("expected import path segment")]),
         }
     }
 
@@ -1010,7 +1010,7 @@ impl<'a> Parser<'a> {
         if self.matches(kind) {
             Ok(())
         } else {
-            Err(vec![Diagnostic::error(message)])
+            Err(vec![self.error_at_current(message)])
         }
     }
 
@@ -1118,7 +1118,7 @@ impl<'a> Parser<'a> {
         } else if self.matches(&TokenKind::ShiftRightEqual) {
             Ok(Some(BinaryOp::ShiftRight))
         } else {
-            Err(vec![Diagnostic::error("expected assignment operator")])
+            Err(vec![self.error_at_current("expected assignment operator")])
         }
     }
 
@@ -1128,6 +1128,11 @@ impl<'a> Parser<'a> {
             self.current += 1;
         }
         token
+    }
+
+    fn error_at_current(&self, message: impl Into<String>) -> Diagnostic {
+        let span = self.peek().span;
+        Diagnostic::error(message).with_span(span.offset, span.len)
     }
 
     fn peek(&self) -> &'a Token {

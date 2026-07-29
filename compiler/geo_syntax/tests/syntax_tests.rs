@@ -23,3 +23,19 @@ fn lexes_and_parses_canonical_function_syntax() {
         Stmt::Let { ref name, ty: Some(Type::Int), value: Expr::Int(42), .. } if name == "answer"
     ));
 }
+
+#[test]
+fn lexer_errors_carry_the_offending_character_span() {
+    let diagnostics = lex("fn main() { @ }").expect_err("source should fail to lex");
+    assert_eq!(
+        diagnostics[0].span.map(|span| (span.offset, span.len)),
+        Some((12, 1))
+    );
+}
+
+#[test]
+fn parser_errors_carry_the_current_token_span() {
+    let tokens = lex("fn main( { return 0 }").expect("source should lex");
+    let diagnostics = parse(&tokens).expect_err("source should fail to parse");
+    assert_eq!(diagnostics[0].span.map(|span| span.len), Some(1));
+}

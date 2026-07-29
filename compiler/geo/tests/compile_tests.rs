@@ -11816,6 +11816,28 @@ fn cli_fmt_validates_and_normalizes_source_file() {
 }
 
 #[test]
+fn cli_check_renders_source_location_for_lexer_errors() {
+    let path = std::env::temp_dir().join(format!("geo-diagnostic-{}.geo", std::process::id()));
+    std::fs::write(&path, "fn main() { @ }\n").expect("failed to write diagnostic fixture");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_geo"))
+        .args(["check", path.to_string_lossy().as_ref()])
+        .output()
+        .expect("failed to run geo check");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let _ = std::fs::remove_file(&path);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("unexpected character '@'"));
+    assert!(
+        stderr.contains(":1:13"),
+        "diagnostic lacked a source column: {stderr}"
+    );
+    assert!(stderr.contains("1 | fn main() { @ }"));
+    assert!(stderr.contains("^"));
+}
+
+#[test]
 fn cli_test_checks_geo_files_in_directory() {
     let dir = std::env::temp_dir().join(format!("geo-test-{}", std::process::id()));
     let nested = dir.join("nested");

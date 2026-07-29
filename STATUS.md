@@ -262,6 +262,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 - Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
 - Runtime ABI is not yet documented as a stable contract; direct `alloc`/`free` lifetime coverage now exists on both native targets.
+- Lexer and parser diagnostics now carry token spans and are attached to source paths, lines, columns, and underlines during module loading. Semantic diagnostics still need expression-level spans.
 - `geo fmt` now parses the program and emits canonical indentation, declaration,
   statement, type, and expression layout. Comment preservation and configurable
   style options remain open.

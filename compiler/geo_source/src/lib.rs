@@ -81,4 +81,17 @@ impl SourceFile {
             underline_len: len.max(1),
         }
     }
+
+    pub fn attach_diagnostics(&self, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+        diagnostics
+            .into_iter()
+            .map(|diagnostic| {
+                if let Some(span) = diagnostic.span {
+                    diagnostic.attach_source(self.location(span.offset, span.len))
+                } else {
+                    diagnostic
+                }
+            })
+            .collect()
+    }
 }
