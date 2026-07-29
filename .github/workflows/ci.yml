@@ -106,6 +106,7 @@ jobs:
       - name: Build compiler-owned Linux truncate executable
         run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-linux -o target/ci-truncate-file-linux
       - name: Execute compiler-owned Linux truncate executable
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           set +e
@@ -408,5 +409,8 @@ jobs:
           & target/ci-smoke-array-typed-search.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-truncate-file.exe
-          if ($LASTEXITCODE -ne 3) { exit $LASTEXITCODE }
+          $truncateStatus = $LASTEXITCODE
+          $truncateSize = (Get-Item target/geo-truncate-file.txt).Length
+          Write-Host "truncate status=$truncateStatus size=$truncateSize"
+          if ($truncateStatus -ne 3 -or $truncateSize -ne 3) { exit 1 }
           Remove-Item -Force target/geo-truncate-file.txt
