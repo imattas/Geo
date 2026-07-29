@@ -36,7 +36,7 @@ mod tests {
     fn layout_places_write_file_count_after_compiled_rodata() {
         let layout = Layout::new(9, true, false, false, false, false);
 
-        assert_eq!(layout.written_rva, 0x2010);
+        assert_eq!(layout.written_rva, 0x10010);
     }
 }
 
@@ -435,8 +435,11 @@ impl Layout {
     ) -> Self {
         let headers_raw = 0x200;
         let text_rva = 0x1000;
-        let rdata_rva = 0x2000;
-        let idata_rva = 0x3000;
+        // Keep data sections outside the range used by compiler-emitted text.
+        // The runtime helper set is intentionally extensible and can exceed one
+        // section-alignment page as more native operations are added.
+        let rdata_rva = 0x10000;
+        let idata_rva = 0x11000;
         let text_raw = headers_raw;
         let message_rva = rdata_rva;
         let written_rva = align_to(message_rva + data_len, 8);
@@ -5294,6 +5297,12 @@ fn build_image(layout: &Layout, text: &[u8], rdata: &[u8], idata: &[u8]) -> Vec<
     let mut out = vec![0_u8; file_size];
     write_dos_header(&mut out);
     write_pe_headers(&mut out, layout);
+    write_u32(&mut out, 0x9c, align_to(text.len() as u32, FILE_ALIGNMENT));
+    write_u32(
+        &mut out,
+        0xa0,
+        rdata_file_size + align_to(idata.len() as u32, FILE_ALIGNMENT),
+    );
     write_section_header(
         &mut out,
         0x188,
@@ -5355,7 +5364,7 @@ fn write_pe_headers(out: &mut [u8], layout: &Layout) {
     write_u32(out, opt + 36, FILE_ALIGNMENT);
     write_u16(out, opt + 40, 6);
     write_u16(out, opt + 48, 6);
-    write_u32(out, opt + 56, 0x4000);
+    write_u32(out, opt + 56, 0x12000);
     write_u32(out, opt + 60, 0x200);
     write_u16(out, opt + 68, 3);
     write_u64(out, opt + 72, 0x100000);
