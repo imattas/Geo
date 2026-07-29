@@ -476,6 +476,8 @@ jobs:
           if ($flushStatus -ne 0 -or $flushSize -ne 7) { exit 1 }
           Remove-Item -Force target/geo-flush-test.txt
           & target/ci-smoke-directory-mutation.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (Test-Path target/geo-directory-test) { exit 1 }
+          $directoryStatus = $LASTEXITCODE
+          $directoryExists = Test-Path target/geo-directory-test
+          Write-Host "directory status=$directoryStatus exists=$directoryExists"
+          if ($directoryStatus -ne 0 -or $directoryExists) { exit 1 }
           exit 0
