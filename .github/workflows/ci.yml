@@ -414,3 +414,4 @@ jobs:
           Write-Host "truncate status=$truncateStatus size=$truncateSize"
           if ($truncateStatus -ne 3 -or $truncateSize -ne 3) { exit 1 }
           Remove-Item -Force target/geo-truncate-file.txt
+          exit 0
