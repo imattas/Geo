@@ -349,6 +349,8 @@ fn expand_program_type_aliases(
                     .iter()
                     .map(|stmt| expand_stmt_type_aliases(stmt, aliases, diagnostics))
                     .collect(),
+                span: function.span,
+                source_path: function.source_path.clone(),
             })
             .collect(),
     }
@@ -617,6 +619,7 @@ fn check_function<'a>(
     enums: &HashMap<&'a str, &'a EnumDecl>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    let diagnostic_start = diagnostics.len();
     let mut locals = const_locals(consts);
     for param in &function.params {
         if locals
@@ -647,6 +650,18 @@ fn check_function<'a>(
         0,
         true,
     );
+
+    for diagnostic in diagnostics.iter_mut().skip(diagnostic_start) {
+        if diagnostic.span.is_none() && function.span.len > 0 {
+            diagnostic.span = Some(crate::diagnostics::DiagnosticSpan {
+                offset: function.span.offset,
+                len: function.span.len,
+            });
+        }
+        if diagnostic.source_path.is_none() {
+            diagnostic.source_path = function.source_path.clone();
+        }
+    }
 }
 
 fn const_locals<'a>(consts: &'a [ConstDecl]) -> HashMap<&'a str, Local> {

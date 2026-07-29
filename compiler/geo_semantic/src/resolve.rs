@@ -59,7 +59,12 @@ impl ResolveCtx {
 
 fn parse_source(source: &SourceFile) -> Result<Program, Vec<Diagnostic>> {
     let tokens = lex(&source.text).map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
-    parse(&tokens).map_err(|diagnostics| source.attach_diagnostics(diagnostics))
+    let mut program =
+        parse(&tokens).map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
+    for function in &mut program.functions {
+        function.source_path = Some(source.path.clone());
+    }
+    Ok(program)
 }
 
 fn is_std_import(import: &Import) -> bool {

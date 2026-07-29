@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, EnumDecl, EnumVariant, Expr, ExternFunction, Field, Function, Import, MatchArm,
     MatchPattern, Param, Program, Stmt, StructDecl, Type, TypeAlias, UnaryOp,
 };
-use crate::token::{Token, TokenKind};
+use crate::token::{Span, Token, TokenKind};
 use geo_diagnostics::Diagnostic;
 
 pub fn parse(tokens: &[Token]) -> Result<Program, Vec<Diagnostic>> {
@@ -169,6 +169,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function(&mut self) -> Result<Function, Vec<Diagnostic>> {
+        let start = self.peek().span;
         self.expect(&TokenKind::Fn, "expected 'fn'")?;
         let name = self.expect_ident()?;
         let params = self.parse_params()?;
@@ -178,11 +179,19 @@ impl<'a> Parser<'a> {
             Type::Unit
         };
         let body = self.parse_block()?;
+        let end = self.tokens[self.current.saturating_sub(1)].span;
         Ok(Function {
             name,
             params,
             return_type,
             body,
+            span: Span {
+                line: start.line,
+                column: start.column,
+                offset: start.offset,
+                len: end.offset + end.len - start.offset,
+            },
+            source_path: None,
         })
     }
 

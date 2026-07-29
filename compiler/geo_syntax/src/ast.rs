@@ -1,3 +1,6 @@
+use crate::token::Span;
+use std::path::PathBuf;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub imports: Vec<Import>,
@@ -65,6 +68,8 @@ pub struct Function {
     pub params: Vec<Param>,
     pub return_type: Type,
     pub body: Vec<Stmt>,
+    pub span: Span,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

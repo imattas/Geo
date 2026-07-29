@@ -86,6 +86,13 @@ impl SourceFile {
         diagnostics
             .into_iter()
             .map(|diagnostic| {
+                if diagnostic
+                    .source_path
+                    .as_ref()
+                    .is_some_and(|path| path != &self.path)
+                {
+                    return diagnostic;
+                }
                 if let Some(span) = diagnostic.span {
                     diagnostic.attach_source(self.location(span.offset, span.len))
                 } else {

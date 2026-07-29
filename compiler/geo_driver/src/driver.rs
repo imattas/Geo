@@ -265,9 +265,34 @@ fn collect_geo_files_recursive(
 
 fn load_checked_program(path: &Path) -> Result<crate::ast::Program, Vec<Diagnostic>> {
     let program = crate::resolve::load_package_entry(path)?;
-    crate::typecheck::check(&program)?;
-    crate::borrow::check(&program)?;
+    if let Err(diagnostics) = crate::typecheck::check(&program) {
+        return Err(attach_semantic_diagnostics(path, diagnostics));
+    }
+    if let Err(diagnostics) = crate::borrow::check(&program) {
+        return Err(attach_semantic_diagnostics(path, diagnostics));
+    }
     Ok(program)
+}
+
+fn attach_semantic_diagnostics(path: &Path, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| {
+            let source_path = diagnostic
+                .source_path
+                .clone()
+                .unwrap_or_else(|| path.to_path_buf());
+            SourceFile::load(&source_path)
+                .ok()
+                .and_then(|source| {
+                    source
+                        .attach_diagnostics(vec![diagnostic.clone()])
+                        .into_iter()
+                        .next()
+                })
+                .unwrap_or(diagnostic)
+        })
+        .collect()
 }
 
 fn build_executable(

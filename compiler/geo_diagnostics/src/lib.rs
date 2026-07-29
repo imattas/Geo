@@ -35,6 +35,7 @@ pub struct Diagnostic {
     pub source: Option<SourceLocation>,
     pub notes: Vec<String>,
     pub span: Option<DiagnosticSpan>,
+    pub source_path: Option<PathBuf>,
 }
 
 impl Diagnostic {
@@ -45,6 +46,7 @@ impl Diagnostic {
             source: None,
             notes: Vec::new(),
             span: None,
+            source_path: None,
         }
     }
 
@@ -60,6 +62,11 @@ impl Diagnostic {
 
     pub fn with_span(mut self, offset: usize, len: usize) -> Self {
         self.span = Some(DiagnosticSpan { offset, len });
+        self
+    }
+
+    pub fn with_source_path(mut self, path: PathBuf) -> Self {
+        self.source_path = Some(path);
         self
     }
 

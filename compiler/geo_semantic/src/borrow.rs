@@ -17,6 +17,7 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
 }
 
 fn check_function(function: &Function, diagnostics: &mut Vec<Diagnostic>) {
+    let diagnostic_start = diagnostics.len();
     let mut ctx = BorrowCtx {
         locals: HashMap::new(),
         moved: HashSet::new(),
@@ -29,6 +30,18 @@ fn check_function(function: &Function, diagnostics: &mut Vec<Diagnostic>) {
     }
 
     ctx.check_stmts(&function.body);
+
+    for diagnostic in diagnostics.iter_mut().skip(diagnostic_start) {
+        if diagnostic.span.is_none() && function.span.len > 0 {
+            diagnostic.span = Some(crate::diagnostics::DiagnosticSpan {
+                offset: function.span.offset,
+                len: function.span.len,
+            });
+        }
+        if diagnostic.source_path.is_none() {
+            diagnostic.source_path = function.source_path.clone();
+        }
+    }
 }
 
 struct BorrowCtx<'a> {
