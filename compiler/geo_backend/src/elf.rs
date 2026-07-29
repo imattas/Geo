@@ -1729,26 +1729,29 @@ fn emit_array_reverse_runtime(code: &mut Vec<u8>) {
 }
 
 fn emit_array_index_of_runtime(code: &mut Vec<u8>) {
-    emit_array_search_runtime(code, false, false);
+    emit_array_search_runtime(code, false, false, false);
 }
 
 fn emit_array_last_index_of_runtime(code: &mut Vec<u8>) {
-    emit_array_search_runtime(code, true, false);
+    emit_array_search_runtime(code, true, false, false);
 }
 
 fn emit_array_contains_runtime(code: &mut Vec<u8>) {
-    emit_array_search_runtime(code, false, true);
+    emit_array_search_runtime(code, false, true, true);
 }
 
 fn emit_array_count_runtime(code: &mut Vec<u8>) {
-    emit_array_search_runtime(code, false, true);
+    emit_array_search_runtime(code, false, true, false);
 }
 
-fn emit_array_search_runtime(code: &mut Vec<u8>, last: bool, count: bool) {
+fn emit_array_search_runtime(code: &mut Vec<u8>, last: bool, count: bool, contains: bool) {
     code.extend_from_slice(&[0x48, 0x85, 0xff]);
-    let failed = emit_short_jump_placeholder(code, 0x74);
+    let null_array = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x85, 0xf6]);
+    let null_value = emit_short_jump_placeholder(code, 0x74);
     code.extend_from_slice(&[
-        0x44, 0x8a, 0x0e, 0x48, 0x8b, 0x57, 0x08, 0x4c, 0x8b, 0x07, 0x31, 0xc9,
+        0x41, 0x54, 0x49, 0x89, 0xf4, 0x4c, 0x8b, 0x57, 0x08, 0x4c, 0x8b, 0x5f, 0x18, 0x4c, 0x8b,
+        0x0f, 0x31, 0xd2,
     ]);
     if last {
         code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
@@ -1756,44 +1759,45 @@ fn emit_array_search_runtime(code: &mut Vec<u8>, last: bool, count: bool) {
         code.extend_from_slice(&[0x31, 0xc0]);
     }
     let loop_start = code.len();
-    code.extend_from_slice(&[0x48, 0x85, 0xd2]);
+    code.extend_from_slice(&[0x4d, 0x85, 0xd2]);
     let done = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x45, 0x38, 0x08]);
-    let matched = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x49, 0xff, 0xc0, 0x48, 0xff, 0xc1, 0x48, 0xff, 0xca]);
+    code.extend_from_slice(&[
+        0x4c, 0x89, 0xcf, 0x4c, 0x89, 0xe6, 0x4c, 0x89, 0xd9, 0xf3, 0xa6,
+    ]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    if contains {
+        code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x41, 0x5c, 0xc3]);
+    } else if count {
+        code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    } else if last {
+        code.extend_from_slice(&[0x48, 0x89, 0xd0]);
+    } else {
+        code.extend_from_slice(&[0x48, 0x89, 0xd0, 0x41, 0x5c, 0xc3]);
+    }
+    if count || last {
+        code.extend_from_slice(&[0x4d, 0x01, 0xd9, 0x48, 0xff, 0xc2, 0x49, 0xff, 0xca]);
+        emit_short_jump_back(code, loop_start);
+    }
+    let mismatch_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x01, 0xd9, 0x48, 0xff, 0xc2, 0x49, 0xff, 0xca]);
     emit_short_jump_back(code, loop_start);
-    let match_target = code.len();
-    if count {
-        code.extend_from_slice(&[
-            0x48, 0xff, 0xc0, 0x49, 0xff, 0xc0, 0x48, 0xff, 0xc1, 0x48, 0xff, 0xca,
-        ]);
-        emit_short_jump_back(code, loop_start);
-    } else if last {
-        code.extend_from_slice(&[
-            0x48, 0x89, 0xc8, 0x49, 0xff, 0xc0, 0x48, 0xff, 0xc1, 0x48, 0xff, 0xca,
-        ]);
-        emit_short_jump_back(code, loop_start);
-    } else {
-        code.extend_from_slice(&[0x48, 0x89, 0xc8, 0xc3]);
+    let result_done = code.len();
+    code.extend_from_slice(&[0x41, 0x5c]);
+    if contains {
+        code.extend_from_slice(&[0x31, 0xc0]);
     }
-    let result_done = if last || count {
-        let target = code.len();
-        code.push(0xc3);
-        Some(target)
-    } else {
-        None
-    };
+    code.push(0xc3);
     let failure = code.len();
-    if count {
+    code.extend_from_slice(&[0x41, 0x5c]);
+    if contains || count {
         code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
-    } else if last {
-        code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
     } else {
         code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
     }
-    patch_short_jump(code, failed, failure);
-    patch_short_jump(code, done, result_done.unwrap_or(failure));
-    patch_short_jump(code, matched, match_target);
+    patch_short_jump(code, null_array, failure);
+    patch_short_jump(code, null_value, failure);
+    patch_short_jump(code, done, result_done);
+    patch_short_jump(code, mismatch, mismatch_target);
 }
 
 fn emit_bounds_check_runtime(code: &mut Vec<u8>) {

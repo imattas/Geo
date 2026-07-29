@@ -166,6 +166,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-linux -o target/ci-array-typed-composition-linux
       - name: Build compiler-owned Linux array resize executable
         run: cargo run --locked --quiet -- build examples/array_resize_exit.geo --target x86_64-linux -o target/ci-array-resize-linux
+      - name: Build compiler-owned Linux typed array search executable
+        run: cargo run --locked --quiet -- build examples/array_typed_search_exit.geo --target x86_64-linux -o target/ci-array-typed-search-linux
 
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
@@ -292,6 +294,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-windows -o target/ci-array-typed-composition-windows.exe
       - name: Build compiler-owned Windows array resize executable
         run: cargo run --locked --quiet -- build examples/array_resize_exit.geo --target x86_64-windows -o target/ci-array-resize-windows.exe
+      - name: Build compiler-owned Windows typed array search executable
+        run: cargo run --locked --quiet -- build examples/array_typed_search_exit.geo --target x86_64-windows -o target/ci-array-typed-search-windows.exe
 
       - name: Build v1 buffer example with direct Linux writer
         run: cargo run --locked --quiet -- build examples/v1/buffer.geo --target x86_64-linux -o target/ci-v1-buffer-linux
@@ -356,6 +360,7 @@ jobs:
           cargo run --locked --quiet -- build examples/array_mutation_exit.geo --target x86_64-windows -o target/ci-smoke-array-mutation.exe
           cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-composition.exe
           cargo run --locked --quiet -- build examples/array_resize_exit.geo --target x86_64-windows -o target/ci-smoke-array-resize.exe
+          cargo run --locked --quiet -- build examples/array_typed_search_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-search.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -385,4 +390,6 @@ jobs:
           & target/ci-smoke-array-typed-composition.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-resize.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-array-typed-search.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

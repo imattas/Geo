@@ -142,6 +142,7 @@ cargo run --locked --quiet -- build examples\array_resize_exit.geo --target x86_
 cargo run --locked --quiet -- build examples\array_typed_composition_exit.geo --target x86_64-windows -o target\array_typed_composition_exit.exe
 cargo run --locked --quiet -- build examples\array_mutation_exit.geo --target x86_64-windows -o target\array_mutation_exit.exe
 cargo run --locked --quiet -- build examples\array_lifecycle_exit.geo --target x86_64-windows -o target\array_lifecycle_exit.exe
+cargo run --locked --quiet -- build examples\array_typed_search_exit.geo --target x86_64-windows -o target\array_typed_search_exit.exe
 ```
 
 `git status --short` currently reports:

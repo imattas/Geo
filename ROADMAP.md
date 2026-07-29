@@ -238,6 +238,9 @@ The PE64 layout now derives data-section placement from emitted text size, and
 the native Windows array lifecycle, mutation, typed-composition, resize, and
 runtime fixtures execute successfully.
 
+Typed array search now compares complete element widths for `index_of`,
+`last_index_of`, `contains`, and `count` on both native executable writers.
+
 ## Phase 9: Self-Hosting Foundation Examples
 
 Goal: prove Geo can express real compiler components.

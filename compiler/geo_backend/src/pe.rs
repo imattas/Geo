@@ -2819,7 +2819,8 @@ fn emit_array_index_helper(code: &mut Vec<u8>, last: bool, count: bool, contains
     code.extend_from_slice(&[0x48, 0x85, 0xd2]);
     let null_value = emit_short_jump_placeholder(code, 0x74);
     code.extend_from_slice(&[
-        0x44, 0x8a, 0x1a, 0x4c, 0x8b, 0x51, 0x08, 0x4c, 0x8b, 0x09, 0x45, 0x31, 0xc0,
+        0x57, 0x56, 0xfc, 0x49, 0x89, 0xd0, 0x4c, 0x8b, 0x51, 0x08, 0x4c, 0x8b, 0x59, 0x18, 0x4c,
+        0x8b, 0x09, 0x31, 0xd2,
     ]);
     if last {
         code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
@@ -2829,24 +2830,34 @@ fn emit_array_index_helper(code: &mut Vec<u8>, last: bool, count: bool, contains
     let loop_start = code.len();
     code.extend_from_slice(&[0x4d, 0x85, 0xd2]);
     let done = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x45, 0x38, 0x19]);
-    let matched = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x49, 0xff, 0xc1, 0x49, 0xff, 0xc0, 0x49, 0xff, 0xca]);
-    emit_short_jump_back(code, loop_start);
-    let match_target = code.len();
+    code.extend_from_slice(&[
+        0x4c, 0x89, 0xcf, 0x4c, 0x89, 0xc6, 0x4c, 0x89, 0xd9, 0xf3, 0xa6,
+    ]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
     if contains {
-        code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+        code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x5f, 0xc3]);
     } else if count {
-        code.extend_from_slice(&[
-            0x48, 0xff, 0xc0, 0x49, 0xff, 0xc1, 0x49, 0xff, 0xc0, 0x49, 0xff, 0xca,
-        ]);
-        emit_short_jump_back(code, loop_start);
+        code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    } else if last {
+        code.extend_from_slice(&[0x48, 0x89, 0xd0]);
     } else {
-        code.extend_from_slice(&[0x4c, 0x89, 0xc0, 0xc3]);
+        code.extend_from_slice(&[0x48, 0x89, 0xd0, 0x5e, 0x5f, 0xc3]);
     }
+    if count || last {
+        code.extend_from_slice(&[0x4d, 0x01, 0xd9, 0x48, 0xff, 0xc2, 0x49, 0xff, 0xca]);
+        emit_short_jump_back(code, loop_start);
+    }
+    let mismatch_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x01, 0xd9, 0x48, 0xff, 0xc2, 0x49, 0xff, 0xca]);
+    emit_short_jump_back(code, loop_start);
     let result_done = code.len();
+    code.extend_from_slice(&[0x5e, 0x5f]);
+    if contains {
+        code.extend_from_slice(&[0x31, 0xc0]);
+    }
     code.push(0xc3);
     let failure = code.len();
+    code.extend_from_slice(&[0x5e, 0x5f]);
     if contains {
         code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     } else if count {
@@ -2856,8 +2867,8 @@ fn emit_array_index_helper(code: &mut Vec<u8>, last: bool, count: bool, contains
     }
     patch_short_jump(code, null_array, failure);
     patch_short_jump(code, null_value, failure);
-    patch_short_jump(code, done, if contains { failure } else { result_done });
-    patch_short_jump(code, matched, match_target);
+    patch_short_jump(code, done, result_done);
+    patch_short_jump(code, mismatch, mismatch_target);
 }
 
 fn emit_array_len_helper(code: &mut Vec<u8>) {
