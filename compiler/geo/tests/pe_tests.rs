@@ -1652,8 +1652,10 @@ fn emits_direct_pe64_path_file_name() {
         fn main() -> int {
             let name = path_file_name("a/b\\only.txt")
             let parent = path_parent("a/b\\only.txt")
+            let extension = path_extension("a/b\\only.txt")
             string_free(name)
             string_free(parent)
+            string_free(extension)
             return 0
         }
         "#,

@@ -110,6 +110,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "platform_newline"
                     | "path_file_name"
                     | "path_parent"
+                    | "path_extension"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -800,6 +801,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "path_parent");
+    let needs_path_extension = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "path_extension");
     let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1166,6 +1171,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
                 | "string_utf8_char_at"
                 | "path_file_name"
                 | "path_parent"
+                | "path_extension"
         )
     });
     let needs_alloc_copy = image
@@ -1784,6 +1790,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.path_parent = Some(layout.text_rva + code.len() as u32);
         emit_path_parent_helper(&mut code, layout, string_slice);
     }
+    if needs_path_extension {
+        let string_slice = helpers.string_slice?;
+        helpers.path_extension = Some(layout.text_rva + code.len() as u32);
+        emit_path_extension_helper(&mut code, layout, string_slice);
+    }
     if needs_string_utf8_slice {
         let byte_offset = helpers
             .string_utf8_byte_offset
@@ -2317,6 +2328,9 @@ fn compiled_symbol_rva(
     if symbol == "path_parent" {
         return helpers.path_parent;
     }
+    if symbol == "path_extension" {
+        return helpers.path_extension;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2498,6 +2512,7 @@ struct PeHelperRvas {
     path_is_absolute: Option<u32>,
     path_file_name: Option<u32>,
     path_parent: Option<u32>,
+    path_extension: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -2623,7 +2638,7 @@ struct PeHelperRvas {
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, string_len_rva: u32) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38]);
     code.extend_from_slice(&[0x49, 0x89, 0xca]);
-    code.extend_from_slice(&[0x49, 0x89, 0xd3]);
+    code.extend_from_slice(&[0x4d, 0x89, 0xd3]);
     code.extend_from_slice(&[0x4c, 0x89, 0x54, 0x24, 0x20]);
     code.extend_from_slice(&[0x4c, 0x89, 0x5c, 0x24, 0x28]);
     code.extend_from_slice(&[0x4c, 0x89, 0xd1]);
@@ -4631,6 +4646,49 @@ fn emit_path_parent_helper(code: &mut Vec<u8>, layout: &Layout, slice_target: u3
     patch_short_jump(code, done, done_target);
     patch_short_jump(code, slash, separator);
     patch_short_jump(code, backslash, separator);
+}
+
+fn emit_path_extension_helper(code: &mut Vec<u8>, layout: &Layout, slice_target: u32) {
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xec, 0x78, 0x48, 0x89, 0x4c, 0x24, 0x40, 0x45, 0x31, 0xd2, 0x45, 0x31, 0xdb,
+        0x45, 0x31, 0xc9, 0x4c, 0x89, 0x54, 0x24, 0x48,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x42, 0x8a, 0x04, 0x11, 0x84, 0xc0]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x3c, b'/']);
+    let slash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x3c, b'\\']);
+    let backslash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x3c, b'.']);
+    let not_dot = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x4c, 0x3b, 0x54, 0x24, 0x48]);
+    let dot_at_start = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4d, 0x8d, 0x5a, 0x01, 0x41, 0xb9, 1, 0, 0, 0]);
+    let advance = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let separator = code.len();
+    code.extend_from_slice(&[
+        0x49, 0x8d, 0x42, 0x01, 0x48, 0x89, 0x44, 0x24, 0x48, 0x45, 0x31, 0xdb, 0x45, 0x31, 0xc9,
+    ]);
+    emit_short_jump_back(code, advance);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x85, 0xc9]);
+    let has_extension = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x4d, 0x89, 0xd3]);
+    let slice_args = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4c, 0x24, 0x40, 0x4c, 0x89, 0xda, 0x4d, 0x89, 0xd0,
+    ]);
+    emit_direct_call(code, layout.text_rva, slice_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x78, 0xc3]);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, slash, separator);
+    patch_short_jump(code, backslash, separator);
+    patch_short_jump(code, not_dot, advance);
+    patch_short_jump(code, dot_at_start, advance);
+    patch_short_jump(code, has_extension, slice_args);
 }
 
 fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {
