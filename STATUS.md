@@ -137,6 +137,11 @@ cargo run --quiet -- build examples\file_append_handle_exit.geo --target x86_64-
 cargo run --quiet -- build examples\file_read_handle_len_exit.geo --target x86_64-linux -o target\file_read_handle_len_exit
 cargo run --quiet -- build examples\file_read_handle_len_exit.geo --target x86_64-windows -o target\file_read_handle_len_exit.exe
 cargo test --locked -p geo --test compile_tests v1_examples_build_with_compiler_owned_executable_writers
+cargo run --locked --quiet -- build examples\array_runtime_exit.geo --target x86_64-windows -o target\array_runtime_exit.exe
+cargo run --locked --quiet -- build examples\array_resize_exit.geo --target x86_64-windows -o target\array_resize_exit.exe
+cargo run --locked --quiet -- build examples\array_typed_composition_exit.geo --target x86_64-windows -o target\array_typed_composition_exit.exe
+cargo run --locked --quiet -- build examples\array_mutation_exit.geo --target x86_64-windows -o target\array_mutation_exit.exe
+cargo run --locked --quiet -- build examples\array_lifecycle_exit.geo --target x86_64-windows -o target\array_lifecycle_exit.exe
 ```
 
 `git status --short` currently reports:
@@ -179,6 +184,10 @@ The compiler currently has modules for:
 - tokens
 - type checking
 - x86-64 assembly emission
+
+The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
+the native Windows array smoke set covers typed mutation, search, growth,
+copying, and cleanup end to end.
 
 ## Language Baseline
 

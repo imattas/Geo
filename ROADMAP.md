@@ -234,6 +234,10 @@ Current ELF64 executable progress: current-subset Linux programs now use a compi
 
 Current PE64 executable progress: current-subset Windows programs now use compiler-emitted Win64 machine code for entry, internal calls, console IO, allocation, memory primitives, string byte access, byte search, string predicates, file reads, line input, `std.io.write_file`, `std.io.append_file`, `std.io.touch_file`, `std.io.remove_file`, `std.io.file_exists`, `std.io.file_is_file`, `std.io.file_is_dir`, `std.io.file_is_empty`, `std.io.file_size`, `std.io.file_open`, `std.io.file_open_write`, `std.io.file_open_append`, `std.io.file_write`, `std.io.file_close`, and `std.io.file_read_to_string` through direct `CreateFileA`/`WriteFile`/`CloseHandle`/`DeleteFileA`/`GetFileAttributesA`/`GetFileSize`/`VirtualAlloc`/`ReadFile` imports. Broader standard-library runtime coverage and failure-path handling remain open.
 
+The PE64 layout now derives data-section placement from emitted text size, and
+the native Windows array lifecycle, mutation, typed-composition, resize, and
+runtime fixtures execute successfully.
+
 ## Phase 9: Self-Hosting Foundation Examples
 
 Goal: prove Geo can express real compiler components.
