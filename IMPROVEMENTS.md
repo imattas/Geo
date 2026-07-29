@@ -181,7 +181,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Boundary-aware UTF-8 navigation and slicing are now native on both targets, including end clamping and malformed-input handling. Add formatting and conversion support next. Strict validity checking rejects malformed and out-of-range sequences.
 - Native UTF-8 character extraction and first-codepoint search now share the compiler-owned decoder on ELF64 and PE64; keep extending this family with conversion and formatting primitives.
 - Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
-- Extend the byte-array runtime to generic element copying, resizing, and typed mutation before using it for fully dynamic token buffers; capacity growth, clone, clear, release, fill, reverse, search, contains, count, indexed insertion, and indexed removal are now native on both targets.
+- Extend the byte-array runtime to generic element-width copying, resizing, and typed mutation before using it for fully dynamic token buffers; capacity growth, clone, clear, release, fill, reverse, search, contains, count, indexed insertion, indexed removal, extension, and bounded copying are now native on both targets.
 - Array truncation, indexed insertion/removal, swap-based removal, and first/last pop are now native on both targets; finish generic copy/resize next so compiler-owned buffers can mutate without private helpers.
 - Preserve pointee width through IR dereference/store lowering so `u8` buffers do not accidentally read or overwrite adjacent bytes.
 

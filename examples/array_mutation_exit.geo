@@ -45,8 +45,32 @@ fn main() -> int {
         if array_remove(items, 9usize) != 1 {
             return 19
         }
+        let cloned: *u8 = array_clone(items)
+        if cloned == 0 as *u8 {
+            return 20
+        }
+        if array_copy(items, 0usize, cloned, 0usize, 2usize) != 0 {
+            return 22
+        }
+        if array_copy(items, 1usize, cloned, 0usize, 2usize) != 1 {
+            return 31
+        }
+        if array_extend(items, cloned) != 0 || array_len(items) != 4usize {
+            return 21
+        }
+        let extended: *u8 = array_get(items, 3usize)
+        if extended == 0 as *u8 {
+            return 28
+        }
+        if *extended != 3 {
+            return 29
+        }
+        array_free(cloned)
+        if array_truncate(items, 2usize) != 0 {
+            return 23
+        }
         if array_truncate(items, 1usize) != 0 || array_len(items) != 1usize {
-            return 9
+            return 24
         }
         let last: *u8 = array_pop(items)
         if last == 0 as *u8 || *last != 8 || array_len(items) != 0usize {
