@@ -70,6 +70,27 @@ fn accepts_repeated_scalar_use() {
 }
 
 #[test]
+fn accepts_repeated_string_queries_without_moving_the_source() {
+    let source = r#"
+        import std.string
+
+        fn scan(source: string) -> int {
+            var total: int = 0
+            for index in 0usize..string_len(source) {
+                total += string_byte_at(source, index)
+            }
+            return total
+        }
+
+        fn main() -> int {
+            return scan("Geo")
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
 fn rejects_move_while_value_is_borrowed() {
     let source = r#"
         fn take(value: string) -> int {

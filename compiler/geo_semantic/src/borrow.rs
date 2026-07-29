@@ -159,9 +159,13 @@ impl BorrowCtx<'_> {
                     self.consume_expr(value);
                 }
             }
-            Expr::Call { args, .. } => {
+            Expr::Call { name, args } => {
                 for arg in args {
-                    self.consume_expr(arg);
+                    if non_consuming_string_call(name) {
+                        self.read_expr(arg);
+                    } else {
+                        self.consume_expr(arg);
+                    }
                 }
             }
             Expr::Unary { op, expr } => match op {
@@ -253,9 +257,13 @@ impl BorrowCtx<'_> {
                 }
                 self.read_expr(value);
             }
-            Expr::Call { args, .. } => {
+            Expr::Call { name, args } => {
                 for arg in args {
-                    self.consume_expr(arg);
+                    if non_consuming_string_call(name) {
+                        self.read_expr(arg);
+                    } else {
+                        self.consume_expr(arg);
+                    }
                 }
             }
             Expr::Struct { fields, .. } => {
@@ -388,6 +396,10 @@ fn borrowed_local(expr: &Expr) -> Option<String> {
         Expr::Field { base, .. } | Expr::Index { base, .. } => borrowed_local(base),
         _ => None,
     }
+}
+
+fn non_consuming_string_call(function: &str) -> bool {
+    matches!(function, "string_len" | "string_byte_at")
 }
 
 fn is_owned_type(ty: &Type) -> bool {

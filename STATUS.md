@@ -270,10 +270,11 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows string runtime coverage also includes allocation-backed byte slicing.
 - Direct Linux and Windows string runtime coverage also includes UTF-8 codepoint counting for valid UTF-8.
 - Direct Linux and Windows string runtime coverage also includes UTF-8 codepoint lookup for valid UTF-8.
+- `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
 
 ## Current Priority
 
-The next best technical move is to expand compiler-owned object emission while continuing the Phase 1 split into real compiler crates.
+The next best technical move is to finish the UTF-8 safety primitives and replace the placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
 
-That reduces dependence on external assemblers without letting the compiler internals become difficult to change as v1 grows.
+That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.

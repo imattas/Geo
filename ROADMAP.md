@@ -256,6 +256,7 @@ Acceptance criteria:
 - Native byte slicing is covered by direct ELF64 and PE64 executable tests.
 - Native UTF-8 codepoint counting is covered by direct ELF64 and PE64 executable tests.
 - Native UTF-8 codepoint lookup is covered by direct ELF64 and PE64 executable tests.
+- The v1 lexer example performs a real source scan and executes through both compiler-owned writers.
 
 ## Phase 10: Distribution
 

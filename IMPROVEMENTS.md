@@ -179,6 +179,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
 - Expand UTF-8 validation, boundary-aware slicing, formatting, and conversion support next.
+- Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
 
 ## Tooling Improvements
 
