@@ -165,8 +165,13 @@ jobs:
           chmod +x target/ci-rename-file-linux
           target/ci-rename-file-linux
           status=$?
-          test ! -e target/geo-rename-source.txt
-          test ! -e target/geo-rename-dest.txt
+          source_exists=false
+          dest_exists=false
+          test -e target/geo-rename-source.txt && source_exists=true
+          test -e target/geo-rename-dest.txt && dest_exists=true
+          echo "rename status=$status source=$source_exists dest=$dest_exists"
+          test "$source_exists" = false
+          test "$dest_exists" = false
           test "$status" -eq 0
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
