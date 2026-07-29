@@ -11801,8 +11801,7 @@ fn cli_check_accepts_std_import_program() {
 #[test]
 fn cli_fmt_validates_and_normalizes_source_file() {
     let path = std::env::temp_dir().join(format!("geo-fmt-{}.geo", std::process::id()));
-    std::fs::write(&path, "fn main() -> int { return 0 }   \n")
-        .expect("failed to write fmt fixture");
+    std::fs::write(&path, "fn main()->int{return 0}   \n").expect("failed to write fmt fixture");
 
     let status = std::process::Command::new(env!("CARGO_BIN_EXE_geo"))
         .args(["fmt", path.to_string_lossy().as_ref()])
@@ -11813,7 +11812,7 @@ fn cli_fmt_validates_and_normalizes_source_file() {
     let _ = std::fs::remove_file(&path);
 
     assert!(status.success());
-    assert_eq!(formatted, "fn main() -> int { return 0 }\n");
+    assert_eq!(formatted, "fn main() -> int {\n    return 0\n}\n");
 }
 
 #[test]

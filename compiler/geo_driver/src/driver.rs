@@ -139,13 +139,15 @@ fn fmt_source_file(path: &Path) -> Result<(), Vec<Diagnostic>> {
 }
 
 fn format_source_text(source: &str) -> String {
-    let mut formatted = source
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n");
-    formatted.push('\n');
-    formatted
+    let tokens = match geo_syntax::lexer::lex(source) {
+        Ok(tokens) => tokens,
+        Err(_) => return source.to_string(),
+    };
+    let program = match geo_syntax::parser::parse(&tokens) {
+        Ok(program) => program,
+        Err(_) => return source.to_string(),
+    };
+    geo_syntax::format::format_program(&program)
 }
 
 fn test_geo_path(path: &Path, config: &CompileConfig) -> Result<(), Vec<Diagnostic>> {

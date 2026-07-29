@@ -262,7 +262,9 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 - Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
 - Runtime ABI is not yet documented as a stable contract; direct `alloc`/`free` lifetime coverage now exists on both native targets.
-- Formatter is minimal.
+- `geo fmt` now parses the program and emits canonical indentation, declaration,
+  statement, type, and expression layout. Comment preservation and configurable
+  style options remain open.
 - Distribution/install layout is not defined.
 - Direct object emission does not yet cover aggregate layout, full runtime linking from compiler-owned objects, or broad Windows COFF objects beyond the current object subset.
 - Direct path-based file operations cover append, touch, remove, read, write, existence checks, file/directory classification, empty checks, and file size on Linux and Windows.

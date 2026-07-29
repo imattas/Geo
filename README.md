@@ -17,10 +17,15 @@ fn main() {
 ```text
 compiler/
   geo/              Rust compiler crate and CLI
+  geo_syntax/       Lexer, parser, AST, and canonical formatter
+  geo_semantic/     Name resolution, type checking, and borrow checking
+  geo_codegen/      AST-to-IR lowering
+  geo_ir/            Machine-independent compiler IR
+  geo_backend/      Compiler-owned machine-code and native runtime emission
+  geo_driver/       CLI and compile orchestration
   geo_diagnostics/  Diagnostic types and rendering
   geo_source/       Source file loading and module path mapping
 library/
-  geo_backend/      Compiler-owned machine-code and native runtime emission
   std/              Source-level Geo standard library modules
 src/
   bootstrap/        Bootstrap stage model
@@ -37,6 +42,7 @@ cargo test --workspace --quiet
 cargo run -p xtask --quiet -- from-scratch
 cargo run -p xtask --quiet -- layout
 cargo run --quiet -- check examples\return_42.geo --target x86_64-linux
+cargo run --quiet -- fmt examples\hello_world.geo
 cargo run --quiet -- emit-obj examples\object_backend.geo --target x86_64-linux -o target\object_backend_linux.o
 cargo run --quiet -- emit-obj examples\hello_world.geo --target x86_64-linux -o target\hello_world_linux.o
 cargo run --quiet -- emit-asm examples\return_42.geo --target x86_64-windows -o target\return_42_windows.asm

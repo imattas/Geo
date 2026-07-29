@@ -105,6 +105,11 @@ Reason: good diagnostics are core compiler quality, especially for a new languag
 
 ### Syntax And Ergonomics
 
+The compiler now has an AST-backed canonical formatter exposed through `geo fmt`.
+It formats declarations, blocks, control flow, types, literals, calls, operators,
+arrays, structs, and match expressions. The next formatter improvements are comment
+preservation, source-map-aware edits, and configurable style checks.
+
 - Keep canonical syntax:
 
 ```geo

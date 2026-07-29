@@ -148,6 +148,7 @@ dependencies = [
  "geo-diagnostics",
  "geo-semantic",
  "geo-source",
+ "geo-syntax",
 ]
 
 [[package]]

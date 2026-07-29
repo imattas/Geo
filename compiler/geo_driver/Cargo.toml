@@ -10,3 +10,4 @@ geo-codegen = { path = "../geo_codegen" }
 geo-diagnostics = { path = "../geo_diagnostics" }
 geo-semantic = { path = "../geo_semantic" }
 geo-source = { path = "../geo_source" }
+geo-syntax = { path = "../geo_syntax" }
