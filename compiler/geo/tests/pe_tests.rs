@@ -1342,6 +1342,27 @@ fn emits_direct_pe64_string_utf8_codepoint_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_byte_array_runtime_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.array
+
+            fn main() -> int {
+                var items: *u8 = array_new(1usize, 2usize)
+                var value: u8 = 7
+                unsafe {
+                    array_push(items, &value)
+                    return array_len(items) as int
+                }
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, &[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]));
+}
+
+#[test]
 fn emits_direct_pe64_alloc_copy_as_compiled_helper() {
     let pe = pe_for(
         r#"

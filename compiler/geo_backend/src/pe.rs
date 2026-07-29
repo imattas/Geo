@@ -65,7 +65,8 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         || image.relocations.iter().any(|relocation| {
             matches!(
                 relocation.symbol.as_str(),
-                "alloc"
+                "array_new"
+                    | "alloc"
                     | "alloc_zeroed"
                     | "alloc_array"
                     | "string_from_byte"
@@ -594,6 +595,34 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_utf8_codepoint_at");
+    let needs_array_new = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_new");
+    let needs_array_len = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_len");
+    let needs_array_capacity = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_capacity");
+    let needs_array_is_empty = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_is_empty");
+    let needs_array_get = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_get");
+    let needs_array_set = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_set");
+    let needs_array_push = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_push");
     let needs_string_byte_at = image
         .relocations
         .iter()
@@ -705,7 +734,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_alloc = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "alloc" | "alloc_zeroed" | "alloc_array"
+            "array_new" | "alloc" | "alloc_zeroed" | "alloc_array"
         )
     });
     let needs_mem_copy = image
@@ -839,6 +868,13 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_len
         || needs_string_utf8_len
         || needs_string_utf8_codepoint_at
+        || needs_array_new
+        || needs_array_len
+        || needs_array_capacity
+        || needs_array_is_empty
+        || needs_array_get
+        || needs_array_set
+        || needs_array_push
         || needs_string_byte_at
         || needs_string_compare
         || needs_string_contains
@@ -909,6 +945,34 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_utf8_codepoint_at {
         helpers.string_utf8_codepoint_at = Some(layout.text_rva + code.len() as u32);
         emit_string_utf8_codepoint_at_helper(&mut code);
+    }
+    if needs_array_new {
+        helpers.array_new = Some(layout.text_rva + code.len() as u32);
+        emit_array_new_helper(&mut code, layout);
+    }
+    if needs_array_len {
+        helpers.array_len = Some(layout.text_rva + code.len() as u32);
+        emit_array_len_helper(&mut code);
+    }
+    if needs_array_capacity {
+        helpers.array_capacity = Some(layout.text_rva + code.len() as u32);
+        emit_array_capacity_helper(&mut code);
+    }
+    if needs_array_is_empty {
+        helpers.array_is_empty = Some(layout.text_rva + code.len() as u32);
+        emit_array_is_empty_helper(&mut code);
+    }
+    if needs_array_get {
+        helpers.array_get = Some(layout.text_rva + code.len() as u32);
+        emit_array_get_helper(&mut code);
+    }
+    if needs_array_set {
+        helpers.array_set = Some(layout.text_rva + code.len() as u32);
+        emit_array_set_helper(&mut code);
+    }
+    if needs_array_push {
+        helpers.array_push = Some(layout.text_rva + code.len() as u32);
+        emit_array_push_helper(&mut code);
     }
     if needs_string_concat {
         let string_len = helpers.string_len?;
@@ -1268,6 +1332,27 @@ fn compiled_symbol_rva(
     if symbol == "string_utf8_codepoint_at" {
         return helpers.string_utf8_codepoint_at;
     }
+    if symbol == "array_new" {
+        return helpers.array_new;
+    }
+    if symbol == "array_len" {
+        return helpers.array_len;
+    }
+    if symbol == "array_capacity" {
+        return helpers.array_capacity;
+    }
+    if symbol == "array_is_empty" {
+        return helpers.array_is_empty;
+    }
+    if symbol == "array_get" {
+        return helpers.array_get;
+    }
+    if symbol == "array_set" {
+        return helpers.array_set;
+    }
+    if symbol == "array_push" {
+        return helpers.array_push;
+    }
     if symbol == "string_byte_at" {
         return helpers.string_byte_at;
     }
@@ -1506,6 +1591,13 @@ struct PeHelperRvas {
     string_len: Option<u32>,
     string_utf8_len: Option<u32>,
     string_utf8_codepoint_at: Option<u32>,
+    array_new: Option<u32>,
+    array_len: Option<u32>,
+    array_capacity: Option<u32>,
+    array_is_empty: Option<u32>,
+    array_get: Option<u32>,
+    array_set: Option<u32>,
+    array_push: Option<u32>,
     string_byte_at: Option<u32>,
     string_compare: Option<u32>,
     string_contains: Option<u32>,
@@ -1694,6 +1786,101 @@ fn emit_string_utf8_codepoint_at_helper(code: &mut Vec<u8>) {
 fn emit_codepoint_advance_and_loop(code: &mut Vec<u8>, amount: u8) -> usize {
     code.extend_from_slice(&[0x49, 0x83, 0xc0, amount, 0x49, 0xff, 0xc1, 0x45, 0x39, 0xc9]);
     emit_near_jump_placeholder(code, 0x84)
+}
+
+fn emit_array_new_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xec, 0x48, 0x48, 0x89, 0x4c, 0x24, 0x28, 0x48, 0x89, 0x54, 0x24, 0x30, 0x48,
+        0x0f, 0xaf, 0xca, 0x48, 0x83, 0xc1, 0x20, 0x48, 0x89, 0xca, 0x31, 0xc9, 0x41, 0xb8, 0x00,
+        0x30, 0x00, 0x00, 0x41, 0xb9, 0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x44, 0x24, 0x38, 0x48, 0x8d, 0x50, 0x20, 0x48, 0x89, 0x10, 0x48, 0xc7, 0x40,
+        0x08, 0x00, 0x00, 0x00, 0x00, 0x48, 0x8b, 0x4c, 0x24, 0x30, 0x48, 0x89, 0x48, 0x10, 0x48,
+        0x8b, 0x4c, 0x24, 0x28, 0x48, 0x89, 0x48, 0x18, 0x48, 0x8b, 0x44, 0x24, 0x38, 0x48, 0x83,
+        0xc4, 0x48, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_near_jump(code, failed, failure);
+}
+
+fn emit_array_len_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0xc3]);
+    let zero = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null, zero);
+}
+
+fn emit_array_capacity_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x10, 0xc3]);
+    let zero = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null, zero);
+}
+
+fn emit_array_is_empty_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x83, 0x79, 0x08, 0x00]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let empty = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null, empty);
+    patch_short_jump(code, done, empty);
+}
+
+fn emit_array_get_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x39, 0xc2]);
+    let failed = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[
+        0x4c, 0x8b, 0x49, 0x18, 0x4c, 0x0f, 0xaf, 0xca, 0x48, 0x8b, 0x01, 0x4a, 0x8d, 0x04, 0x08,
+        0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null, failure);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_array_set_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x39, 0xc2]);
+    let failed = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[
+        0x4c, 0x8b, 0x49, 0x18, 0x4c, 0x0f, 0xaf, 0xca, 0x48, 0x8b, 0x01, 0x4c, 0x01, 0xc8, 0x41,
+        0x8a, 0x08, 0x88, 0x08, 0x31, 0xc0, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null, failure);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_array_push_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x3b, 0x41, 0x10]);
+    let full = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[
+        0x4c, 0x8b, 0x49, 0x18, 0x4c, 0x0f, 0xaf, 0xc8, 0x4c, 0x8b, 0x01, 0x4d, 0x01, 0xc8, 0x44,
+        0x8a, 0x0a, 0x45, 0x88, 0x08, 0x48, 0xff, 0x41, 0x08, 0x31, 0xc0, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, failed, failure);
+    patch_short_jump(code, full, failure);
 }
 
 fn emit_string_byte_at_helper(code: &mut Vec<u8>) {

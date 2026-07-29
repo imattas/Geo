@@ -510,6 +510,29 @@ fn emits_direct_elf64_string_utf8_codepoint_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_byte_array_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.array
+
+            fn main() -> int {
+                var items: *u8 = array_new(1usize, 2usize)
+                var value: u8 = 7
+                unsafe {
+                    array_push(items, &value)
+                    if array_len(items) != 1usize {
+                        return 1
+                    }
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x48, 0x0f, 0xaf, 0xc6]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

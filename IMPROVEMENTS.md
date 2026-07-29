@@ -180,6 +180,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add native suffix matching and substring index/count operations next.
 - Expand UTF-8 validation, boundary-aware slicing, formatting, and conversion support next.
 - Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
+- Extend the initial byte-array runtime to capacity growth, generic element copying, and ownership-aware release before using it for fully dynamic token buffers.
 
 ## Tooling Improvements
 
