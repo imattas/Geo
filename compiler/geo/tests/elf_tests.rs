@@ -455,6 +455,22 @@ fn emits_direct_elf64_string_last_find_byte_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_slice_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                let value: string = string_slice("compiler.geo", 0usize, 8usize)
+                return string_len(value) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xf3, 0xa4]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

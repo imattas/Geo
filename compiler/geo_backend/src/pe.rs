@@ -744,6 +744,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_clone");
+    let needs_string_slice = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_slice");
     let needs_alloc_copy = image
         .relocations
         .iter()
@@ -864,6 +868,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_mem_reverse
         || needs_string_from_byte
         || needs_string_clone
+        || needs_string_slice
         || needs_alloc_copy
         || needs_file_read
         || needs_file_read_or
@@ -1064,6 +1069,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_clone {
         helpers.string_clone = Some(layout.text_rva + code.len() as u32);
         emit_string_clone_helper(&mut code, layout);
+    }
+    if image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_slice")
+    {
+        helpers.string_slice = Some(layout.text_rva + code.len() as u32);
+        emit_string_slice_helper(&mut code, layout);
     }
     if needs_alloc_copy {
         helpers.alloc_copy = Some(layout.text_rva + code.len() as u32);
@@ -1408,6 +1421,9 @@ fn compiled_symbol_rva(
     if symbol == "string_clone" {
         return helpers.string_clone;
     }
+    if symbol == "string_slice" {
+        return helpers.string_slice;
+    }
     if symbol == "alloc_copy" {
         return helpers.alloc_copy;
     }
@@ -1460,6 +1476,7 @@ struct PeHelperRvas {
     mem_reverse: Option<u32>,
     string_from_byte: Option<u32>,
     string_clone: Option<u32>,
+    string_slice: Option<u32>,
     alloc_copy: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
@@ -2348,6 +2365,19 @@ fn patch_near_jump(code: &mut [u8], displacement_offset: usize, target: usize) {
         .copy_from_slice(&(displacement as i32).to_le_bytes());
 }
 
+fn emit_near_conditional_placeholder(code: &mut Vec<u8>, opcode: u8) -> usize {
+    code.extend_from_slice(&[0x0f, opcode]);
+    let displacement = code.len();
+    code.extend_from_slice(&[0, 0, 0, 0]);
+    displacement
+}
+
+fn patch_near_conditional(code: &mut [u8], displacement_offset: usize, target: usize) {
+    let next = displacement_offset + 4;
+    let displacement = (target as isize - next as isize) as i32;
+    code[displacement_offset..displacement_offset + 4].copy_from_slice(&displacement.to_le_bytes());
+}
+
 fn emit_short_jump_back(code: &mut Vec<u8>, target: usize) {
     code.push(0xeb);
     let displacement_offset = code.len();
@@ -2673,6 +2703,70 @@ fn emit_string_clone_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
     patch_short_jump(code, length_done, length_target);
     patch_short_jump(code, allocation_failed, failure);
+}
+
+fn emit_string_slice_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x78]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x4c, 0x89, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_source = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x49, 0x89, 0xca, 0x31, 0xc0]);
+    let length_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0x3a, 0x00]);
+    let length_done = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2, 0x48, 0xff, 0xc0]);
+    emit_short_jump_back(code, length_loop);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x58]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x39, 0xc2]);
+    let start_out = emit_near_conditional_placeholder(code, 0x83);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[0x4d, 0x85, 0xc0]);
+    let zero_length = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x2b, 0xc2]);
+    code.extend_from_slice(&[0x49, 0x39, 0xc0]);
+    let clamp_length = emit_near_conditional_placeholder(code, 0x87);
+    let clamp_target = code.len();
+    code.extend_from_slice(&[0x49, 0x89, 0xc0]);
+    let length_ready = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0x44, 0x24, 0x60]);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc2, 0x48, 0xff, 0xc2]);
+    code.extend_from_slice(&[0x31, 0xc9, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x68]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x54, 0x24, 0x40]);
+    code.extend_from_slice(&[0x4c, 0x03, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x58, 0x68]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x4c, 0x24, 0x60]);
+    let copy_loop = code.len();
+    code.extend_from_slice(&[0x4d, 0x85, 0xc9]);
+    let copy_done = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x41, 0x8a, 0x02, 0x41, 0x88, 0x03]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc2, 0x49, 0xff, 0xc3, 0x49, 0xff, 0xc9]);
+    emit_short_jump_back(code, copy_loop);
+    let done = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x68, 0x48, 0x83, 0xc4, 0x78, 0xc3]);
+    let zero_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40, 0x48, 0x03, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x78, 0xc3]);
+    let start_out_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40, 0x48, 0x03, 0x44, 0x24, 0x58]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x78, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x78, 0xc3]);
+
+    patch_near_conditional(code, null_source, failure);
+    patch_near_conditional(code, length_done, length_ready);
+    patch_near_conditional(code, start_out, start_out_target);
+    patch_near_conditional(code, zero_length, zero_target);
+    patch_near_conditional(code, clamp_length, clamp_target);
+    patch_near_conditional(code, allocation_failed, failure);
+    patch_near_conditional(code, copy_done, done);
 }
 
 fn emit_alloc_copy_helper(code: &mut Vec<u8>, layout: &Layout) {
