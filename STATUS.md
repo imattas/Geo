@@ -298,10 +298,10 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
 - Direct allocation lifetime coverage now includes compiler-owned `alloc`/`alloc_copy` headers, Linux `munmap`, Windows `VirtualFree`, payload-preserving `realloc`, and two-platform `alloc`/`free`/`realloc`/`alloc_copy` fixtures. `string_clone`, `string_from_byte`, `string_concat`, non-null `string_slice` results, path-based `read_file` results, handle-based `file_read_to_string` results, and `read_line` results now use the same header and have direct free fixtures.
-- Windows-host PE64 execution validation now covers hello, clone length/free, concat free, slice free, path read free, and handle-read free smoke fixtures. Remaining typed-array algorithms and broader PE64 runtime coverage remain open; typed push, set, fill, extend, copy, and resize initialization now execute on ELF64 and compile for PE64.
+- Windows-host PE64 execution validation now covers hello, allocation-backed strings, file reads, UTF-8 conversion, and byte/typed array runtime and mutation fixtures, including push, set, extend, copy, and resize. Broader PE64 runtime coverage and richer failure-path validation remain open.
 
 ## Current Priority
 
-The next best technical move is richer formatting support and the remaining typed-array algorithms, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for the core allocation-backed string, conversion, and file paths.
+The next best technical move is semantic diagnostic spans and continued replacement of placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for strings, file paths, and array mutation.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.

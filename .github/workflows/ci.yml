@@ -351,6 +351,11 @@ jobs:
           cargo run --locked --quiet -- build examples/read_file_free_windows_exit.geo --target x86_64-windows -o target/ci-smoke-read-free.exe
           cargo run --locked --quiet -- build examples/file_read_handle_free_exit.geo --target x86_64-windows -o target/ci-smoke-handle-read-free.exe
           cargo run --locked --quiet -- build examples/string_from_utf8_codepoint_exit.geo --target x86_64-windows -o target/ci-smoke-from-utf8.exe
+          cargo run --locked --quiet -- build examples/array_runtime_exit.geo --target x86_64-windows -o target/ci-smoke-array-runtime.exe
+          cargo run --locked --quiet -- build examples/array_lifecycle_exit.geo --target x86_64-windows -o target/ci-smoke-array-lifecycle.exe
+          cargo run --locked --quiet -- build examples/array_mutation_exit.geo --target x86_64-windows -o target/ci-smoke-array-mutation.exe
+          cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-composition.exe
+          cargo run --locked --quiet -- build examples/array_resize_exit.geo --target x86_64-windows -o target/ci-smoke-array-resize.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -370,4 +375,14 @@ jobs:
           & target/ci-smoke-handle-read-free.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-from-utf8.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-array-runtime.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-array-lifecycle.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-array-mutation.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-array-typed-composition.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-array-resize.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

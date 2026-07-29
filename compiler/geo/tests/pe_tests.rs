@@ -1382,6 +1382,31 @@ fn emits_direct_pe64_byte_array_runtime_helpers() {
 }
 
 #[test]
+fn emits_pe64_array_push_with_windows_register_safe_copy_setup() {
+    let pe = pe_for(
+        r#"
+            import std.array
+
+            fn main() -> int {
+                var items: *u8 = array_new(1usize, 2usize)
+                var value: u8 = 7
+                unsafe {
+                    return array_push(items, &value)
+                }
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(
+        &pe,
+        &[
+            0x4c, 0x8b, 0x41, 0x18, 0x4d, 0x89, 0xc1, 0x4c, 0x0f, 0xaf, 0xc0, 0x4c, 0x8b, 0x11,
+            0x4d, 0x01, 0xd0,
+        ]
+    ));
+}
+
+#[test]
 fn emits_direct_pe64_alloc_copy_as_compiled_helper() {
     let pe = pe_for(
         r#"
