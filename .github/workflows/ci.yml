@@ -267,7 +267,7 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-windows -o target/ci-string-slice-free-windows.exe
 
       - name: Execute compiler-owned Windows PE64 smoke fixtures
-        if: matrix.os == 'windows-latest'
+        if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
         run: |
           & target/ci-hello-world-windows.exe
