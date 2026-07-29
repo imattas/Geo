@@ -231,6 +231,12 @@ pub fn functions_for_import(path: &[String]) -> Result<Vec<RuntimeFunction>, Dia
                 vec![param("handle", Type::Int)],
                 Type::Int,
             ),
+            runtime_fn(
+                path,
+                "file_seek",
+                vec![param("handle", Type::Int), param("offset", Type::I64)],
+                Type::Int,
+            ),
         ]),
         ["std", "mem"] => Ok(vec![
             runtime_fn(

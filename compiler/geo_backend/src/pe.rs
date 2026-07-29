@@ -132,7 +132,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_truncate_file = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "truncate_file");
+        .any(|relocation| matches!(relocation.symbol.as_str(), "truncate_file" | "file_seek"));
     let needs_file_metadata = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1072,7 +1072,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_truncate_file = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "truncate_file");
+        .any(|relocation| matches!(relocation.symbol.as_str(), "truncate_file" | "file_seek"));
     let needs_file_open = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1658,8 +1658,22 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         emit_touch_file_helper(&mut code, layout);
     }
     if needs_truncate_file {
-        helpers.truncate_file = Some(layout.text_rva + code.len() as u32);
-        emit_truncate_file_helper(&mut code, layout);
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "truncate_file")
+        {
+            helpers.truncate_file = Some(layout.text_rva + code.len() as u32);
+            emit_truncate_file_helper(&mut code, layout);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_seek")
+        {
+            helpers.file_seek = Some(layout.text_rva + code.len() as u32);
+            emit_file_seek_helper(&mut code, layout);
+        }
     }
     if needs_remove_file {
         helpers.remove_file = Some(layout.text_rva + code.len() as u32);
@@ -2022,6 +2036,9 @@ fn compiled_symbol_rva(
     if symbol == "truncate_file" {
         return helpers.truncate_file;
     }
+    if symbol == "file_seek" {
+        return helpers.file_seek;
+    }
     if symbol == "remove_file" {
         return helpers.remove_file;
     }
@@ -2148,6 +2165,7 @@ struct PeHelperRvas {
     append_file: Option<u32>,
     touch_file: Option<u32>,
     truncate_file: Option<u32>,
+    file_seek: Option<u32>,
     remove_file: Option<u32>,
     file_open: Option<u32>,
     file_open_write: Option<u32>,
@@ -4997,6 +5015,20 @@ fn emit_truncate_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_near_conditional(code, invalid_handle, failure);
     patch_near_conditional(code, pointer_failed, close_failure);
     patch_near_conditional(code, end_failed, close_failure);
+}
+
+fn emit_file_seek_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // SetFilePointerEx(handle, offset, &new_position, FILE_BEGIN).
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x44, 0x24, 0x20]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    emit_call_iat(code, layout, layout.set_file_pointer_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {

@@ -62,6 +62,13 @@ fn exposes_std_io_functions() {
             && function.return_type == Type::Int
     }));
     assert!(functions.iter().any(|function| {
+        function.name == "file_seek"
+            && function.params.len() == 2
+            && function.params[0].ty == Type::Int
+            && function.params[1].ty == Type::I64
+            && function.return_type == Type::Int
+    }));
+    assert!(functions.iter().any(|function| {
         function.name == "file_exists"
             && function.params.len() == 1
             && function.params[0].ty == Type::String

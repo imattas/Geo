@@ -225,6 +225,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_open_append" => emit_file_open_runtime(&mut code, 0x441),
             "file_write" => emit_file_write_runtime(&mut code),
             "file_close" => emit_file_close_runtime(&mut code),
+            "file_seek" => emit_file_seek_runtime(&mut code),
             "file_read" | "file_read_to_string" => emit_file_read_to_string_runtime(&mut code),
             "file_exists" => emit_file_exists_runtime(&mut code),
             "file_is_file" => emit_file_stat_runtime(&mut code, FileStatKind::File),
@@ -2236,6 +2237,21 @@ fn emit_file_write_runtime(code: &mut Vec<u8>) {
 fn emit_file_close_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, 0x03, 0x00, 0x00, 0x00, 0x0f, 0x05]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+}
+
+fn emit_file_seek_runtime(code: &mut Vec<u8>) {
+    // lseek(fd, offset, SEEK_SET), returning zero on success and one on error.
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let invalid_handle = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0xba, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0xb8, 0x08, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let failed = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_near_jump(code, invalid_handle, failure);
+    patch_near_jump(code, failed, failure);
 }
 
 fn emit_file_read_to_string_runtime(code: &mut Vec<u8>) {

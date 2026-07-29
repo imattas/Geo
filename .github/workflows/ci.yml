@@ -105,6 +105,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/touch_remove_file_exit.geo --target x86_64-linux -o target/ci-touch-remove-file-linux
       - name: Build compiler-owned Linux truncate executable
         run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-linux -o target/ci-truncate-file-linux
+      - name: Build compiler-owned Linux seek executable
+        run: cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-linux -o target/ci-file-seek-linux
       - name: Execute compiler-owned Linux truncate executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -115,6 +117,18 @@ jobs:
           status=$?
           rm -f target/geo-truncate-file.txt
           test "$status" -eq 3
+      - name: Execute compiler-owned Linux seek executable
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-file-seek-linux
+          target/ci-file-seek-linux
+          status=$?
+          content=$(cat target/geo-seek-test.txt)
+          rm -f target/geo-seek-test.txt
+          test "$status" -eq 0
+          test "$content" = "abZdef"
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
       - name: Build compiler-owned Linux append-handle executable
@@ -244,6 +258,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/touch_remove_file_exit.geo --target x86_64-windows -o target/ci-touch-remove-file-windows.exe
       - name: Build compiler-owned Windows truncate executable
         run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-windows -o target/ci-truncate-file-windows.exe
+      - name: Build compiler-owned Windows seek executable
+        run: cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-windows -o target/ci-file-seek-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -376,6 +392,7 @@ jobs:
           cargo run --locked --quiet -- build examples/array_resize_exit.geo --target x86_64-windows -o target/ci-smoke-array-resize.exe
           cargo run --locked --quiet -- build examples/array_typed_search_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-search.exe
           cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-windows -o target/ci-smoke-truncate-file.exe
+          cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-windows -o target/ci-smoke-file-seek.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -414,4 +431,10 @@ jobs:
           Write-Host "truncate status=$truncateStatus size=$truncateSize"
           if ($truncateStatus -ne 3 -or $truncateSize -ne 3) { exit 1 }
           Remove-Item -Force target/geo-truncate-file.txt
+          & target/ci-smoke-file-seek.exe
+          $seekStatus = $LASTEXITCODE
+          $seekContent = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes('target/geo-seek-test.txt'))
+          Write-Host "seek status=$seekStatus content=$seekContent"
+          if ($seekStatus -ne 0 -or $seekContent -ne 'abZdef') { exit 1 }
+          Remove-Item -Force target/geo-seek-test.txt
           exit 0
