@@ -786,6 +786,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "platform_newline");
+    let needs_path_is_absolute = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "path_is_absolute");
     let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1551,6 +1555,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.platform_newline = Some(layout.text_rva + code.len() as u32);
         emit_owned_constant_helper(&mut code, layout, b"\r\n\0");
     }
+    if needs_path_is_absolute {
+        helpers.path_is_absolute = Some(layout.text_rva + code.len() as u32);
+        emit_path_is_absolute_helper(&mut code);
+    }
     if needs_string_byte_at {
         helpers.string_byte_at = Some(layout.text_rva + code.len() as u32);
         emit_string_byte_at_helper(&mut code);
@@ -2276,6 +2284,9 @@ fn compiled_symbol_rva(
     if symbol == "platform_newline" {
         return helpers.platform_newline;
     }
+    if symbol == "path_is_absolute" {
+        return helpers.path_is_absolute;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2454,6 +2465,7 @@ struct PeHelperRvas {
     platform_os: Option<u32>,
     platform_arch: Option<u32>,
     platform_newline: Option<u32>,
+    path_is_absolute: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -4514,6 +4526,25 @@ fn emit_owned_constant_helper(code: &mut Vec<u8>, layout: &Layout, bytes: &[u8])
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_path_is_absolute_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let not_absolute = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x39, b'/']);
+    let slash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x39, b'\\']);
+    let backslash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x79, 0x01, b':']);
+    let not_drive = emit_short_jump_placeholder(code, 0x75);
+    let true_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, not_absolute, false_target);
+    patch_short_jump(code, slash, true_target);
+    patch_short_jump(code, backslash, true_target);
+    patch_short_jump(code, not_drive, false_target);
 }
 
 fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {

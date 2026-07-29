@@ -199,6 +199,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "platform_os" => emit_owned_constant_runtime(&mut code, b"linux\0"),
             "platform_arch" => emit_owned_constant_runtime(&mut code, b"x86_64\0"),
             "platform_newline" => emit_owned_constant_runtime(&mut code, b"\n\0"),
+            "path_is_absolute" => emit_path_is_absolute_runtime(&mut code),
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "free_geo" => emit_free_runtime(&mut code),
@@ -2242,6 +2243,25 @@ fn emit_owned_constant_runtime(code: &mut Vec<u8>, bytes: &[u8]) {
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x08, 0xc3]);
     patch_near_jump(code, failed, failure);
+}
+
+fn emit_path_is_absolute_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let not_absolute = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3f, b'/']);
+    let absolute = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3f, b'\\']);
+    let absolute_backslash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x7f, 0x01, b':']);
+    let not_absolute_drive = emit_short_jump_placeholder(code, 0x75);
+    let true_target = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+    let false_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, not_absolute, false_target);
+    patch_short_jump(code, absolute, true_target);
+    patch_short_jump(code, absolute_backslash, true_target);
+    patch_short_jump(code, not_absolute_drive, false_target);
 }
 
 fn emit_alloc_runtime(code: &mut Vec<u8>, array: bool) {

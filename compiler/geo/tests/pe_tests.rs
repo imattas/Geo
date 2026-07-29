@@ -1668,6 +1668,24 @@ fn emits_direct_pe64_owned_platform_strings() {
 }
 
 #[test]
+fn emits_direct_pe64_absolute_path_predicate() {
+    let pe = pe_for(
+        r#"
+            import std.platform
+
+            fn main() -> int {
+                if path_is_absolute("relative/path") {
+                    return 1
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

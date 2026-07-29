@@ -129,6 +129,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/platform_separator_exit.geo --target x86_64-linux -o target/ci-platform-separator-linux
       - name: Build compiler-owned Linux platform strings executable
         run: cargo run --locked --quiet -- build examples/platform_strings_exit.geo --target x86_64-linux -o target/ci-platform-strings-linux
+      - name: Build compiler-owned Linux absolute-path executable
+        run: cargo run --locked --quiet -- build examples/path_absolute_exit.geo --target x86_64-linux -o target/ci-path-absolute-linux
       - name: Execute compiler-owned Linux truncate executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -260,6 +262,15 @@ jobs:
           set +e
           chmod +x target/ci-platform-strings-linux
           target/ci-platform-strings-linux
+          status=$?
+          test "$status" -eq 0
+      - name: Execute compiler-owned Linux absolute-path executable
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-path-absolute-linux
+          target/ci-path-absolute-linux
           status=$?
           test "$status" -eq 0
       - name: Build compiler-owned Linux handle-file executable
@@ -415,6 +426,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/platform_separator_exit.geo --target x86_64-windows -o target/ci-platform-separator-windows.exe
       - name: Build compiler-owned Windows platform strings executable
         run: cargo run --locked --quiet -- build examples/platform_strings_exit.geo --target x86_64-windows -o target/ci-platform-strings-windows.exe
+      - name: Build compiler-owned Windows absolute-path executable
+        run: cargo run --locked --quiet -- build examples/path_absolute_exit.geo --target x86_64-windows -o target/ci-path-absolute-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -559,6 +572,7 @@ jobs:
           cargo run --locked --quiet -- build examples/process_id_exit.geo --target x86_64-windows -o target/ci-smoke-process-id.exe
           cargo run --locked --quiet -- build examples/platform_separator_exit.geo --target x86_64-windows -o target/ci-smoke-platform-separator.exe
           cargo run --locked --quiet -- build examples/platform_strings_exit.geo --target x86_64-windows -o target/ci-smoke-platform-strings.exe
+          cargo run --locked --quiet -- build examples/path_absolute_exit.geo --target x86_64-windows -o target/ci-smoke-path-absolute.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -672,4 +686,8 @@ jobs:
           $platformStringsStatus = $LASTEXITCODE
           Write-Host "platform-strings status=$platformStringsStatus"
           if ($platformStringsStatus -ne 0) { exit 1 }
+          & target/ci-smoke-path-absolute.exe
+          $pathAbsoluteStatus = $LASTEXITCODE
+          Write-Host "path-absolute status=$pathAbsoluteStatus"
+          if ($pathAbsoluteStatus -ne 0) { exit 1 }
           exit 0
