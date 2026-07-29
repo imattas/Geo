@@ -101,6 +101,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "int_to_string"
                     | "usize_to_string"
                     | "bool_to_string"
+                    | "dir_entry_name"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -151,6 +152,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_accessed_time"
                 | "file_created_time"
                 | "dir_entry_count"
+                | "dir_entry_name"
         )
     });
     let mut layout = Layout::new(
@@ -1201,6 +1203,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
                 | "file_accessed_time"
                 | "file_created_time"
                 | "dir_entry_count"
+                | "dir_entry_name"
         )
     });
     let needs_process_exit = image
@@ -1918,6 +1921,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             helpers.dir_entry_count = Some(layout.text_rva + code.len() as u32);
             emit_dir_entry_count_helper(&mut code, layout);
         }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "dir_entry_name")
+        {
+            helpers.dir_entry_name = Some(layout.text_rva + code.len() as u32);
+            emit_dir_entry_name_helper(&mut code, layout);
+        }
     }
     if needs_file_metadata {
         helpers.file_exists = Some(layout.text_rva + code.len() as u32);
@@ -2272,6 +2283,9 @@ fn compiled_symbol_rva(
     if symbol == "dir_entry_count" {
         return helpers.dir_entry_count;
     }
+    if symbol == "dir_entry_name" {
+        return helpers.dir_entry_name;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -2381,6 +2395,7 @@ struct PeHelperRvas {
     file_accessed_time: Option<u32>,
     file_created_time: Option<u32>,
     dir_entry_count: Option<u32>,
+    dir_entry_name: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -5466,7 +5481,9 @@ fn emit_dir_entry_count_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[
         0xc6, 0x04, 0x07, 0x2a, 0x48, 0xff, 0xc0, 0xc6, 0x04, 0x07, 0x00,
     ]);
-    code.extend_from_slice(&[0x48, 0x8d, 0x4c, 0x24, 0x20, 0x48, 0x8d, 0x54, 0x24, 0x80]);
+    code.extend_from_slice(&[
+        0x48, 0x8d, 0x4c, 0x24, 0x20, 0x48, 0x8d, 0x94, 0x24, 0x80, 0x00, 0x00, 0x00,
+    ]);
     emit_call_iat(code, layout, layout.find_first_file_iat);
     code.extend_from_slice(&[0x48, 0x89, 0x84, 0x24, 0xe0, 0x02, 0x00, 0x00]);
     code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
@@ -5476,7 +5493,7 @@ fn emit_dir_entry_count_helper(code: &mut Vec<u8>, layout: &Layout) {
     let next_entry = code.len();
     code.extend_from_slice(&[0x48, 0xff, 0x84, 0x24, 0xe8, 0x02, 0x00, 0x00]);
     code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
-    code.extend_from_slice(&[0x48, 0x8d, 0x54, 0x24, 0x80]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x94, 0x24, 0x80, 0x00, 0x00, 0x00]);
     emit_call_iat(code, layout, layout.find_next_file_iat);
     code.extend_from_slice(&[0x85, 0xc0]);
     let more_entries = emit_near_jump_placeholder(code, 0x85);
@@ -5496,6 +5513,118 @@ fn emit_dir_entry_count_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_near_jump(code, find_failed, failure);
     patch_near_jump(code, more_entries, next_entry);
     patch_short_jump(code, few_entries, return_count);
+}
+
+fn emit_dir_entry_name_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // Enumerate path\\*, then return the selected cFileName as an owned Geo string.
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0x88, 0x03, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0xe8, 0x48, 0x89, 0xce]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x7c, 0x24, 0x20, 0x31, 0xc0]);
+    let copy_path = code.len();
+    code.extend_from_slice(&[0x8a, 0x14, 0x06, 0x88, 0x14, 0x07, 0x84, 0xd2]);
+    let path_done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    emit_short_jump_back(code, copy_path);
+    let path_target = code.len();
+    code.extend_from_slice(&[0xc6, 0x04, 0x07, 0x5c, 0x48, 0xff, 0xc0]);
+    code.extend_from_slice(&[
+        0xc6, 0x04, 0x07, 0x2a, 0x48, 0xff, 0xc0, 0xc6, 0x04, 0x07, 0x00,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x8d, 0x4c, 0x24, 0x20, 0x48, 0x8d, 0x94, 0x24, 0x80, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.find_first_file_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x84, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let find_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x89, 0x84, 0x24, 0xf0, 0x02, 0x00, 0x00]);
+
+    let entry_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x8d, 0x94, 0x24, 0xac, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x80, 0x3a, 0x2e]);
+    let not_dot = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x80, 0x7a, 0x01, 0x00]);
+    let skip_dot = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x80, 0x7a, 0x01, 0x2e]);
+    let candidate = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x80, 0x7a, 0x02, 0x00]);
+    let skip_dot_dot = emit_near_jump_placeholder(code, 0x84);
+    let candidate_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x84, 0x24, 0xf0, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x3b, 0x84, 0x24, 0xe8, 0x02, 0x00, 0x00]);
+    let found = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0xff, 0x84, 0x24, 0xf0, 0x02, 0x00, 0x00]);
+
+    let advance_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8d, 0x94, 0x24, 0x80, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.find_next_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let more_entries = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.find_close_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0x88, 0x03, 0x00, 0x00, 0xc3]);
+
+    let found_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0x94, 0x24, 0x20, 0x03, 0x00, 0x00, 0x31, 0xc0]);
+    let name_loop = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x02, 0x00]);
+    let name_done = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    emit_short_jump_back(code, name_loop);
+    let name_target = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0x84, 0x24, 0x00, 0x03, 0x00, 0x00]);
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xc0, 0x09, 0x48, 0x89, 0x84, 0x24, 0x10, 0x03, 0x00, 0x00,
+    ]);
+    code.extend_from_slice(&[0x31, 0xc9, 0x48, 0x8b, 0x94, 0x24, 0x10, 0x03, 0x00, 0x00]);
+    code.extend_from_slice(&[
+        0x41, 0xb8, 0x00, 0x30, 0x00, 0x00, 0x41, 0xb9, 0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x84, 0x24, 0xf8, 0x02, 0x00, 0x00]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x94, 0x24, 0x10, 0x03, 0x00, 0x00, 0x48, 0x89, 0x10,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0xbc, 0x24, 0xf8, 0x02, 0x00, 0x00, 0x48, 0x83, 0xc7, 0x08,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0xb4, 0x24, 0x20, 0x03, 0x00, 0x00, 0x48, 0x8b, 0x8c, 0x24, 0x00, 0x03, 0x00,
+        0x00,
+    ]);
+    code.extend_from_slice(&[0xf3, 0xa4, 0xc6, 0x04, 0x0f, 0x00]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x84, 0x24, 0xf8, 0x02, 0x00, 0x00, 0x48, 0x83, 0xc0, 0x08,
+    ]);
+    code.extend_from_slice(&[0x48, 0x89, 0x84, 0x24, 0x28, 0x03, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.find_close_iat);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x84, 0x24, 0x28, 0x03, 0x00, 0x00, 0x48, 0x81, 0xc4, 0x88, 0x03, 0x00, 0x00,
+        0xc3,
+    ]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x8c, 0x24, 0xe0, 0x02, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.find_close_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0x88, 0x03, 0x00, 0x00, 0xc3]);
+
+    patch_near_jump(code, null_path, failure);
+    patch_short_jump(code, path_done, path_target);
+    patch_near_jump(code, find_failed, failure);
+    patch_near_jump(code, not_dot, candidate_target);
+    patch_near_jump(code, skip_dot, advance_target);
+    patch_near_jump(code, candidate, candidate_target);
+    patch_near_jump(code, skip_dot_dot, advance_target);
+    patch_near_jump(code, found, found_target);
+    patch_near_jump(code, more_entries, entry_loop);
+    patch_near_jump(code, name_done, name_target);
+    patch_near_jump(code, allocation_failed, failure);
 }
 
 fn emit_file_size_helper(code: &mut Vec<u8>, layout: &Layout) {

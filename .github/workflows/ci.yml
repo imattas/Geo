@@ -119,6 +119,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_timestamps_exit.geo --target x86_64-linux -o target/ci-file-timestamps-linux
       - name: Build compiler-owned Linux directory-count executable
         run: cargo run --locked --quiet -- build examples/dir_entry_count_exit.geo --target x86_64-linux -o target/ci-dir-entry-count-linux
+      - name: Build compiler-owned Linux directory-name executable
+        run: cargo run --locked --quiet -- build examples/dir_entry_name_exit.geo --target x86_64-linux -o target/ci-dir-entry-name-linux
       - name: Execute compiler-owned Linux truncate executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -204,6 +206,16 @@ jobs:
           target/ci-dir-entry-count-linux
           status=$?
           test ! -e target/geo-dir-count-test
+          test "$status" -eq 0
+      - name: Execute compiler-owned Linux directory-name executable
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-dir-entry-name-linux
+          target/ci-dir-entry-name-linux
+          status=$?
+          test ! -e target/geo-dir-name-test
           test "$status" -eq 0
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
@@ -348,6 +360,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_timestamps_exit.geo --target x86_64-windows -o target/ci-file-timestamps-windows.exe
       - name: Build compiler-owned Windows directory-count executable
         run: cargo run --locked --quiet -- build examples/dir_entry_count_exit.geo --target x86_64-windows -o target/ci-dir-entry-count-windows.exe
+      - name: Build compiler-owned Windows directory-name executable
+        run: cargo run --locked --quiet -- build examples/dir_entry_name_exit.geo --target x86_64-windows -o target/ci-dir-entry-name-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -487,6 +501,7 @@ jobs:
           cargo run --locked --quiet -- build examples/copy_file_exit.geo --target x86_64-windows -o target/ci-smoke-copy-file.exe
           cargo run --locked --quiet -- build examples/file_timestamps_exit.geo --target x86_64-windows -o target/ci-smoke-file-timestamps.exe
           cargo run --locked --quiet -- build examples/dir_entry_count_exit.geo --target x86_64-windows -o target/ci-smoke-dir-entry-count.exe
+          cargo run --locked --quiet -- build examples/dir_entry_name_exit.geo --target x86_64-windows -o target/ci-smoke-dir-entry-name.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -578,4 +593,9 @@ jobs:
           $directoryCountExists = Test-Path target/geo-dir-count-test
           Write-Host "directory-count status=$directoryCountStatus exists=$directoryCountExists"
           if ($directoryCountStatus -ne 0 -or $directoryCountExists) { exit 1 }
+          & target/ci-smoke-dir-entry-name.exe
+          $directoryNameStatus = $LASTEXITCODE
+          $directoryNameExists = Test-Path target/geo-dir-name-test
+          Write-Host "directory-name status=$directoryNameStatus exists=$directoryNameExists"
+          if ($directoryNameStatus -ne 0 -or $directoryNameExists) { exit 1 }
           exit 0
