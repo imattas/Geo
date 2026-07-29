@@ -2112,20 +2112,20 @@ fn emit_string_last_find_byte_helper(code: &mut Vec<u8>) {
     let below_zero = emit_short_jump_placeholder(code, 0x7c);
     code.extend_from_slice(&[0x81, 0xfa, 0xff, 0x00, 0x00, 0x00]);
     let above_byte = emit_short_jump_placeholder(code, 0x7f);
-    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff]);
     code.extend_from_slice(&[0x4d, 0x31, 0xc0]);
     let loop_start = code.len();
-    code.extend_from_slice(&[0x42, 0x8a, 0x0c, 0x01]);
-    code.extend_from_slice(&[0x84, 0xc9]);
+    code.extend_from_slice(&[0x42, 0x8a, 0x04, 0x01]);
+    code.extend_from_slice(&[0x84, 0xc0]);
     let end = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x38, 0xd1]);
+    code.extend_from_slice(&[0x38, 0xd0]);
     let no_match = emit_short_jump_placeholder(code, 0x75);
-    code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
+    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
     let advance_target = code.len();
     code.extend_from_slice(&[0x49, 0xff, 0xc0]);
     emit_short_jump_back(code, loop_start);
     let end_target = code.len();
-    code.push(0xc3);
+    code.extend_from_slice(&[0x4c, 0x89, 0xc8, 0xc3]);
 
     patch_short_jump(code, below_zero, end_target);
     patch_short_jump(code, above_byte, end_target);

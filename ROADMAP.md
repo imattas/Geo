@@ -252,6 +252,7 @@ Acceptance criteria:
 - Native first substring indexing is covered by direct ELF64 and PE64 executable tests.
 - Native non-overlapping substring counting is covered by direct ELF64 and PE64 executable tests.
 - Native last substring indexing is covered by direct ELF64 and PE64 executable tests.
+- Native last byte search is covered by direct ELF64 and PE64 executable tests.
 
 ## Phase 10: Distribution
 

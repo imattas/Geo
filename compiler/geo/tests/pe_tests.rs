@@ -1942,11 +1942,12 @@ fn emits_direct_pe64_string_last_find_byte_as_compiled_helper() {
     assert!(contains_bytes(&pe, b"banana\0"));
     assert!(contains_bytes(
         &pe,
-        &[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff]
+        &[0x49, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff]
     ));
-    assert!(contains_bytes(&pe, &[0x42, 0x8a, 0x0c, 0x01]));
-    assert!(contains_bytes(&pe, &[0x38, 0xd1]));
-    assert!(contains_bytes(&pe, &[0x4c, 0x89, 0xc0]));
+    assert!(contains_bytes(&pe, &[0x42, 0x8a, 0x04, 0x01]));
+    assert!(contains_bytes(&pe, &[0x38, 0xd0]));
+    assert!(contains_bytes(&pe, &[0x4d, 0x89, 0xc1]));
+    assert!(contains_bytes(&pe, &[0x4c, 0x89, 0xc8, 0xc3]));
     assert!(contains_bytes(&pe, b"ExitProcess"));
     assert!(!contains_bytes(&pe, b"WriteFile"));
 }

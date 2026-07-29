@@ -437,6 +437,24 @@ fn emits_direct_elf64_string_last_index_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_last_find_byte_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if string_last_find_byte("banana", 97) != 5 {
+                    return 1
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x49, 0x89, 0xca]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

@@ -89,6 +89,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_is_empty" => emit_string_is_empty_runtime(&mut code),
             "string_is_ascii" => emit_string_is_ascii_runtime(&mut code),
             "string_find_byte" => emit_string_find_byte_runtime(&mut code),
+            "string_last_find_byte" => emit_string_last_find_byte_runtime(&mut code),
             "string_contains" => emit_string_contains_runtime(&mut code),
             "string_starts_with" => emit_string_starts_with_runtime(&mut code),
             "string_ends_with" => emit_string_ends_with_runtime(&mut code),
@@ -272,6 +273,31 @@ fn emit_string_find_byte_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, missing, missing_target);
     patch_short_jump(code, end, missing_target);
     patch_short_jump(code, found, found_target);
+}
+
+fn emit_string_last_find_byte_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x83, 0xfe, 0x00]);
+    let below_zero = emit_short_jump_placeholder(code, 0x7c);
+    code.extend_from_slice(&[0x81, 0xfe, 0xff, 0x00, 0x00, 0x00]);
+    let above_byte = emit_short_jump_placeholder(code, 0x7f);
+    code.extend_from_slice(&[0x41, 0x89, 0xf0]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc2, 0xff, 0xff, 0xff, 0xff]);
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x0f, 0x00]);
+    let end = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x44, 0x38, 0x04, 0x0f]);
+    let no_match = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0x89, 0xca]);
+    let advance = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, loop_start);
+    let end_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0xd0, 0xc3]);
+    patch_short_jump(code, below_zero, end_target);
+    patch_short_jump(code, above_byte, end_target);
+    patch_short_jump(code, end, end_target);
+    patch_short_jump(code, no_match, advance);
 }
 
 fn emit_string_contains_runtime(code: &mut Vec<u8>) {
