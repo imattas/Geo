@@ -17,6 +17,8 @@ fn lowering_produces_machine_independent_ir() {
             body: vec![Stmt::Return(Some(geo_codegen::ast::Expr::Int(42)))],
             span: Default::default(),
             statement_spans: Vec::new(),
+            expression_spans: Vec::new(),
+            statement_expression_ranges: Vec::new(),
             source_path: None,
         }],
     };

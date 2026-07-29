@@ -282,7 +282,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 - Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
 - Runtime ABI is not yet documented as a stable contract; direct `alloc`/`free` lifetime coverage now exists on both native targets.
-- Lexer and parser diagnostics now carry token spans and are attached to source paths, lines, columns, and underlines during module loading. Semantic diagnostics now preserve top-level statement spans and originating module paths; expression-level spans remain open.
+- Lexer and parser diagnostics now carry token spans and are attached to source paths, lines, columns, and underlines during module loading. Semantic diagnostics now preserve expression-level spans, top-level statement fallbacks, and originating module paths.
 - `geo fmt` now parses the program and emits canonical indentation, declaration,
   statement, type, and expression layout. Comment preservation and configurable
   style options remain open.
@@ -324,6 +324,6 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 ## Current Priority
 
-The next best technical move is semantic diagnostic spans and continued replacement of placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for strings, file paths, and array mutation.
+The next best technical move is richer standard-library/runtime coverage and continued replacement of placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for strings, file paths, and array mutation.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.

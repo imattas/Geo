@@ -13,6 +13,7 @@ struct Parser<'a> {
     tokens: &'a [Token],
     current: usize,
     allow_struct_literals: bool,
+    expression_spans: Vec<Span>,
 }
 
 impl<'a> Parser<'a> {
@@ -21,6 +22,7 @@ impl<'a> Parser<'a> {
             tokens,
             current: 0,
             allow_struct_literals: true,
+            expression_spans: Vec::new(),
         }
     }
 
@@ -178,7 +180,8 @@ impl<'a> Parser<'a> {
         } else {
             Type::Unit
         };
-        let (body, statement_spans) = self.parse_function_body()?;
+        self.expression_spans.clear();
+        let (body, statement_spans, statement_expression_ranges) = self.parse_function_body()?;
         let end = self.tokens[self.current.saturating_sub(1)].span;
         Ok(Function {
             name,
@@ -192,21 +195,28 @@ impl<'a> Parser<'a> {
                 len: end.offset + end.len - start.offset,
             },
             statement_spans,
+            expression_spans: self.expression_spans.clone(),
+            statement_expression_ranges,
             source_path: None,
         })
     }
 
-    fn parse_function_body(&mut self) -> Result<(Vec<Stmt>, Vec<Span>), Vec<Diagnostic>> {
+    fn parse_function_body(
+        &mut self,
+    ) -> Result<(Vec<Stmt>, Vec<Span>, Vec<(usize, usize)>), Vec<Diagnostic>> {
         self.expect(&TokenKind::LeftBrace, "expected '{'")?;
         let mut body = Vec::new();
         let mut statement_spans = Vec::new();
+        let mut statement_expression_ranges = Vec::new();
         while !self.at(&TokenKind::RightBrace) && !self.at(&TokenKind::Eof) {
             self.consume_semicolons();
             if self.at(&TokenKind::RightBrace) {
                 break;
             }
             let start = self.peek().span;
+            let expression_start = self.expression_spans.len();
             body.push(self.parse_stmt()?);
+            let expression_end = self.expression_spans.len();
             self.consume_semicolons();
             let end = self.tokens[self.current.saturating_sub(1)].span;
             statement_spans.push(Span {
@@ -215,9 +225,10 @@ impl<'a> Parser<'a> {
                 offset: start.offset,
                 len: end.offset + end.len - start.offset,
             });
+            statement_expression_ranges.push((expression_start, expression_end));
         }
         self.expect(&TokenKind::RightBrace, "expected '}'")?;
-        Ok((body, statement_spans))
+        Ok((body, statement_spans, statement_expression_ranges))
     }
 
     fn parse_params(&mut self) -> Result<Vec<Param>, Vec<Diagnostic>> {
@@ -431,7 +442,18 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, Vec<Diagnostic>> {
-        self.parse_or()
+        let start = self.peek().span;
+        let result = self.parse_or();
+        if result.is_ok() {
+            let end = self.tokens[self.current.saturating_sub(1)].span;
+            self.expression_spans.push(Span {
+                line: start.line,
+                column: start.column,
+                offset: start.offset,
+                len: end.offset + end.len - start.offset,
+            });
+        }
+        result
     }
 
     fn parse_control_condition_expr(&mut self) -> Result<Expr, Vec<Diagnostic>> {

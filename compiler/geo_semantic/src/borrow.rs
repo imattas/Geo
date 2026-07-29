@@ -32,7 +32,13 @@ fn check_function(function: &Function, diagnostics: &mut Vec<Diagnostic>) {
     for (index, statement) in function.body.iter().enumerate() {
         let statement_diagnostic_start = ctx.diagnostics.len();
         ctx.check_stmts(std::slice::from_ref(statement));
-        if let Some(span) = function.statement_spans.get(index) {
+        let expression_span = function
+            .statement_expression_ranges
+            .get(index)
+            .and_then(|(_, end)| end.checked_sub(1))
+            .and_then(|expression| function.expression_spans.get(expression))
+            .or_else(|| function.statement_spans.get(index));
+        if let Some(span) = expression_span {
             for diagnostic in ctx.diagnostics.iter_mut().skip(statement_diagnostic_start) {
                 if diagnostic.span.is_none() {
                     diagnostic.span = Some(crate::diagnostics::DiagnosticSpan {

@@ -351,6 +351,8 @@ fn expand_program_type_aliases(
                     .collect(),
                 span: function.span,
                 statement_spans: function.statement_spans.clone(),
+                expression_spans: function.expression_spans.clone(),
+                statement_expression_ranges: function.statement_expression_ranges.clone(),
                 source_path: function.source_path.clone(),
             })
             .collect(),
@@ -653,7 +655,13 @@ fn check_function<'a>(
             0,
             index + 1 == function.body.len(),
         );
-        if let Some(span) = function.statement_spans.get(index) {
+        let expression_span = function
+            .statement_expression_ranges
+            .get(index)
+            .and_then(|(_, end)| end.checked_sub(1))
+            .and_then(|expression| function.expression_spans.get(expression))
+            .or_else(|| function.statement_spans.get(index));
+        if let Some(span) = expression_span {
             for diagnostic in diagnostics.iter_mut().skip(statement_diagnostic_start) {
                 if diagnostic.span.is_none() {
                     diagnostic.span = Some(crate::diagnostics::DiagnosticSpan {

@@ -70,6 +70,8 @@ pub struct Function {
     pub body: Vec<Stmt>,
     pub span: Span,
     pub statement_spans: Vec<Span>,
+    pub expression_spans: Vec<Span>,
+    pub statement_expression_ranges: Vec<(usize, usize)>,
     pub source_path: Option<PathBuf>,
 }
 
