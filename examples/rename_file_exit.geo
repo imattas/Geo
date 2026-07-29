@@ -1,7 +1,7 @@
 import std.io
 
 fn main() -> int {
-    if write_file("target/geo-rename-source.txt", "renamed") != 0 {
+    if write_file("target/geo-rename-source.txt", "renamed") < 0 {
         return 1
     }
     if rename_file("target/geo-rename-source.txt", "target/geo-rename-dest.txt") != 0 {
