@@ -593,10 +593,20 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_concat");
-    let needs_string_utf8_slice = image
+    let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_utf8_slice" | "string_utf8_char_at"
+        )
+    });
+    let needs_string_utf8_char_at = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "string_utf8_slice");
+        .any(|relocation| relocation.symbol == "string_utf8_char_at");
+    let needs_string_utf8_find_codepoint = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_find_codepoint");
     let needs_string_len = image
         .relocations
         .iter()
@@ -607,10 +617,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_utf8_len");
-    let needs_string_utf8_codepoint_at = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_utf8_codepoint_at");
+    let needs_string_utf8_codepoint_at = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_utf8_codepoint_at" | "string_utf8_find_codepoint"
+        )
+    });
     let needs_string_is_utf8 = image
         .relocations
         .iter()
@@ -622,7 +634,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_string_utf8_byte_offset = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_utf8_byte_offset" | "string_utf8_slice"
+            "string_utf8_byte_offset" | "string_utf8_slice" | "string_utf8_char_at"
         )
     });
     let needs_string_utf8_next_offset = image
@@ -878,7 +890,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_string_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_slice" | "string_utf8_slice"
+            "string_slice" | "string_utf8_slice" | "string_utf8_char_at"
         )
     });
     let needs_alloc_copy = image
@@ -972,6 +984,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_utf8_index_at
         || needs_string_utf8_is_boundary
         || needs_string_utf8_slice
+        || needs_string_utf8_char_at
+        || needs_string_utf8_find_codepoint
         || needs_array_new
         || needs_array_clone
         || needs_array_reserve
@@ -1360,6 +1374,20 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             .expect("UTF-8 slice requires byte-slice helper");
         helpers.string_utf8_slice = Some(layout.text_rva + code.len() as u32);
         emit_string_utf8_slice_helper(&mut code, layout, byte_offset, string_len, string_slice);
+    }
+    if needs_string_utf8_char_at {
+        let slice_target = helpers
+            .string_utf8_slice
+            .expect("UTF-8 char lookup requires UTF-8 slice helper");
+        helpers.string_utf8_char_at = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_char_at_helper(&mut code, layout, slice_target);
+    }
+    if needs_string_utf8_find_codepoint {
+        let codepoint_target = helpers
+            .string_utf8_codepoint_at
+            .expect("UTF-8 search requires codepoint helper");
+        helpers.string_utf8_find_codepoint = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_find_codepoint_helper(&mut code, layout, codepoint_target);
     }
     if needs_alloc_copy {
         helpers.alloc_copy = Some(layout.text_rva + code.len() as u32);
@@ -1794,6 +1822,12 @@ fn compiled_symbol_rva(
     if symbol == "string_utf8_slice" {
         return helpers.string_utf8_slice;
     }
+    if symbol == "string_utf8_char_at" {
+        return helpers.string_utf8_char_at;
+    }
+    if symbol == "string_utf8_find_codepoint" {
+        return helpers.string_utf8_find_codepoint;
+    }
     if symbol == "alloc_copy" {
         return helpers.alloc_copy;
     }
@@ -1848,6 +1882,8 @@ struct PeHelperRvas {
     string_clone: Option<u32>,
     string_slice: Option<u32>,
     string_utf8_slice: Option<u32>,
+    string_utf8_char_at: Option<u32>,
+    string_utf8_find_codepoint: Option<u32>,
     alloc_copy: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
@@ -2316,8 +2352,8 @@ fn emit_string_utf8_codepoint_at_helper(code: &mut Vec<u8>) {
 }
 
 fn emit_codepoint_advance_and_loop(code: &mut Vec<u8>, amount: u8) -> usize {
-    code.extend_from_slice(&[0x49, 0x83, 0xc0, amount, 0x49, 0xff, 0xc1, 0x45, 0x39, 0xc9]);
-    emit_near_jump_placeholder(code, 0x84)
+    code.extend_from_slice(&[0x49, 0x83, 0xc0, amount, 0x49, 0xff, 0xc1]);
+    emit_near_unconditional_placeholder_pe(code)
 }
 
 fn emit_array_new_helper(code: &mut Vec<u8>, layout: &Layout) {
@@ -3878,6 +3914,41 @@ fn emit_string_utf8_slice_helper(
     patch_near_conditional(code, end_clamp, end_clamp_target);
     patch_near_jump(code, skip_end_clamp, end_ready);
     patch_near_conditional(code, invalid_range, failure);
+}
+
+fn emit_string_utf8_char_at_helper(code: &mut Vec<u8>, layout: &Layout, slice_target: u32) {
+    code.extend_from_slice(&[0x49, 0x89, 0xd0, 0x49, 0xff, 0xc0]);
+    emit_direct_call(code, layout.text_rva, slice_target);
+    code.push(0xc3);
+}
+
+fn emit_string_utf8_find_codepoint_helper(
+    code: &mut Vec<u8>,
+    layout: &Layout,
+    codepoint_target: u32,
+) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x4c, 0x24, 0x00, 0x48, 0x89, 0x54, 0x24, 0x08, 0x45, 0x31, 0xc0, 0x4c, 0x89,
+        0x44, 0x24, 0x10,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x00, 0x48, 0x8b, 0x54, 0x24, 0x10]);
+    emit_direct_call(code, layout.text_rva, codepoint_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let end = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x3b, 0x44, 0x24, 0x08]);
+    let found = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0xff, 0x44, 0x24, 0x10]);
+    emit_short_jump_back(code, loop_start);
+    let found_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x10, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[
+        0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0x48, 0x83, 0xc4, 0x28, 0xc3,
+    ]);
+    patch_near_conditional(code, end, failure);
+    patch_near_conditional(code, found, found_target);
 }
 
 fn emit_alloc_copy_helper(code: &mut Vec<u8>, layout: &Layout) {

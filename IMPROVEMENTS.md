@@ -179,6 +179,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
 - Boundary-aware UTF-8 navigation and slicing are now native on both targets, including end clamping and malformed-input handling. Add formatting and conversion support next. Strict validity checking rejects malformed and out-of-range sequences.
+- Native UTF-8 character extraction and first-codepoint search now share the compiler-owned decoder on ELF64 and PE64; keep extending this family with conversion and formatting primitives.
 - Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
 - Extend the byte-array runtime to generic element copying, removal, resizing, and typed mutation before using it for fully dynamic token buffers; capacity growth, clone, clear, release, fill, reverse, search, contains, and count are now native on both targets.
 - Preserve pointee width through IR dereference/store lowering so `u8` buffers do not accidentally read or overwrite adjacent bytes.

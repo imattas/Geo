@@ -259,6 +259,7 @@ Acceptance criteria:
 - Native strict UTF-8 validity checking is covered by direct ELF64 and PE64 executable builds, including malformed and out-of-range sequences.
 - Native UTF-8 navigation is covered by direct ELF64 and PE64 executable builds, including codepoint offsets, forward/backward boundaries, reverse index lookup, terminal offsets, and continuation-byte rejection.
 - Native boundary-aware UTF-8 slicing is covered by direct ELF64 and PE64 builds, including end clamping, empty ranges, and malformed-input failure handling.
+- Native UTF-8 character extraction and first-codepoint search are covered by direct ELF64 and PE64 builds, including multi-byte characters, misses, and out-of-range access.
 - The v1 lexer example performs a real source scan and executes through both compiler-owned writers.
 - The v1 parser example validates a token sequence with explicit cursor and error state through both compiler-owned writers.
 - A compiler-owned byte-array runtime path is covered by a direct executable fixture on ELF64 and PE64.

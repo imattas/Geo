@@ -9,6 +9,8 @@ extern fn string_ends_with(value: str, suffix: str) -> bool
 extern fn string_substring(value: str, start: usize, len: usize) -> str
 extern fn string_is_utf8(value: str) -> bool
 extern fn string_utf8_is_valid(value: str) -> bool
+extern fn string_utf8_char_at(value: str, index: usize) -> str
+extern fn string_utf8_find_codepoint(value: str, codepoint: int) -> int
 extern fn string_utf8_byte_offset(value: str, index: usize) -> int
 extern fn string_utf8_next_offset(value: str, offset: usize) -> int
 extern fn string_utf8_prev_offset(value: str, offset: usize) -> int

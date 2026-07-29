@@ -273,6 +273,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows string runtime coverage now includes strict UTF-8 validity checking for overlong encodings, surrogate ranges, truncation, and out-of-range four-byte sequences.
 - Direct Linux and Windows string runtime coverage now includes native UTF-8 codepoint-index to byte-offset conversion, next/previous boundary navigation, byte-offset to codepoint-index lookup, and boundary validation.
 - Direct Linux and Windows string runtime coverage now includes boundary-aware UTF-8 slicing with end clamping and invalid-input handling.
+- Direct Linux and Windows string runtime coverage now includes native UTF-8 character extraction and first-codepoint search, with multi-byte and out-of-range regression cases.
 - Direct Linux and Windows array runtime coverage now includes byte-element allocation, length/capacity, indexed read/write, and push within the initial capacity.
 - Direct Linux and Windows array lifecycle coverage now includes capacity growth, payload-preserving clone, clear, and native release.
 - Direct Linux and Windows byte-array algorithm coverage now includes first/last element access, fill, reverse, index search, last-index search, contains, and count.

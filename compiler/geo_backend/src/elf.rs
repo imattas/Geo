@@ -105,43 +105,37 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
                 emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::IsBoundary)
             }
             "string_utf8_slice" => {
-                let byte_offset_offset = if let Some(symbol) =
-                    symbols.get("string_utf8_byte_offset")
+                let wrapper_offset =
+                    ensure_string_utf8_slice_runtime(&mut code, &mut symbols, runtime_base);
+                symbols.insert(name.to_string(), runtime_base + wrapper_offset as u64);
+                continue;
+            }
+            "string_utf8_char_at" => {
+                let slice_target =
+                    ensure_string_utf8_slice_runtime(&mut code, &mut symbols, runtime_base);
+                let offset = code.len();
+                code.extend_from_slice(&[0x48, 0x89, 0xf2, 0x48, 0xff, 0xc2]);
+                emit_internal_call(&mut code, slice_target);
+                code.push(0xc3);
+                symbols.insert(name.to_string(), runtime_base + offset as u64);
+                continue;
+            }
+            "string_utf8_find_codepoint" => {
+                let codepoint_target = if let Some(symbol) = symbols.get("string_utf8_codepoint_at")
                 {
                     (*symbol - runtime_base) as usize
                 } else {
                     let offset = code.len();
-                    emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::ByteOffset);
+                    emit_string_utf8_codepoint_at_runtime(&mut code);
                     symbols.insert(
-                        "string_utf8_byte_offset".to_string(),
+                        "string_utf8_codepoint_at".to_string(),
                         runtime_base + offset as u64,
                     );
                     offset
                 };
-                let string_len_offset = if let Some(symbol) = symbols.get("string_len") {
-                    (*symbol - runtime_base) as usize
-                } else {
-                    let offset = code.len();
-                    emit_string_len_runtime(&mut code);
-                    symbols.insert("string_len".to_string(), runtime_base + offset as u64);
-                    offset
-                };
-                let string_slice_offset = if let Some(symbol) = symbols.get("string_slice") {
-                    (*symbol - runtime_base) as usize
-                } else {
-                    let offset = code.len();
-                    emit_string_slice_runtime(&mut code);
-                    symbols.insert("string_slice".to_string(), runtime_base + offset as u64);
-                    offset
-                };
-                let wrapper_offset = code.len();
-                emit_string_utf8_slice_runtime(
-                    &mut code,
-                    byte_offset_offset,
-                    string_len_offset,
-                    string_slice_offset,
-                );
-                symbols.insert(name.to_string(), runtime_base + wrapper_offset as u64);
+                let offset = code.len();
+                emit_string_utf8_find_codepoint_runtime(&mut code, codepoint_target);
+                symbols.insert(name.to_string(), runtime_base + offset as u64);
                 continue;
             }
             "array_new" => emit_array_new_runtime(&mut code),
@@ -240,6 +234,55 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         symbols.insert(name.to_string(), runtime_base + offset as u64);
     }
     RuntimeText { code, symbols }
+}
+
+fn ensure_string_utf8_slice_runtime(
+    code: &mut Vec<u8>,
+    symbols: &mut HashMap<String, u64>,
+    runtime_base: u64,
+) -> usize {
+    if let Some(symbol) = symbols.get("string_utf8_slice") {
+        return (*symbol - runtime_base) as usize;
+    }
+    let byte_offset_offset = if let Some(symbol) = symbols.get("string_utf8_byte_offset") {
+        (*symbol - runtime_base) as usize
+    } else {
+        let offset = code.len();
+        emit_string_utf8_navigation_runtime(code, Utf8NavigationKind::ByteOffset);
+        symbols.insert(
+            "string_utf8_byte_offset".to_string(),
+            runtime_base + offset as u64,
+        );
+        offset
+    };
+    let string_len_offset = if let Some(symbol) = symbols.get("string_len") {
+        (*symbol - runtime_base) as usize
+    } else {
+        let offset = code.len();
+        emit_string_len_runtime(code);
+        symbols.insert("string_len".to_string(), runtime_base + offset as u64);
+        offset
+    };
+    let string_slice_offset = if let Some(symbol) = symbols.get("string_slice") {
+        (*symbol - runtime_base) as usize
+    } else {
+        let offset = code.len();
+        emit_string_slice_runtime(code);
+        symbols.insert("string_slice".to_string(), runtime_base + offset as u64);
+        offset
+    };
+    let wrapper_offset = code.len();
+    emit_string_utf8_slice_runtime(
+        code,
+        byte_offset_offset,
+        string_len_offset,
+        string_slice_offset,
+    );
+    symbols.insert(
+        "string_utf8_slice".to_string(),
+        runtime_base + wrapper_offset as u64,
+    );
+    wrapper_offset
 }
 
 #[derive(Clone, Copy)]
@@ -1056,6 +1099,32 @@ fn emit_string_utf8_slice_runtime(
     patch_near_jump(code, invalid_range, failure);
 }
 
+fn emit_string_utf8_find_codepoint_runtime(code: &mut Vec<u8>, codepoint_target: usize) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x3c, 0x24, 0x48, 0x89, 0x74, 0x24, 0x08, 0x48, 0x31, 0xc0, 0x48, 0x89, 0x44,
+        0x24, 0x10,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24, 0x48, 0x8b, 0x74, 0x24, 0x10]);
+    emit_internal_call(code, codepoint_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let end = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x3b, 0x44, 0x24, 0x08]);
+    let found = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0xff, 0x44, 0x24, 0x10]);
+    let advance = emit_near_unconditional_placeholder(code);
+    let found_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x10, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[
+        0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0x48, 0x83, 0xc4, 0x28, 0xc3,
+    ]);
+    patch_near_jump(code, end, failure);
+    patch_near_jump(code, found, found_target);
+    patch_near_jump(code, advance, loop_start);
+}
+
 fn emit_string_utf8_codepoint_at_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0x85, 0xff]);
     let null_value = emit_near_jump_placeholder(code, 0x0f, 0x84);
@@ -1127,8 +1196,8 @@ fn emit_string_utf8_codepoint_at_runtime(code: &mut Vec<u8>) {
 }
 
 fn emit_codepoint_advance_and_loop(code: &mut Vec<u8>, amount: u8) -> usize {
-    code.extend_from_slice(&[0x49, 0x83, 0xc0, amount, 0x49, 0xff, 0xc1, 0x45, 0x39, 0xc9]);
-    emit_near_jump_placeholder(code, 0x0f, 0x84)
+    code.extend_from_slice(&[0x49, 0x83, 0xc0, amount, 0x49, 0xff, 0xc1]);
+    emit_near_unconditional_placeholder(code)
 }
 
 fn emit_array_new_runtime(code: &mut Vec<u8>) {
