@@ -195,6 +195,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_concat" => emit_string_concat_runtime(&mut code),
             "exit_geo" => emit_exit_runtime(&mut code),
             "process_id" => emit_process_id_runtime(&mut code),
+            "platform_path_separator" => emit_platform_path_separator_runtime(&mut code),
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "free_geo" => emit_free_runtime(&mut code),
@@ -2181,6 +2182,10 @@ fn emit_exit_runtime(code: &mut Vec<u8>) {
 
 fn emit_process_id_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, 39, 0x00, 0x00, 0x00, 0x0f, 0x05, 0xc3]);
+}
+
+fn emit_platform_path_separator_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0xb8, b'/', 0x00, 0x00, 0x00, 0xc3]);
 }
 
 fn emit_alloc_runtime(code: &mut Vec<u8>, array: bool) {

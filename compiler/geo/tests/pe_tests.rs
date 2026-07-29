@@ -1624,6 +1624,26 @@ fn emits_direct_pe64_process_id_without_runtime_import() {
 }
 
 #[test]
+fn emits_direct_pe64_platform_path_separator() {
+    let pe = pe_for(
+        r#"
+            import std.platform
+
+            fn main() -> int {
+                let separator: char = platform_path_separator()
+                if separator == '/' || separator == '\\' {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, &[0xb8, b'\\', 0x00, 0x00, 0x00, 0xc3]));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

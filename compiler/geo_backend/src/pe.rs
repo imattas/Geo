@@ -1222,6 +1222,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "process_id");
+    let needs_path_separator = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "platform_path_separator");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -1350,6 +1354,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_read_line
         || needs_process_exit
         || needs_process_id
+        || needs_path_separator
         || needs_free
         || needs_realloc
     {
@@ -1758,6 +1763,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_process_id {
         helpers.process_id = Some(layout.text_rva + code.len() as u32);
         emit_process_id_helper(&mut code);
+    }
+    if needs_path_separator {
+        helpers.path_separator = Some(layout.text_rva + code.len() as u32);
+        emit_path_separator_helper(&mut code);
     }
     if needs_file_read {
         helpers.read_file = Some(layout.text_rva + code.len() as u32);
@@ -2228,6 +2237,9 @@ fn compiled_symbol_rva(
     if symbol == "process_id" {
         return helpers.process_id;
     }
+    if symbol == "platform_path_separator" {
+        return helpers.path_separator;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2402,6 +2414,7 @@ struct PeHelperRvas {
     println: Option<u32>,
     exit_process: Option<u32>,
     process_id: Option<u32>,
+    path_separator: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -4421,6 +4434,10 @@ fn emit_process_id_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[
         0x65, 0x48, 0x8b, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00, 0x8b, 0x40, 0x20, 0xc3,
     ]);
+}
+
+fn emit_path_separator_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0xb8, b'\\', 0x00, 0x00, 0x00, 0xc3]);
 }
 
 fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {
