@@ -93,6 +93,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_starts_with" => emit_string_starts_with_runtime(&mut code),
             "string_ends_with" => emit_string_ends_with_runtime(&mut code),
             "string_index_of" => emit_string_index_of_runtime(&mut code),
+            "string_last_index_of" => emit_string_last_index_of_runtime(&mut code),
             "string_count" => emit_string_count_runtime(&mut code),
             "string_compare" => emit_string_compare_runtime(&mut code, StringCompareKind::Compare),
             "string_eq" => emit_string_compare_runtime(&mut code, StringCompareKind::Equal),
@@ -410,6 +411,42 @@ fn emit_string_index_of_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, no_match, missing_target);
     patch_short_jump(code, matched, found_target);
     patch_short_jump(code, mismatch, advance);
+}
+
+fn emit_string_last_index_of_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x49, 0xc7, 0xc2, 0xff, 0xff, 0xff, 0xff]);
+    let null_needle = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0x3e, 0x00]);
+    let empty_needle = emit_short_jump_placeholder(code, 0x74);
+    let outer = code.len();
+    code.extend_from_slice(&[0x80, 0x3c, 0x0f, 0x00]);
+    let finished = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x1c, 0x0f, 0x4d, 0x31, 0xc9]);
+    let inner = code.len();
+    code.extend_from_slice(&[0x4a, 0x8a, 0x04, 0x0e]);
+    code.extend_from_slice(&[0x84, 0xc0]);
+    let matched = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4b, 0x80, 0x3c, 0x0b, 0x00]);
+    let advance = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x4b, 0x38, 0x04, 0x0b]);
+    let mismatch = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_short_jump_back(code, inner);
+    let match_target = code.len();
+    code.extend_from_slice(&[0x49, 0x89, 0xca, 0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, outer);
+    let advance_target = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, outer);
+    let finished_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0xd0, 0xc3]);
+    patch_short_jump(code, null_needle, finished_target);
+    patch_short_jump(code, empty_needle, finished_target);
+    patch_short_jump(code, finished, finished_target);
+    patch_short_jump(code, matched, match_target);
+    patch_short_jump(code, advance, advance_target);
+    patch_short_jump(code, mismatch, advance_target);
 }
 
 fn emit_string_count_runtime(code: &mut Vec<u8>) {

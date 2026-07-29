@@ -2175,13 +2175,14 @@ fn emit_string_index_of_helper(code: &mut Vec<u8>) {
 
 fn emit_string_last_index_of_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x49, 0x89, 0xc8]);
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
     code.extend_from_slice(&[0x49, 0xc7, 0xc3, 0xff, 0xff, 0xff, 0xff]);
     code.extend_from_slice(&[0x80, 0x3a, 0x00]);
     let empty_needle = emit_short_jump_placeholder(code, 0x74);
     let outer = code.len();
-    code.extend_from_slice(&[0x41, 0x80, 0x38, 0x00]);
+    code.extend_from_slice(&[0x41, 0x80, 0x3c, 0x08, 0x00]);
     let source_end = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x4d, 0x8d, 0x0c, 0x08]);
     code.extend_from_slice(&[0x49, 0x89, 0xd2]);
     let inner = code.len();
     code.extend_from_slice(&[0x41, 0x8a, 0x02]);
@@ -2195,10 +2196,10 @@ fn emit_string_last_index_of_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x49, 0xff, 0xc2]);
     emit_short_jump_back(code, inner);
     let found_target = code.len();
-    code.extend_from_slice(&[0x4d, 0x89, 0xc3]);
-    code.extend_from_slice(&[0x4d, 0x29, 0xcb]);
+    code.extend_from_slice(&[0x49, 0x89, 0xcb, 0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, outer);
     let advance_target = code.len();
-    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
     emit_short_jump_back(code, outer);
     let return_target = code.len();
     code.extend_from_slice(&[0x4c, 0x89, 0xd8]);
