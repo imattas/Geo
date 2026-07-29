@@ -296,11 +296,15 @@ impl LowerCtx {
                 });
             }
             Stmt::PointerAssign { pointer, op, value } => {
+                let deref_width = self.pointer_deref_width(pointer);
                 let pointer = self.lower_expr(pointer);
                 let value = if let Some(op) = op {
                     let left = self.fresh();
-                    self.instructions
-                        .push(Instruction::Deref { dst: left, pointer });
+                    self.instructions.push(Instruction::Deref {
+                        dst: left,
+                        pointer,
+                        width: deref_width,
+                    });
                     let right = self.lower_expr(value);
                     let dst = self.fresh();
                     let instruction = self.binary_instruction(*op, dst, left, right);
@@ -309,8 +313,11 @@ impl LowerCtx {
                 } else {
                     self.lower_expr(value)
                 };
-                self.instructions
-                    .push(Instruction::StoreDeref { pointer, value });
+                self.instructions.push(Instruction::StoreDeref {
+                    pointer,
+                    value,
+                    width: deref_width,
+                });
             }
             Stmt::PlaceAssign { target, op, value } => {
                 let local = self
@@ -629,9 +636,14 @@ impl LowerCtx {
                     dst
                 }
                 UnaryOp::Deref => {
+                    let width = self.pointer_deref_width(expr);
                     let pointer = self.lower_expr(expr);
                     let dst = self.fresh();
-                    self.instructions.push(Instruction::Deref { dst, pointer });
+                    self.instructions.push(Instruction::Deref {
+                        dst,
+                        pointer,
+                        width,
+                    });
                     dst
                 }
             },
@@ -1220,6 +1232,15 @@ impl LowerCtx {
             Type::Named(name) => self.structs.contains_key(name),
             Type::Array(_) => true,
             _ => false,
+        }
+    }
+
+    fn pointer_deref_width(&self, expr: &Expr) -> u8 {
+        match self.expr_type(expr) {
+            Some(Type::Pointer(inner)) | Some(Type::Reference { inner, .. }) => {
+                self.type_size(&inner).clamp(1, 8) as u8
+            }
+            _ => 8,
         }
     }
 

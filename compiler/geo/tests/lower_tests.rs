@@ -805,6 +805,31 @@ fn lowers_unsafe_pointer_assignment() {
 }
 
 #[test]
+fn preserves_narrow_pointer_width_for_byte_deref_and_store() {
+    let ir = lower_source(
+        r#"
+            fn main() -> int {
+                var x: u8 = 1
+                unsafe {
+                    let p: *u8 = &x
+                    *p = 2
+                    return *p as int
+                }
+            }
+        "#,
+    );
+
+    assert!(ir.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| { matches!(instruction, Instruction::Deref { width: 1, .. }) }));
+    assert!(ir.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| { matches!(instruction, Instruction::StoreDeref { width: 1, .. }) }));
+}
+
+#[test]
 fn lowers_mutable_reference_assignment() {
     let ir = lower_source(
         r#"

@@ -66,6 +66,8 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
             matches!(
                 relocation.symbol.as_str(),
                 "array_new"
+                    | "array_clone"
+                    | "array_reserve"
                     | "alloc"
                     | "alloc_zeroed"
                     | "alloc_array"
@@ -275,13 +277,13 @@ impl<'a> PeEvaluator<'a> {
                     }
                     values.insert(*dst, PeValue::LocalRef(local.clone()));
                 }
-                Instruction::Deref { dst, pointer } => {
+                Instruction::Deref { dst, pointer, .. } => {
                     let PeValue::LocalRef(local) = values.get(pointer)? else {
                         return None;
                     };
                     values.insert(*dst, locals.get(local)?.clone());
                 }
-                Instruction::StoreDeref { pointer, value } => {
+                Instruction::StoreDeref { pointer, value, .. } => {
                     let PeValue::LocalRef(local) = values.get(pointer)? else {
                         return None;
                     };
@@ -402,6 +404,7 @@ struct Layout {
     write_file_iat: u32,
     exit_process_iat: u32,
     virtual_alloc_iat: u32,
+    virtual_free_iat: u32,
     has_console_io: bool,
     has_virtual_alloc: bool,
     has_file_read: bool,
@@ -442,7 +445,7 @@ impl Layout {
         };
         let import_count = u32::from(has_console_io) * 2
             + 1
-            + u32::from(has_virtual_alloc)
+            + u32::from(has_virtual_alloc) * 2
             + file_import_count
             + u32::from(has_file_ops)
             + u32::from(has_file_metadata);
@@ -469,6 +472,13 @@ impl Layout {
             value
         };
         let virtual_alloc_iat = if has_virtual_alloc {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let virtual_free_iat = if has_virtual_alloc {
             let value = next_iat;
             next_iat += 8;
             value
@@ -522,6 +532,7 @@ impl Layout {
             write_file_iat,
             exit_process_iat,
             virtual_alloc_iat,
+            virtual_free_iat,
             has_console_io,
             has_virtual_alloc,
             has_file_read,
@@ -599,6 +610,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "array_new");
+    let needs_array_clone = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_clone");
+    let needs_array_reserve = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_reserve");
     let needs_array_len = image
         .relocations
         .iter()
@@ -623,6 +642,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "array_push");
+    let needs_array_clear = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_clear");
+    let needs_array_free = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_free");
     let needs_string_byte_at = image
         .relocations
         .iter()
@@ -869,12 +896,16 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_utf8_len
         || needs_string_utf8_codepoint_at
         || needs_array_new
+        || needs_array_clone
+        || needs_array_reserve
         || needs_array_len
         || needs_array_capacity
         || needs_array_is_empty
         || needs_array_get
         || needs_array_set
         || needs_array_push
+        || needs_array_clear
+        || needs_array_free
         || needs_string_byte_at
         || needs_string_compare
         || needs_string_contains
@@ -950,6 +981,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.array_new = Some(layout.text_rva + code.len() as u32);
         emit_array_new_helper(&mut code, layout);
     }
+    if needs_array_clone {
+        helpers.array_clone = Some(layout.text_rva + code.len() as u32);
+        emit_array_clone_helper(&mut code, layout);
+    }
+    if needs_array_reserve {
+        helpers.array_reserve = Some(layout.text_rva + code.len() as u32);
+        emit_array_reserve_helper(&mut code, layout);
+    }
     if needs_array_len {
         helpers.array_len = Some(layout.text_rva + code.len() as u32);
         emit_array_len_helper(&mut code);
@@ -973,6 +1012,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_array_push {
         helpers.array_push = Some(layout.text_rva + code.len() as u32);
         emit_array_push_helper(&mut code);
+    }
+    if needs_array_clear {
+        helpers.array_clear = Some(layout.text_rva + code.len() as u32);
+        emit_array_clear_helper(&mut code);
+    }
+    if needs_array_free {
+        helpers.array_free = Some(layout.text_rva + code.len() as u32);
+        emit_array_free_helper(&mut code, layout);
     }
     if needs_string_concat {
         let string_len = helpers.string_len?;
@@ -1335,6 +1382,12 @@ fn compiled_symbol_rva(
     if symbol == "array_new" {
         return helpers.array_new;
     }
+    if symbol == "array_clone" {
+        return helpers.array_clone;
+    }
+    if symbol == "array_reserve" {
+        return helpers.array_reserve;
+    }
     if symbol == "array_len" {
         return helpers.array_len;
     }
@@ -1352,6 +1405,12 @@ fn compiled_symbol_rva(
     }
     if symbol == "array_push" {
         return helpers.array_push;
+    }
+    if symbol == "array_clear" {
+        return helpers.array_clear;
+    }
+    if symbol == "array_free" {
+        return helpers.array_free;
     }
     if symbol == "string_byte_at" {
         return helpers.string_byte_at;
@@ -1592,12 +1651,16 @@ struct PeHelperRvas {
     string_utf8_len: Option<u32>,
     string_utf8_codepoint_at: Option<u32>,
     array_new: Option<u32>,
+    array_clone: Option<u32>,
+    array_reserve: Option<u32>,
     array_len: Option<u32>,
     array_capacity: Option<u32>,
     array_is_empty: Option<u32>,
     array_get: Option<u32>,
     array_set: Option<u32>,
     array_push: Option<u32>,
+    array_clear: Option<u32>,
+    array_free: Option<u32>,
     string_byte_at: Option<u32>,
     string_compare: Option<u32>,
     string_contains: Option<u32>,
@@ -1806,6 +1869,115 @@ fn emit_array_new_helper(code: &mut Vec<u8>, layout: &Layout) {
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
     patch_near_jump(code, failed, failure);
+}
+
+fn emit_array_clone_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xec, 0x58, 0x48, 0x89, 0x4c, 0x24, 0x40, 0x48, 0x85, 0xc9,
+    ]);
+    let null = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x41, 0x18, 0x48, 0x89, 0x44, 0x24, 0x28, 0x48, 0x8b, 0x41, 0x10, 0x48, 0x89,
+        0x44, 0x24, 0x30, 0x48, 0x8b, 0x41, 0x08, 0x48, 0x89, 0x44, 0x24, 0x38, 0x48, 0x8b, 0x44,
+        0x24, 0x30, 0x48, 0x0f, 0xaf, 0x44, 0x24, 0x28, 0x48, 0x83, 0xc0, 0x20, 0x48, 0x89, 0xc2,
+        0x31, 0xc9, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00, 0x41, 0xb9, 0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x44, 0x24, 0x48, 0x48, 0x8b, 0x4c, 0x24, 0x48, 0x48, 0x8d, 0x50, 0x20, 0x48,
+        0x89, 0x10, 0x48, 0x8b, 0x44, 0x24, 0x38, 0x48, 0x89, 0x41, 0x08, 0x48, 0x8b, 0x44, 0x24,
+        0x30, 0x48, 0x89, 0x41, 0x10, 0x48, 0x8b, 0x44, 0x24, 0x28, 0x48, 0x89, 0x41, 0x18, 0x48,
+        0x8b, 0x44, 0x24, 0x38, 0x48, 0x0f, 0xaf, 0x44, 0x24, 0x28, 0x48, 0x8b, 0x54, 0x24, 0x48,
+        0x4c, 0x8b, 0x12, 0x48, 0x8b, 0x4c, 0x24, 0x40, 0x4c, 0x8b, 0x19,
+    ]);
+    let copy_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let copy_done = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x45, 0x8a, 0x0b, 0x45, 0x88, 0x0a, 0x49, 0xff, 0xc2, 0x49, 0xff, 0xc3, 0x48, 0xff, 0xc8,
+    ]);
+    emit_short_jump_back(code, copy_loop);
+    let done = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    patch_near_jump(code, null, failure);
+    patch_near_jump(code, allocation_failed, failure);
+    patch_near_conditional(code, copy_done, done);
+}
+
+fn emit_array_reserve_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xec, 0x60, 0x48, 0x89, 0x4c, 0x24, 0x40, 0x48, 0x89, 0x54, 0x24, 0x48, 0x48,
+        0x85, 0xc9,
+    ]);
+    let null = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x3b, 0x51, 0x10]);
+    let already_large = emit_near_conditional_placeholder(code, 0x86);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x41, 0x18, 0x48, 0x89, 0x44, 0x24, 0x28, 0x48, 0x8b, 0x41, 0x08, 0x48, 0x89,
+        0x44, 0x24, 0x38, 0x48, 0x8b, 0x44, 0x24, 0x48, 0x48, 0x0f, 0xaf, 0x44, 0x24, 0x28, 0x48,
+        0x83, 0xc0, 0x20, 0x48, 0x89, 0xc2, 0x31, 0xc9, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00, 0x41,
+        0xb9, 0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x44, 0x24, 0x50, 0x48, 0x8b, 0x4c, 0x24, 0x50, 0x48, 0x8d, 0x50, 0x20, 0x48,
+        0x89, 0x10, 0x48, 0x8b, 0x44, 0x24, 0x38, 0x48, 0x89, 0x41, 0x08, 0x48, 0x8b, 0x44, 0x24,
+        0x48, 0x48, 0x89, 0x41, 0x10, 0x48, 0x8b, 0x44, 0x24, 0x28, 0x48, 0x89, 0x41, 0x18, 0x48,
+        0x8b, 0x44, 0x24, 0x38, 0x48, 0x0f, 0xaf, 0x44, 0x24, 0x28, 0x48, 0x8b, 0x54, 0x24, 0x50,
+        0x4c, 0x8b, 0x12, 0x48, 0x8b, 0x4c, 0x24, 0x40, 0x4c, 0x8b, 0x19,
+    ]);
+    let copy_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let copy_done = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x45, 0x8a, 0x0b, 0x45, 0x88, 0x0a, 0x49, 0xff, 0xc2, 0x49, 0xff, 0xc3, 0x48, 0xff, 0xc8,
+    ]);
+    emit_short_jump_back(code, copy_loop);
+    let free_old = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4c, 0x24, 0x40, 0x31, 0xd2, 0x41, 0xb8, 0x00, 0x80, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_free_iat);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x50, 0x48, 0x83, 0xc4, 0x60, 0xc3]);
+    let return_source = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40, 0x48, 0x83, 0xc4, 0x60, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x60, 0xc3]);
+    patch_near_jump(code, null, failure);
+    patch_near_conditional(code, already_large, return_source);
+    patch_near_jump(code, allocation_failed, failure);
+    patch_near_conditional(code, copy_done, free_old);
+}
+
+fn emit_array_clear_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[
+        0x48, 0xc7, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x31, 0xc0, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null, failure);
+}
+
+fn emit_array_free_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28, 0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xd2, 0x41, 0xb8, 0x00, 0x80, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_free_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, null, failure);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_array_len_helper(code: &mut Vec<u8>) {
@@ -3641,6 +3813,7 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     imports.push(b"ExitProcess\0".as_slice());
     if layout.has_virtual_alloc {
         imports.push(b"VirtualAlloc\0".as_slice());
+        imports.push(b"VirtualFree\0".as_slice());
     }
     if layout.has_file_read {
         imports.push(b"CreateFileA\0".as_slice());

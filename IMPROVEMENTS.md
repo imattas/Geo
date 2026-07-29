@@ -180,7 +180,8 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add native suffix matching and substring index/count operations next.
 - Expand UTF-8 validation, boundary-aware slicing, formatting, and conversion support next.
 - Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
-- Extend the initial byte-array runtime to capacity growth, generic element copying, and ownership-aware release before using it for fully dynamic token buffers.
+- Extend the byte-array runtime to generic element copying and the remaining mutation/search operations before using it for fully dynamic token buffers; capacity growth, clone, clear, and ownership-aware release are now native on both targets.
+- Preserve pointee width through IR dereference/store lowering so `u8` buffers do not accidentally read or overwrite adjacent bytes.
 
 ## Tooling Improvements
 

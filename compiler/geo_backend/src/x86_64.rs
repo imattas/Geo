@@ -116,11 +116,20 @@ fn emit_function(function: &IrFunction, target: &Target, runtime_entry: bool, ou
                 out.push_str(&format!("    lea rax, [rbp - {local}]\n"));
                 out.push_str(&format!("    mov [rbp - {dst}], rax\n"));
             }
-            Instruction::Deref { dst, pointer } => {
+            Instruction::Deref {
+                dst,
+                pointer,
+                width,
+            } => {
                 let dst = slot(&layout, *dst);
                 let pointer = slot(&layout, *pointer);
                 out.push_str(&format!("    mov rax, [rbp - {pointer}]\n"));
-                out.push_str("    mov rax, [rax]\n");
+                match width {
+                    1 => out.push_str("    movzx eax, byte [rax]\n"),
+                    2 => out.push_str("    movzx eax, word [rax]\n"),
+                    4 => out.push_str("    mov eax, [rax]\n"),
+                    _ => out.push_str("    mov rax, [rax]\n"),
+                }
                 out.push_str(&format!("    mov [rbp - {dst}], rax\n"));
             }
             Instruction::BitNot { dst, value } => {
@@ -148,12 +157,21 @@ fn emit_function(function: &IrFunction, target: &Target, runtime_entry: bool, ou
                 out.push_str(&format!("    mov rax, [rbp - {value}]\n"));
                 out.push_str(&format!("    mov [rbp - {local}], rax\n"));
             }
-            Instruction::StoreDeref { pointer, value } => {
+            Instruction::StoreDeref {
+                pointer,
+                value,
+                width,
+            } => {
                 let pointer = slot(&layout, *pointer);
                 let value = slot(&layout, *value);
                 out.push_str(&format!("    mov rax, [rbp - {pointer}]\n"));
                 out.push_str(&format!("    mov r10, [rbp - {value}]\n"));
-                out.push_str("    mov [rax], r10\n");
+                match width {
+                    1 => out.push_str("    mov byte [rax], r10b\n"),
+                    2 => out.push_str("    mov word [rax], r10w\n"),
+                    4 => out.push_str("    mov dword [rax], r10d\n"),
+                    _ => out.push_str("    mov [rax], r10\n"),
+                }
             }
             Instruction::And { dst, left, right } => {
                 emit_binary(out, &layout, *dst, *left, *right, "and");

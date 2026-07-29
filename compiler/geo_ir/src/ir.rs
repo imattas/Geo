@@ -95,6 +95,7 @@ pub enum Instruction {
     Deref {
         dst: ValueId,
         pointer: ValueId,
+        width: u8,
     },
     BitNot {
         dst: ValueId,
@@ -111,6 +112,7 @@ pub enum Instruction {
     StoreDeref {
         pointer: ValueId,
         value: ValueId,
+        width: u8,
     },
     Cmp {
         dst: ValueId,

@@ -370,9 +370,13 @@ fn emit_function_text(
                 emit_lea_rax_local(bytes, frame.local_offset(local));
                 emit_store_rax(bytes, frame.value_offset(*dst));
             }
-            Instruction::Deref { dst, pointer } => {
+            Instruction::Deref {
+                dst,
+                pointer,
+                width,
+            } => {
                 emit_load_rax(bytes, frame.value_offset(*pointer));
-                bytes.extend_from_slice(&[0x48, 0x8b, 0x00]);
+                emit_deref_load(bytes, *width);
                 emit_store_rax(bytes, frame.value_offset(*dst));
             }
             Instruction::BitNot { dst, value } => {
@@ -384,10 +388,14 @@ fn emit_function_text(
                 emit_load_rax(bytes, frame.value_offset(*value));
                 emit_store_rax(bytes, frame.local_offset(local));
             }
-            Instruction::StoreDeref { pointer, value } => {
+            Instruction::StoreDeref {
+                pointer,
+                value,
+                width,
+            } => {
                 emit_load_rax(bytes, frame.value_offset(*pointer));
                 emit_load_r10(bytes, frame.value_offset(*value));
-                bytes.extend_from_slice(&[0x4c, 0x89, 0x10]);
+                emit_deref_store(bytes, *width);
             }
             Instruction::Cmp {
                 dst,
@@ -587,7 +595,7 @@ fn collect_instruction_values(
         | Instruction::Store { value: index, .. }
         | Instruction::JumpIfZero { value: index, .. }
         | Instruction::Return { value: index } => update_max_value(max_value, *index),
-        Instruction::StoreDeref { pointer, value } => {
+        Instruction::StoreDeref { pointer, value, .. } => {
             update_max_value(max_value, *pointer);
             update_max_value(max_value, *value);
         }
@@ -757,6 +765,24 @@ fn emit_mov_mem_imm32(bytes: &mut Vec<u8>, offset: u32, value: i32) {
 fn emit_load_rax(bytes: &mut Vec<u8>, offset: u32) {
     bytes.extend_from_slice(&[0x48, 0x8b]);
     emit_rbp_operand(bytes, 0, offset);
+}
+
+fn emit_deref_load(bytes: &mut Vec<u8>, width: u8) {
+    match width {
+        1 => bytes.extend_from_slice(&[0x0f, 0xb6, 0x00]),
+        2 => bytes.extend_from_slice(&[0x0f, 0xb7, 0x00]),
+        4 => bytes.extend_from_slice(&[0x8b, 0x00]),
+        _ => bytes.extend_from_slice(&[0x48, 0x8b, 0x00]),
+    }
+}
+
+fn emit_deref_store(bytes: &mut Vec<u8>, width: u8) {
+    match width {
+        1 => bytes.extend_from_slice(&[0x44, 0x88, 0x10]),
+        2 => bytes.extend_from_slice(&[0x66, 0x44, 0x89, 0x10]),
+        4 => bytes.extend_from_slice(&[0x44, 0x89, 0x10]),
+        _ => bytes.extend_from_slice(&[0x4c, 0x89, 0x10]),
+    }
 }
 
 fn emit_load_rax_from_incoming_arg(bytes: &mut Vec<u8>, offset: u32) {
