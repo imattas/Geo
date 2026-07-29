@@ -317,7 +317,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Typed pointer dereferences and stores now use the pointee width for byte-oriented memory instead of always reading or writing a full machine word.
 - `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
-- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
+- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, richer truncation controls, and metadata remain open.
 - Direct allocation lifetime coverage now includes compiler-owned `alloc`/`alloc_copy` headers, Linux `munmap`, Windows `VirtualFree`, payload-preserving `realloc`, and two-platform `alloc`/`free`/`realloc`/`alloc_copy` fixtures. `string_clone`, `string_from_byte`, `string_concat`, non-null `string_slice` results, path-based `read_file` results, handle-based `file_read_to_string` results, and `read_line` results now use the same header and have direct free fixtures.
 - Windows-host PE64 execution validation now covers hello, allocation-backed strings, file reads, UTF-8 conversion, and byte/typed array runtime and mutation fixtures, including push, set, extend, copy, and resize. Broader PE64 runtime coverage and richer failure-path validation remain open.
 
