@@ -55,6 +55,8 @@ jobs:
 
       - name: Build compiler-owned Linux read-line executable
         run: cargo run --locked --quiet -- build examples/read_line_len_exit.geo --target x86_64-linux -o target/ci-read-line-linux
+      - name: Build compiler-owned Linux read-line-free executable
+        run: cargo run --locked --quiet -- build examples/read_line_free_exit.geo --target x86_64-linux -o target/ci-read-line-free-linux
 
       - name: Build compiler-owned Linux memory executable
         run: cargo run --locked --quiet -- build examples/mem_runtime_exit.geo --target x86_64-linux -o target/ci-memory-linux
@@ -176,6 +178,8 @@ jobs:
 
       - name: Build compiler-owned Windows read-line executable
         run: cargo run --locked --quiet -- build examples/read_line_len_windows_exit.geo --target x86_64-windows -o target/ci-read-line-windows.exe
+      - name: Build compiler-owned Windows read-line-free executable
+        run: cargo run --locked --quiet -- build examples/read_line_free_windows_exit.geo --target x86_64-windows -o target/ci-read-line-free-windows.exe
 
       - name: Build compiler-owned Windows memory executable
         run: cargo run --locked --quiet -- build examples/mem_runtime_exit.geo --target x86_64-windows -o target/ci-memory-windows.exe
