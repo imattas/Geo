@@ -586,6 +586,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .iter()
         .any(|relocation| relocation.symbol == "string_len")
         || needs_string_concat;
+    let needs_string_utf8_len = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_len");
     let needs_string_byte_at = image
         .relocations
         .iter()
@@ -829,6 +833,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_print
         || needs_string_concat
         || needs_string_len
+        || needs_string_utf8_len
         || needs_string_byte_at
         || needs_string_compare
         || needs_string_contains
@@ -891,6 +896,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_len {
         helpers.string_len = Some(layout.text_rva + code.len() as u32);
         emit_string_len_helper(&mut code);
+    }
+    if needs_string_utf8_len {
+        helpers.string_utf8_len = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_len_helper(&mut code);
     }
     if needs_string_concat {
         let string_len = helpers.string_len?;
@@ -1244,6 +1253,9 @@ fn compiled_symbol_rva(
     if symbol == "string_len" {
         return helpers.string_len;
     }
+    if symbol == "string_utf8_len" {
+        return helpers.string_utf8_len;
+    }
     if symbol == "string_byte_at" {
         return helpers.string_byte_at;
     }
@@ -1480,6 +1492,7 @@ struct PeHelperRvas {
     alloc_copy: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
+    string_utf8_len: Option<u32>,
     string_byte_at: Option<u32>,
     string_compare: Option<u32>,
     string_contains: Option<u32>,
@@ -1572,6 +1585,28 @@ fn emit_string_len_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xf5]);
     code.push(0xc3);
+}
+
+fn emit_string_utf8_len_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_value = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x89, 0xca, 0x31, 0xc0]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x44, 0x8a, 0x02, 0x45, 0x84, 0xc0]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0xe0, 0xc0, 0x41, 0x80, 0xf8, 0x80]);
+    let continuation = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    let next = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let done_target = code.len();
+    code.push(0xc3);
+    let null_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_value, null_target);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, continuation, next);
 }
 
 fn emit_string_byte_at_helper(code: &mut Vec<u8>) {

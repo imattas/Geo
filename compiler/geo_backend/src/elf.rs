@@ -85,6 +85,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
         match name {
             "__geo_bounds_check" => emit_bounds_check_runtime(&mut code),
             "string_len" => emit_string_len_runtime(&mut code),
+            "string_utf8_len" => emit_string_utf8_len_runtime(&mut code),
             "string_byte_at" => emit_string_byte_at_runtime(&mut code),
             "string_is_empty" => emit_string_is_empty_runtime(&mut code),
             "string_is_ascii" => emit_string_is_ascii_runtime(&mut code),
@@ -654,6 +655,28 @@ fn emit_string_len_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0xff, 0xc6]);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xf1, 0xc3]);
+}
+
+fn emit_string_utf8_len_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_value = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x89, 0xfe, 0x31, 0xc0]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x8a, 0x16, 0x84, 0xd2]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0xe2, 0xc0, 0x80, 0xfa, 0x80]);
+    let continuation = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0]);
+    let next = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc6]);
+    emit_short_jump_back(code, loop_start);
+    let done_target = code.len();
+    code.push(0xc3);
+    let null_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, null_value, null_target);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, continuation, next);
 }
 
 fn emit_bounds_check_runtime(code: &mut Vec<u8>) {

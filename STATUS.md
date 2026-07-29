@@ -268,6 +268,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows string runtime coverage also includes last substring indexing.
 - Direct Linux and Windows string runtime coverage also includes last byte search.
 - Direct Linux and Windows string runtime coverage also includes allocation-backed byte slicing.
+- Direct Linux and Windows string runtime coverage also includes UTF-8 codepoint counting for valid UTF-8.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
 
 ## Current Priority

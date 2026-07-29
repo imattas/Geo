@@ -254,6 +254,7 @@ Acceptance criteria:
 - Native last substring indexing is covered by direct ELF64 and PE64 executable tests.
 - Native last byte search is covered by direct ELF64 and PE64 executable tests.
 - Native byte slicing is covered by direct ELF64 and PE64 executable tests.
+- Native UTF-8 codepoint counting is covered by direct ELF64 and PE64 executable tests.
 
 ## Phase 10: Distribution
 

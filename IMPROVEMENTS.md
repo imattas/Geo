@@ -178,7 +178,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add native runtime coverage for string comparison, substring, Unicode, formatting, and conversion APIs.
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
-- Expand Unicode, formatting, and conversion support next, then add UTF-8-aware slicing.
+- Expand UTF-8 validation, codepoint access, formatting, and conversion support next.
 
 ## Tooling Improvements
 

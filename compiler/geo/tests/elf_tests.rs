@@ -471,6 +471,27 @@ fn emits_direct_elf64_string_slice_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_utf8_length_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if string_utf8_len("λ😀") != 2 {
+                    return 1
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(
+        &executable,
+        &[0x80, 0xe2, 0xc0, 0x80, 0xfa, 0x80]
+    ));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

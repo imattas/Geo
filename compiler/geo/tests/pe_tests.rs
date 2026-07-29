@@ -1304,6 +1304,25 @@ fn emits_direct_pe64_string_slice_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_string_utf8_length_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_utf8_len("λ😀") as int
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(
+        &pe,
+        &[0x41, 0x80, 0xe0, 0xc0, 0x41, 0x80, 0xf8, 0x80],
+    ));
+}
+
+#[test]
 fn emits_direct_pe64_alloc_copy_as_compiled_helper() {
     let pe = pe_for(
         r#"
