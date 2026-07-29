@@ -265,6 +265,7 @@ Acceptance criteria:
 - A compiler-owned byte-array runtime path is covered by a direct executable fixture on ELF64 and PE64.
 - A compiler-owned array lifecycle path is covered by direct ELF64 and PE64 builds, including reserve, clone, clear, and release.
 - A compiler-owned array mutation path is covered by direct ELF64 and PE64 builds, including truncation, last/first pop, byte shifting, and invalid-input behavior.
+- A compiler-owned indexed array mutation path is covered by direct ELF64 and PE64 builds, including insertion, removal, swap-based removal, bounds failures, and capacity failures.
 - Native byte-array algorithms are covered by direct ELF64 and PE64 builds, including first/last access, fill, reverse, index search, last-index search, contains, and count.
 
 ## Phase 10: Distribution

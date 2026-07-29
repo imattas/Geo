@@ -32,6 +32,19 @@ fn main() -> int {
         if removed == 0 as *u8 || *removed != 3 {
             return 8
         }
+        if array_insert(items, 1usize, &first) != 0 {
+            return 16
+        }
+        let inserted: *u8 = array_get(items, 1usize)
+        if inserted == 0 as *u8 || *inserted != 3 || array_len(items) != 3usize {
+            return 17
+        }
+        if array_remove(items, 1usize) != 0 || array_len(items) != 2usize {
+            return 18
+        }
+        if array_remove(items, 9usize) != 1 {
+            return 19
+        }
         if array_truncate(items, 1usize) != 0 || array_len(items) != 1usize {
             return 9
         }

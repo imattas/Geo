@@ -741,6 +741,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "array_swap_remove");
+    let needs_array_remove = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_remove");
+    let needs_array_insert = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "array_insert");
     let needs_array_clear = image
         .relocations
         .iter()
@@ -1028,6 +1036,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_array_pop_first
         || needs_array_swap
         || needs_array_swap_remove
+        || needs_array_remove
+        || needs_array_insert
         || needs_array_clear
         || needs_array_free
         || needs_string_byte_at
@@ -1216,6 +1226,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_array_swap_remove {
         helpers.array_swap_remove = Some(layout.text_rva + code.len() as u32);
         emit_array_swap_remove_helper(&mut code);
+    }
+    if needs_array_remove {
+        helpers.array_remove = Some(layout.text_rva + code.len() as u32);
+        emit_array_remove_helper(&mut code);
+    }
+    if needs_array_insert {
+        helpers.array_insert = Some(layout.text_rva + code.len() as u32);
+        emit_array_insert_helper(&mut code);
     }
     if needs_array_clear {
         helpers.array_clear = Some(layout.text_rva + code.len() as u32);
@@ -1693,6 +1711,12 @@ fn compiled_symbol_rva(
     if symbol == "array_swap_remove" {
         return helpers.array_swap_remove;
     }
+    if symbol == "array_remove" {
+        return helpers.array_remove;
+    }
+    if symbol == "array_insert" {
+        return helpers.array_insert;
+    }
     if symbol == "array_clear" {
         return helpers.array_clear;
     }
@@ -1978,6 +2002,8 @@ struct PeHelperRvas {
     array_pop_first: Option<u32>,
     array_swap: Option<u32>,
     array_swap_remove: Option<u32>,
+    array_remove: Option<u32>,
+    array_insert: Option<u32>,
     array_clear: Option<u32>,
     array_free: Option<u32>,
     string_byte_at: Option<u32>,
@@ -2842,6 +2868,52 @@ fn emit_array_swap_remove_helper(code: &mut Vec<u8>) {
     patch_near_jump(code, failed, failure);
     patch_near_jump(code, invalid, failure);
     patch_near_jump(code, done, success);
+}
+
+fn emit_array_remove_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x39, 0xc2]);
+    let invalid = emit_near_jump_placeholder(code, 0x83);
+    code.extend_from_slice(&[
+        0x48, 0xff, 0xc8, 0x48, 0x89, 0x41, 0x08, 0x4c, 0x8b, 0x41, 0x18, 0x4c, 0x8b, 0x09, 0x49,
+        0x89, 0xd2, 0x4d, 0x0f, 0xaf, 0xd0, 0x4d, 0x01, 0xca, 0x4d, 0x89, 0xd3, 0x4d, 0x01, 0xc3,
+        0x48, 0x29, 0xd0, 0x49, 0x0f, 0xaf, 0xc0, 0x4c, 0x89, 0xd7, 0x4c, 0x89, 0xde, 0x48, 0x89,
+        0xc1, 0xf3, 0xa4, 0x31, 0xc0, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_near_jump(code, failed, failure);
+    patch_near_jump(code, invalid, failure);
+}
+
+fn emit_array_insert_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x41, 0x08, 0x48, 0x39, 0xc2]);
+    let invalid_index = emit_near_jump_placeholder(code, 0x87);
+    code.extend_from_slice(&[0x48, 0x3b, 0x41, 0x10]);
+    let full = emit_near_jump_placeholder(code, 0x83);
+    code.extend_from_slice(&[
+        0x4c, 0x8b, 0x49, 0x18, 0x4c, 0x8b, 0x11, 0x49, 0x89, 0xd3, 0x4d, 0x0f, 0xaf, 0xd9, 0x4d,
+        0x01, 0xd3, 0x48, 0xff, 0x41, 0x08, 0x48, 0x29, 0xd0, 0x49, 0x0f, 0xaf, 0xc1, 0x48, 0x85,
+        0xc0,
+    ]);
+    let no_shift = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x4c, 0x89, 0xde, 0x48, 0x01, 0xc6, 0x48, 0x89, 0xf7, 0x4c, 0x01, 0xcf, 0x48, 0xff, 0xce,
+        0x48, 0xff, 0xcf, 0x48, 0x89, 0xc1, 0xfd, 0xf3, 0xa4, 0xfc,
+    ]);
+    let copy_value = code.len();
+    code.extend_from_slice(&[
+        0x4c, 0x89, 0xc6, 0x4c, 0x89, 0xdf, 0x4c, 0x89, 0xc9, 0xf3, 0xa4, 0x31, 0xc0, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_near_jump(code, failed, failure);
+    patch_near_jump(code, invalid_index, failure);
+    patch_near_jump(code, full, failure);
+    patch_near_jump(code, no_shift, copy_value);
 }
 
 fn emit_string_byte_at_helper(code: &mut Vec<u8>) {
