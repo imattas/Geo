@@ -220,6 +220,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "touch_file" => emit_touch_file_runtime(&mut code),
             "truncate_file" => emit_truncate_file_runtime(&mut code),
             "remove_file" => emit_remove_file_runtime(&mut code),
+            "rename_file" => emit_rename_file_runtime(&mut code),
             "create_dir" => emit_create_dir_runtime(&mut code),
             "remove_dir" => emit_remove_dir_runtime(&mut code),
             "file_open" => emit_file_open_runtime(&mut code, 0),
@@ -2181,6 +2182,22 @@ fn emit_remove_file_runtime(code: &mut Vec<u8>) {
     let failure = code.len();
     code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
     patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_rename_file_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_source = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x85, 0xf6]);
+    let null_dest = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0xb8, 0x52, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x78);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null_source, failure);
+    patch_short_jump(code, null_dest, failure);
     patch_short_jump(code, failed, failure);
 }
 

@@ -243,6 +243,9 @@ The ELF64 and PE64 paths now also emit `std.io.truncate_file` natively.
 The ELF64 and PE64 paths now also emit `std.fs.create_dir` and
 `std.fs.remove_dir` through compiler-owned syscall and Win32 helper paths.
 
+The ELF64 and PE64 paths now also emit `std.fs.rename_file` through compiler-owned
+`rename` and `MoveFileA` paths.
+
 Current PE64 executable progress: current-subset Windows programs now use compiler-emitted Win64 machine code for entry, internal calls, console IO, allocation, memory primitives, string byte access, byte search, string predicates, file reads, line input, `std.io.write_file`, `std.io.append_file`, `std.io.touch_file`, `std.io.remove_file`, `std.io.file_exists`, `std.io.file_is_file`, `std.io.file_is_dir`, `std.io.file_is_empty`, `std.io.file_size`, `std.io.file_open`, `std.io.file_open_write`, `std.io.file_open_append`, `std.io.file_write`, `std.io.file_flush`, `std.io.file_close`, `std.io.file_seek`, and `std.io.file_read_to_string` through direct `CreateFileA`/`WriteFile`/`CloseHandle`/`DeleteFileA`/`GetFileAttributesA`/`GetFileSize`/`SetFilePointerEx`/`FlushFileBuffers`/`VirtualAlloc`/`ReadFile` imports. Broader standard-library runtime coverage and failure-path handling remain open.
 
 The PE64 layout now derives data-section placement from emitted text size, and

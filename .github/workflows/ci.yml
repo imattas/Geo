@@ -111,6 +111,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_flush_exit.geo --target x86_64-linux -o target/ci-file-flush-linux
       - name: Build compiler-owned Linux directory executable
         run: cargo run --locked --quiet -- build examples/directory_mutation_exit.geo --target x86_64-linux -o target/ci-directory-mutation-linux
+      - name: Build compiler-owned Linux rename executable
+        run: cargo run --locked --quiet -- build examples/rename_file_exit.geo --target x86_64-linux -o target/ci-rename-file-linux
       - name: Execute compiler-owned Linux truncate executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -154,6 +156,17 @@ jobs:
           target/ci-directory-mutation-linux
           status=$?
           test ! -e target/geo-directory-test
+          test "$status" -eq 0
+      - name: Execute compiler-owned Linux rename executable
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-rename-file-linux
+          target/ci-rename-file-linux
+          status=$?
+          test ! -e target/geo-rename-source.txt
+          test ! -e target/geo-rename-dest.txt
           test "$status" -eq 0
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
@@ -290,6 +303,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_flush_exit.geo --target x86_64-windows -o target/ci-file-flush-windows.exe
       - name: Build compiler-owned Windows directory executable
         run: cargo run --locked --quiet -- build examples/directory_mutation_exit.geo --target x86_64-windows -o target/ci-directory-mutation-windows.exe
+      - name: Build compiler-owned Windows rename executable
+        run: cargo run --locked --quiet -- build examples/rename_file_exit.geo --target x86_64-windows -o target/ci-rename-file-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -425,6 +440,7 @@ jobs:
           cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-windows -o target/ci-smoke-file-seek.exe
           cargo run --locked --quiet -- build examples/file_flush_exit.geo --target x86_64-windows -o target/ci-smoke-file-flush.exe
           cargo run --locked --quiet -- build examples/directory_mutation_exit.geo --target x86_64-windows -o target/ci-smoke-directory-mutation.exe
+          cargo run --locked --quiet -- build examples/rename_file_exit.geo --target x86_64-windows -o target/ci-smoke-rename-file.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -480,4 +496,10 @@ jobs:
           $directoryExists = Test-Path target/geo-directory-test
           Write-Host "directory status=$directoryStatus exists=$directoryExists"
           if ($directoryStatus -ne 0 -or $directoryExists) { exit 1 }
+          & target/ci-smoke-rename-file.exe
+          $renameStatus = $LASTEXITCODE
+          $renameSourceExists = Test-Path target/geo-rename-source.txt
+          $renameDestExists = Test-Path target/geo-rename-dest.txt
+          Write-Host "rename status=$renameStatus source=$renameSourceExists dest=$renameDestExists"
+          if ($renameStatus -ne 0 -or $renameSourceExists -or $renameDestExists) { exit 1 }
           exit 0

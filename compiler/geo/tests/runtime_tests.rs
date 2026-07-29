@@ -84,6 +84,13 @@ fn exposes_std_io_functions() {
         assert_eq!(function.return_type, Type::Int);
     }
     assert!(functions.iter().any(|function| {
+        function.name == "rename_file"
+            && function.params.len() == 2
+            && function.params[0].ty == Type::String
+            && function.params[1].ty == Type::String
+            && function.return_type == Type::Int
+    }));
+    assert!(functions.iter().any(|function| {
         function.name == "file_exists"
             && function.params.len() == 1
             && function.params[0].ty == Type::String
