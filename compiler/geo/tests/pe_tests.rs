@@ -1323,6 +1323,25 @@ fn emits_direct_pe64_string_utf8_length_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_string_utf8_codepoint_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_utf8_codepoint_at("λ😀", 1usize)
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(
+        &pe,
+        &[0x49, 0x89, 0xc8, 0x45, 0x31, 0xc9, 0x45, 0x8a, 0x10],
+    ));
+}
+
+#[test]
 fn emits_direct_pe64_alloc_copy_as_compiled_helper() {
     let pe = pe_for(
         r#"

@@ -112,6 +112,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_slice_exit.geo --target x86_64-linux -o target/ci-string-slice-linux
       - name: Build compiler-owned Linux UTF-8 length executable
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-linux -o target/ci-utf8-len-linux
+      - name: Build compiler-owned Linux UTF-8 codepoint executable
+        run: cargo run --locked --quiet -- build examples/utf8_codepoint_exit.geo --target x86_64-linux -o target/ci-utf8-codepoint-linux
 
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
@@ -183,6 +185,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_slice_exit.geo --target x86_64-windows -o target/ci-string-slice-windows.exe
       - name: Build compiler-owned Windows UTF-8 length executable
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-windows -o target/ci-utf8-len-windows.exe
+      - name: Build compiler-owned Windows UTF-8 codepoint executable
+        run: cargo run --locked --quiet -- build examples/utf8_codepoint_exit.geo --target x86_64-windows -o target/ci-utf8-codepoint-windows.exe
 
       - name: Build v1 buffer example with direct Linux writer
         run: cargo run --locked --quiet -- build examples/v1/buffer.geo --target x86_64-linux -o target/ci-v1-buffer-linux

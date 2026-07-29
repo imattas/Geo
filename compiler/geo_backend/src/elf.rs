@@ -86,6 +86,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "__geo_bounds_check" => emit_bounds_check_runtime(&mut code),
             "string_len" => emit_string_len_runtime(&mut code),
             "string_utf8_len" => emit_string_utf8_len_runtime(&mut code),
+            "string_utf8_codepoint_at" => emit_string_utf8_codepoint_at_runtime(&mut code),
             "string_byte_at" => emit_string_byte_at_runtime(&mut code),
             "string_is_empty" => emit_string_is_empty_runtime(&mut code),
             "string_is_ascii" => emit_string_is_ascii_runtime(&mut code),
@@ -677,6 +678,81 @@ fn emit_string_utf8_len_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, null_value, null_target);
     patch_short_jump(code, done, done_target);
     patch_short_jump(code, continuation, next);
+}
+
+fn emit_string_utf8_codepoint_at_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_value = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x49, 0x89, 0xf8, 0x45, 0x31, 0xc9]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x45, 0x8a, 0x10, 0x45, 0x84, 0xd2]);
+    let end = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x49, 0x39, 0xf1]);
+    let skip = emit_near_jump_placeholder(code, 0x0f, 0x85);
+
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0x80]);
+    let ascii = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0xe0]);
+    let two = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0xf0]);
+    let three = emit_near_jump_placeholder(code, 0x0f, 0x82);
+
+    code.extend_from_slice(&[
+        0x41, 0x0f, 0xb6, 0xc2, 0x83, 0xe0, 0x07, 0xc1, 0xe0, 0x06, 0x45, 0x0f, 0xb6, 0x58, 0x01,
+        0x41, 0x83, 0xe3, 0x3f, 0x44, 0x09, 0xd8, 0xc1, 0xe0, 0x06, 0x45, 0x0f, 0xb6, 0x58, 0x02,
+        0x41, 0x83, 0xe3, 0x3f, 0x44, 0x09, 0xd8, 0xc1, 0xe0, 0x06, 0x45, 0x0f, 0xb6, 0x58, 0x03,
+        0x41, 0x83, 0xe3, 0x3f, 0x44, 0x09, 0xd8, 0xc3,
+    ]);
+
+    let ascii_target = code.len();
+    code.extend_from_slice(&[0x41, 0x0f, 0xb6, 0xc2, 0xc3]);
+    let two_target = code.len();
+    code.extend_from_slice(&[
+        0x41, 0x0f, 0xb6, 0xc2, 0x83, 0xe0, 0x1f, 0xc1, 0xe0, 0x06, 0x45, 0x0f, 0xb6, 0x58, 0x01,
+        0x41, 0x83, 0xe3, 0x3f, 0x44, 0x09, 0xd8, 0xc3,
+    ]);
+    let three_target = code.len();
+    code.extend_from_slice(&[
+        0x41, 0x0f, 0xb6, 0xc2, 0x83, 0xe0, 0x0f, 0xc1, 0xe0, 0x06, 0x45, 0x0f, 0xb6, 0x58, 0x01,
+        0x41, 0x83, 0xe3, 0x3f, 0x44, 0x09, 0xd8, 0xc1, 0xe0, 0x06, 0x45, 0x0f, 0xb6, 0x58, 0x02,
+        0x41, 0x83, 0xe3, 0x3f, 0x44, 0x09, 0xd8, 0xc3,
+    ]);
+
+    let skip_target = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0x80]);
+    let advance_one = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0xe0]);
+    let advance_two = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0xf0]);
+    let advance_three = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    let advance_four = emit_codepoint_advance_and_loop(code, 4);
+    let advance_three_target = code.len();
+    let back_three = emit_codepoint_advance_and_loop(code, 3);
+    let advance_two_target = code.len();
+    let back_two = emit_codepoint_advance_and_loop(code, 2);
+    let advance_one_target = code.len();
+    let back_one = emit_codepoint_advance_and_loop(code, 1);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0xc3]);
+    patch_near_jump(code, null_value, failure);
+    patch_near_jump(code, end, failure);
+    patch_near_jump(code, skip, skip_target);
+    patch_near_jump(code, ascii, ascii_target);
+    patch_near_jump(code, two, two_target);
+    patch_near_jump(code, three, three_target);
+    patch_near_jump(code, advance_one, advance_one_target);
+    patch_near_jump(code, advance_two, advance_two_target);
+    patch_near_jump(code, advance_three, advance_three_target);
+    patch_near_jump(code, advance_four, loop_start);
+    patch_near_jump(code, back_one, loop_start);
+    patch_near_jump(code, back_two, loop_start);
+    patch_near_jump(code, back_three, loop_start);
+}
+
+fn emit_codepoint_advance_and_loop(code: &mut Vec<u8>, amount: u8) -> usize {
+    code.extend_from_slice(&[0x49, 0x83, 0xc0, amount, 0x49, 0xff, 0xc1, 0x45, 0x39, 0xc9]);
+    emit_near_jump_placeholder(code, 0x0f, 0x84)
 }
 
 fn emit_bounds_check_runtime(code: &mut Vec<u8>) {

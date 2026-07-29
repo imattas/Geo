@@ -492,6 +492,24 @@ fn emits_direct_elf64_string_utf8_length_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_utf8_codepoint_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if string_utf8_codepoint_at("λ😀", 1usize) != 128512 {
+                    return 1
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x41, 0x0f, 0xb6, 0xc2]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"
