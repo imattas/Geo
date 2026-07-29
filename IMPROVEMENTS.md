@@ -83,7 +83,7 @@ Reason: Windows x64 and System V AMD64 differ enough that ABI decisions should b
 
 ### 5. Strengthen Diagnostics As A Product Feature
 
-Current state: lexer and parser diagnostics carry token spans and are rendered with source paths, line/column locations, and underlines through module loading. Semantic diagnostics now preserve function-level spans and originating module paths; expression-level spans remain the next step.
+Current state: lexer and parser diagnostics carry token spans and are rendered with source paths, line/column locations, and underlines through module loading. Semantic diagnostics now preserve top-level statement spans and originating module paths; expression-level spans remain the next step.
 
 Recommended improvements:
 

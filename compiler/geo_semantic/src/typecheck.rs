@@ -350,6 +350,7 @@ fn expand_program_type_aliases(
                     .map(|stmt| expand_stmt_type_aliases(stmt, aliases, diagnostics))
                     .collect(),
                 span: function.span,
+                statement_spans: function.statement_spans.clone(),
                 source_path: function.source_path.clone(),
             })
             .collect(),
@@ -638,18 +639,31 @@ fn check_function<'a>(
             )));
         }
     }
-    check_stmts(
-        &function.body,
-        &function.return_type,
-        &mut locals,
-        functions,
-        structs,
-        enums,
-        diagnostics,
-        0,
-        0,
-        true,
-    );
+    for (index, statement) in function.body.iter().enumerate() {
+        let statement_diagnostic_start = diagnostics.len();
+        check_stmts(
+            std::slice::from_ref(statement),
+            &function.return_type,
+            &mut locals,
+            functions,
+            structs,
+            enums,
+            diagnostics,
+            0,
+            0,
+            index + 1 == function.body.len(),
+        );
+        if let Some(span) = function.statement_spans.get(index) {
+            for diagnostic in diagnostics.iter_mut().skip(statement_diagnostic_start) {
+                if diagnostic.span.is_none() {
+                    diagnostic.span = Some(crate::diagnostics::DiagnosticSpan {
+                        offset: span.offset,
+                        len: span.len,
+                    });
+                }
+            }
+        }
+    }
 
     for diagnostic in diagnostics.iter_mut().skip(diagnostic_start) {
         if diagnostic.span.is_none() && function.span.len > 0 {

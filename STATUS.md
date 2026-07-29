@@ -192,9 +192,9 @@ The compiler currently has modules for:
 The developer introspection commands print the compiler-owned token stream,
 parsed AST, and lowered IR without invoking an external compiler framework.
 
-Semantic type and borrow diagnostics now render the originating function's file,
-line, and source range across imported modules. The next diagnostic refinement is
-to carry the narrower expression or statement span.
+Semantic type and borrow diagnostics now render the originating module's file,
+line, and top-level statement range across imported modules. The next diagnostic
+refinement is to carry the narrower expression span.
 
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,
@@ -282,7 +282,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 - Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
 - Runtime ABI is not yet documented as a stable contract; direct `alloc`/`free` lifetime coverage now exists on both native targets.
-- Lexer and parser diagnostics now carry token spans and are attached to source paths, lines, columns, and underlines during module loading. Semantic diagnostics now preserve function source spans and originating module paths; expression-level spans remain open.
+- Lexer and parser diagnostics now carry token spans and are attached to source paths, lines, columns, and underlines during module loading. Semantic diagnostics now preserve top-level statement spans and originating module paths; expression-level spans remain open.
 - `geo fmt` now parses the program and emits canonical indentation, declaration,
   statement, type, and expression layout. Comment preservation and configurable
   style options remain open.

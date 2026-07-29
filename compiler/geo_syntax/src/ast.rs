@@ -69,6 +69,7 @@ pub struct Function {
     pub return_type: Type,
     pub body: Vec<Stmt>,
     pub span: Span,
+    pub statement_spans: Vec<Span>,
     pub source_path: Option<PathBuf>,
 }
 

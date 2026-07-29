@@ -29,7 +29,20 @@ fn check_function(function: &Function, diagnostics: &mut Vec<Diagnostic>) {
         ctx.locals.insert(param.name.clone(), param.ty.clone());
     }
 
-    ctx.check_stmts(&function.body);
+    for (index, statement) in function.body.iter().enumerate() {
+        let statement_diagnostic_start = ctx.diagnostics.len();
+        ctx.check_stmts(std::slice::from_ref(statement));
+        if let Some(span) = function.statement_spans.get(index) {
+            for diagnostic in ctx.diagnostics.iter_mut().skip(statement_diagnostic_start) {
+                if diagnostic.span.is_none() {
+                    diagnostic.span = Some(crate::diagnostics::DiagnosticSpan {
+                        offset: span.offset,
+                        len: span.len,
+                    });
+                }
+            }
+        }
+    }
 
     for diagnostic in diagnostics.iter_mut().skip(diagnostic_start) {
         if diagnostic.span.is_none() && function.span.len > 0 {

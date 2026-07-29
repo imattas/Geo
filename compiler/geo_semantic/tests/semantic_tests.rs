@@ -17,6 +17,7 @@ fn semantic_crate_checks_a_minimal_program() {
             return_type: Type::Unit,
             body: vec![Stmt::Return(None)],
             span: Default::default(),
+            statement_spans: Vec::new(),
             source_path: None,
         }],
     };

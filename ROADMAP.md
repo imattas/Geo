@@ -80,8 +80,8 @@ Progress: `compiler/geo_syntax` now owns the AST, token model, lexer, parser, an
 
 The compiler driver now exposes `dump-tokens`, `dump-ast`, and `dump-ir` for
 inspecting each owned frontend and lowering stage directly from the CLI. Parsed
-functions also retain their source span and originating module path so semantic
-diagnostics can be rendered against the correct file.
+functions also retain their source span, top-level statement spans, and originating
+module path so semantic diagnostics can be rendered against the correct file.
 
 The syntax crate also owns the AST-backed canonical formatter used by `geo fmt`; it
 formats the parsed language surface without delegating to an external formatter.

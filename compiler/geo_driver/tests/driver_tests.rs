@@ -44,7 +44,7 @@ fn semantic_diagnostics_include_function_source_locations() {
         .source
         .as_ref()
         .expect("semantic diagnostics should include a source location");
-    assert_eq!(source.line, 1);
+    assert_eq!(source.line, 2);
     assert!(source.path.ends_with("semantic_type_error.geo"));
 }
 
@@ -66,6 +66,6 @@ fn semantic_diagnostics_keep_imported_module_locations() {
         .source
         .as_ref()
         .expect("imported semantic diagnostics should include a source location");
-    assert_eq!(source.line, 1);
+    assert_eq!(source.line, 2);
     assert!(source.path.ends_with("semantic_helper.geo"));
 }

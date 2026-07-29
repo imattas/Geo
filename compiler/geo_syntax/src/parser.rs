@@ -178,7 +178,7 @@ impl<'a> Parser<'a> {
         } else {
             Type::Unit
         };
-        let body = self.parse_block()?;
+        let (body, statement_spans) = self.parse_function_body()?;
         let end = self.tokens[self.current.saturating_sub(1)].span;
         Ok(Function {
             name,
@@ -191,8 +191,33 @@ impl<'a> Parser<'a> {
                 offset: start.offset,
                 len: end.offset + end.len - start.offset,
             },
+            statement_spans,
             source_path: None,
         })
+    }
+
+    fn parse_function_body(&mut self) -> Result<(Vec<Stmt>, Vec<Span>), Vec<Diagnostic>> {
+        self.expect(&TokenKind::LeftBrace, "expected '{'")?;
+        let mut body = Vec::new();
+        let mut statement_spans = Vec::new();
+        while !self.at(&TokenKind::RightBrace) && !self.at(&TokenKind::Eof) {
+            self.consume_semicolons();
+            if self.at(&TokenKind::RightBrace) {
+                break;
+            }
+            let start = self.peek().span;
+            body.push(self.parse_stmt()?);
+            self.consume_semicolons();
+            let end = self.tokens[self.current.saturating_sub(1)].span;
+            statement_spans.push(Span {
+                line: start.line,
+                column: start.column,
+                offset: start.offset,
+                len: end.offset + end.len - start.offset,
+            });
+        }
+        self.expect(&TokenKind::RightBrace, "expected '}'")?;
+        Ok((body, statement_spans))
     }
 
     fn parse_params(&mut self) -> Result<Vec<Param>, Vec<Diagnostic>> {
