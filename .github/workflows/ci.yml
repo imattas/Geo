@@ -109,6 +109,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          chmod +x target/ci-truncate-file-linux
           target/ci-truncate-file-linux
           status=$?
           rm -f target/geo-truncate-file.txt

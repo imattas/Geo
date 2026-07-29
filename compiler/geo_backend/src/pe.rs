@@ -492,6 +492,7 @@ impl Layout {
             + u32::from(has_virtual_alloc) * 2
             + file_import_count
             + u32::from(has_file_ops)
+            + u32::from(has_file_truncate) * 2
             + u32::from(has_file_metadata);
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
@@ -4961,9 +4962,10 @@ fn emit_truncate_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40]);
     code.extend_from_slice(&[0xba, 0x00, 0x00, 0x00, 0x40]);
     code.extend_from_slice(&[0x45, 0x31, 0xc0]);
-    code.extend_from_slice(&[0x41, 0xb9, 0x03, 0x00, 0x00, 0x00]);
-    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0, 0, 0, 0]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0x03, 0x00, 0x00, 0x00]);
     code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0, 0, 0, 0]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x30, 0, 0, 0, 0]);
     emit_call_iat(code, layout, layout.create_file_iat);
     code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x50]);
     code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
@@ -4971,7 +4973,7 @@ fn emit_truncate_file_helper(code: &mut Vec<u8>, layout: &Layout) {
 
     code.extend_from_slice(&[0x48, 0x89, 0xc1]);
     code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x48]);
-    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x44, 0x24, 0x30]);
     code.extend_from_slice(&[0x45, 0x31, 0xc9]);
     emit_call_iat(code, layout, layout.set_file_pointer_iat);
     code.extend_from_slice(&[0x85, 0xc0]);
