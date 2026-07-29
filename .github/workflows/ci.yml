@@ -265,6 +265,25 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_slice_exit.geo --target x86_64-windows -o target/ci-string-slice-windows.exe
       - name: Build compiler-owned Windows string-slice-free executable
         run: cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-windows -o target/ci-string-slice-free-windows.exe
+
+      - name: Execute compiler-owned Windows PE64 smoke fixtures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & target/ci-hello-world-windows.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-string-clone-windows.exe
+          if ($LASTEXITCODE -ne 3) { exit $LASTEXITCODE }
+          & target/ci-string-clone-free-windows.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-string-concat-free-windows.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-string-slice-free-windows.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-read-file-free-windows.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-file-read-handle-free-windows.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build compiler-owned Windows UTF-8 length executable
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-windows -o target/ci-utf8-len-windows.exe
       - name: Build compiler-owned Windows UTF-8 codepoint executable

@@ -202,6 +202,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add CI for Windows and Linux.
 - Add a small `xtask` crate for repeatable dev workflows.
 - Add benchmark fixtures once backend behavior stabilizes.
+- Execute a representative PE64 smoke set on Windows CI, including allocation-backed string cleanup and path-based and handle-based file reads, so the native Windows backend is validated beyond byte emission.
 
 ## Self-Hosting Improvements
 
