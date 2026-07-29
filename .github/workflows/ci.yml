@@ -107,6 +107,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-linux -o target/ci-truncate-file-linux
       - name: Build compiler-owned Linux seek executable
         run: cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-linux -o target/ci-file-seek-linux
+      - name: Build compiler-owned Linux flush executable
+        run: cargo run --locked --quiet -- build examples/file_flush_exit.geo --target x86_64-linux -o target/ci-file-flush-linux
       - name: Execute compiler-owned Linux truncate executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -129,6 +131,18 @@ jobs:
           rm -f target/geo-seek-test.txt
           test "$status" -eq 0
           test "$content" = "abZdef"
+      - name: Execute compiler-owned Linux flush executable
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-file-flush-linux
+          target/ci-file-flush-linux
+          status=$?
+          size=$(wc -c < target/geo-flush-test.txt)
+          rm -f target/geo-flush-test.txt
+          test "$status" -eq 0
+          test "$size" -eq 7
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
       - name: Build compiler-owned Linux append-handle executable
@@ -260,6 +274,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-windows -o target/ci-truncate-file-windows.exe
       - name: Build compiler-owned Windows seek executable
         run: cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-windows -o target/ci-file-seek-windows.exe
+      - name: Build compiler-owned Windows flush executable
+        run: cargo run --locked --quiet -- build examples/file_flush_exit.geo --target x86_64-windows -o target/ci-file-flush-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -393,6 +409,7 @@ jobs:
           cargo run --locked --quiet -- build examples/array_typed_search_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-search.exe
           cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-windows -o target/ci-smoke-truncate-file.exe
           cargo run --locked --quiet -- build examples/file_seek_exit.geo --target x86_64-windows -o target/ci-smoke-file-seek.exe
+          cargo run --locked --quiet -- build examples/file_flush_exit.geo --target x86_64-windows -o target/ci-smoke-file-flush.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -437,4 +454,10 @@ jobs:
           Write-Host "seek status=$seekStatus content=$seekContent"
           if ($seekStatus -ne 0 -or $seekContent -ne 'abZdef') { exit 1 }
           Remove-Item -Force target/geo-seek-test.txt
+          & target/ci-smoke-file-flush.exe
+          $flushStatus = $LASTEXITCODE
+          $flushSize = (Get-Item target/geo-flush-test.txt).Length
+          Write-Host "flush status=$flushStatus size=$flushSize"
+          if ($flushStatus -ne 0 -or $flushSize -ne 7) { exit 1 }
+          Remove-Item -Force target/geo-flush-test.txt
           exit 0

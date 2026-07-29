@@ -221,6 +221,12 @@ pub fn functions_for_import(path: &[String]) -> Result<Vec<RuntimeFunction>, Dia
             ),
             runtime_fn(
                 path,
+                "file_flush",
+                vec![param("handle", Type::Int)],
+                Type::Int,
+            ),
+            runtime_fn(
+                path,
                 "file_read_to_string",
                 vec![param("handle", Type::Int)],
                 Type::String,

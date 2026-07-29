@@ -129,10 +129,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_close"
         )
     });
-    let needs_truncate_file = image
-        .relocations
-        .iter()
-        .any(|relocation| matches!(relocation.symbol.as_str(), "truncate_file" | "file_seek"));
+    let needs_truncate_file = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "truncate_file" | "file_seek" | "file_flush"
+        )
+    });
     let needs_file_metadata = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -453,6 +455,7 @@ struct Layout {
     delete_file_iat: u32,
     set_file_pointer_iat: u32,
     set_end_of_file_iat: u32,
+    flush_file_iat: u32,
     has_file_ops: bool,
     get_file_attributes_iat: u32,
     has_file_metadata: bool,
@@ -493,6 +496,7 @@ impl Layout {
             + file_import_count
             + u32::from(has_file_ops)
             + u32::from(has_file_truncate) * 2
+            + u32::from(has_file_truncate)
             + u32::from(has_file_metadata);
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
@@ -576,6 +580,13 @@ impl Layout {
         } else {
             ft_rva
         };
+        let flush_file_iat = if has_file_truncate {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
         let get_file_attributes_iat = if has_file_metadata { next_iat } else { ft_rva };
         Self {
             text_rva,
@@ -603,6 +614,7 @@ impl Layout {
             delete_file_iat,
             set_file_pointer_iat,
             set_end_of_file_iat,
+            flush_file_iat,
             has_file_ops,
             get_file_attributes_iat,
             has_file_metadata,
@@ -628,6 +640,7 @@ impl Layout {
         self.delete_file_iat += delta;
         self.set_file_pointer_iat += delta;
         self.set_end_of_file_iat += delta;
+        self.flush_file_iat += delta;
         self.get_file_attributes_iat += delta;
     }
 }
@@ -1069,10 +1082,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "remove_file");
-    let needs_truncate_file = image
-        .relocations
-        .iter()
-        .any(|relocation| matches!(relocation.symbol.as_str(), "truncate_file" | "file_seek"));
+    let needs_truncate_file = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "truncate_file" | "file_seek" | "file_flush"
+        )
+    });
     let needs_file_open = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1674,6 +1689,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             helpers.file_seek = Some(layout.text_rva + code.len() as u32);
             emit_file_seek_helper(&mut code, layout);
         }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_flush")
+        {
+            helpers.file_flush = Some(layout.text_rva + code.len() as u32);
+            emit_file_flush_helper(&mut code, layout);
+        }
     }
     if needs_remove_file {
         helpers.remove_file = Some(layout.text_rva + code.len() as u32);
@@ -2039,6 +2062,9 @@ fn compiled_symbol_rva(
     if symbol == "file_seek" {
         return helpers.file_seek;
     }
+    if symbol == "file_flush" {
+        return helpers.file_flush;
+    }
     if symbol == "remove_file" {
         return helpers.remove_file;
     }
@@ -2166,6 +2192,7 @@ struct PeHelperRvas {
     touch_file: Option<u32>,
     truncate_file: Option<u32>,
     file_seek: Option<u32>,
+    file_flush: Option<u32>,
     remove_file: Option<u32>,
     file_open: Option<u32>,
     file_open_write: Option<u32>,
@@ -5031,6 +5058,17 @@ fn emit_file_seek_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_short_jump(code, failed, failure);
 }
 
+fn emit_file_flush_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_call_iat(code, layout, layout.flush_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, failed, failure);
+}
+
 fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x85, 0xc9]);
     let null_path = emit_short_jump_placeholder(code, 0x74);
@@ -5377,6 +5415,7 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     if layout.has_file_truncate {
         imports.push(b"SetFilePointerEx\0".as_slice());
         imports.push(b"SetEndOfFile\0".as_slice());
+        imports.push(b"FlushFileBuffers\0".as_slice());
     }
     if layout.has_file_metadata {
         imports.push(b"GetFileAttributesA\0".as_slice());

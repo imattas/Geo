@@ -224,6 +224,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_open_write" => emit_file_open_runtime(&mut code, 0x241),
             "file_open_append" => emit_file_open_runtime(&mut code, 0x441),
             "file_write" => emit_file_write_runtime(&mut code),
+            "file_flush" => emit_file_flush_runtime(&mut code),
             "file_close" => emit_file_close_runtime(&mut code),
             "file_seek" => emit_file_seek_runtime(&mut code),
             "file_read" | "file_read_to_string" => emit_file_read_to_string_runtime(&mut code),
@@ -2237,6 +2238,20 @@ fn emit_file_write_runtime(code: &mut Vec<u8>) {
 fn emit_file_close_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, 0x03, 0x00, 0x00, 0x00, 0x0f, 0x05]);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+}
+
+fn emit_file_flush_runtime(code: &mut Vec<u8>) {
+    // fsync(fd), returning zero on success and one on error.
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let invalid_handle = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0xb8, 0x4a, 0x00, 0x00, 0x00, 0x0f, 0x05]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_near_jump(code, invalid_handle, failure);
+    patch_near_jump(code, failed, failure);
 }
 
 fn emit_file_seek_runtime(code: &mut Vec<u8>) {

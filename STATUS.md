@@ -291,6 +291,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct path-based file operations cover append, touch, remove, read, write, existence checks, file/directory classification, empty checks, and file size on Linux and Windows.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
+- Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.
 - Direct Linux and Windows string runtime coverage includes byte access, empty checks, ASCII validation, and byte search.
 - Direct Linux and Windows string runtime coverage also includes lexical comparison, equality, inequality, and ordering predicates.
 - Direct Linux and Windows string runtime coverage also includes substring containment and prefix matching.
@@ -318,7 +319,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Typed pointer dereferences and stores now use the pointee width for byte-oriented memory instead of always reading or writing a full machine word.
 - `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
-- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, seek, and close; richer truncation controls and metadata remain open.
+- Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, flush, read-to-string, seek, and close; richer truncation controls and metadata remain open.
 - Direct allocation lifetime coverage now includes compiler-owned `alloc`/`alloc_copy` headers, Linux `munmap`, Windows `VirtualFree`, payload-preserving `realloc`, and two-platform `alloc`/`free`/`realloc`/`alloc_copy` fixtures. `string_clone`, `string_from_byte`, `string_concat`, non-null `string_slice` results, path-based `read_file` results, handle-based `file_read_to_string` results, and `read_line` results now use the same header and have direct free fixtures.
 - Windows-host PE64 execution validation now covers hello, allocation-backed strings, file reads, UTF-8 conversion, and byte/typed array runtime and mutation fixtures, including push, set, extend, copy, and resize. Broader PE64 runtime coverage and richer failure-path validation remain open.
 
