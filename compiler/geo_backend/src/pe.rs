@@ -109,6 +109,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "platform_arch"
                     | "platform_newline"
                     | "path_file_name"
+                    | "path_parent"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -795,6 +796,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "path_file_name");
+    let needs_path_parent = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "path_parent");
     let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1156,7 +1161,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_string_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_slice" | "string_utf8_slice" | "string_utf8_char_at" | "path_file_name"
+            "string_slice"
+                | "string_utf8_slice"
+                | "string_utf8_char_at"
+                | "path_file_name"
+                | "path_parent"
         )
     });
     let needs_alloc_copy = image
@@ -1770,6 +1779,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.path_file_name = Some(layout.text_rva + code.len() as u32);
         emit_path_file_name_helper(&mut code, layout, string_slice);
     }
+    if needs_path_parent {
+        let string_slice = helpers.string_slice?;
+        helpers.path_parent = Some(layout.text_rva + code.len() as u32);
+        emit_path_parent_helper(&mut code, layout, string_slice);
+    }
     if needs_string_utf8_slice {
         let byte_offset = helpers
             .string_utf8_byte_offset
@@ -2300,6 +2314,9 @@ fn compiled_symbol_rva(
     if symbol == "path_file_name" {
         return helpers.path_file_name;
     }
+    if symbol == "path_parent" {
+        return helpers.path_parent;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2480,6 +2497,7 @@ struct PeHelperRvas {
     platform_newline: Option<u32>,
     path_is_absolute: Option<u32>,
     path_file_name: Option<u32>,
+    path_parent: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -4582,6 +4600,32 @@ fn emit_path_file_name_helper(code: &mut Vec<u8>, layout: &Layout, slice_target:
     code.extend_from_slice(&[
         0x48, 0x8b, 0x4c, 0x24, 0x40, 0x4c, 0x89, 0xda, 0x4d, 0x89, 0xd0,
     ]);
+    emit_direct_call(code, layout.text_rva, slice_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x78, 0xc3]);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, slash, separator);
+    patch_short_jump(code, backslash, separator);
+}
+
+fn emit_path_parent_helper(code: &mut Vec<u8>, layout: &Layout, slice_target: u32) {
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xec, 0x78, 0x48, 0x89, 0x4c, 0x24, 0x40, 0x45, 0x31, 0xd2, 0x45, 0x31, 0xdb,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x42, 0x8a, 0x04, 0x11, 0x84, 0xc0]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x3c, b'/']);
+    let slash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x3c, b'\\']);
+    let backslash = emit_short_jump_placeholder(code, 0x74);
+    let advance = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc2]);
+    emit_short_jump_back(code, loop_start);
+    let separator = code.len();
+    code.extend_from_slice(&[0x4d, 0x89, 0xd3]);
+    emit_short_jump_back(code, advance);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40, 0x31, 0xd2, 0x4d, 0x89, 0xd8]);
     emit_direct_call(code, layout.text_rva, slice_target);
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x78, 0xc3]);
     patch_short_jump(code, done, done_target);

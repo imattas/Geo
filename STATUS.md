@@ -315,6 +315,9 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct native `path_file_name` now scans both slash styles and returns an
   owned basename through the compiler-owned string-slice runtime on both
   executable writers.
+- Direct native `path_parent` now scans both slash styles and returns an
+  owned parent path, including an owned empty string for paths without a
+  separator, on both executable writers.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
 - Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.
