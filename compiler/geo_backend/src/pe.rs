@@ -72,6 +72,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "alloc_zeroed"
                     | "alloc_array"
                     | "string_from_byte"
+                    | "string_from_utf8_codepoint"
                     | "string_clone"
                     | "alloc_copy"
                     | "free_geo"
@@ -950,6 +951,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_from_byte");
+    let needs_string_from_utf8_codepoint = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_from_utf8_codepoint");
     let needs_string_clone = image
         .relocations
         .iter()
@@ -1123,6 +1128,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_mem_is_zero
         || needs_mem_reverse
         || needs_string_from_byte
+        || needs_string_from_utf8_codepoint
         || needs_string_clone
         || needs_string_slice
         || needs_alloc_copy
@@ -1495,6 +1501,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_from_byte {
         helpers.string_from_byte = Some(layout.text_rva + code.len() as u32);
         emit_string_from_byte_helper(&mut code, layout);
+    }
+    if needs_string_from_utf8_codepoint {
+        helpers.string_from_utf8_codepoint = Some(layout.text_rva + code.len() as u32);
+        emit_string_from_utf8_codepoint_helper(&mut code, layout);
     }
     if needs_string_clone {
         helpers.string_clone = Some(layout.text_rva + code.len() as u32);
@@ -1994,6 +2004,9 @@ fn compiled_symbol_rva(
     if symbol == "string_from_byte" {
         return helpers.string_from_byte;
     }
+    if symbol == "string_from_utf8_codepoint" {
+        return helpers.string_from_utf8_codepoint;
+    }
     if symbol == "string_clone" {
         return helpers.string_clone;
     }
@@ -2067,6 +2080,7 @@ struct PeHelperRvas {
     mem_is_zero: Option<u32>,
     mem_reverse: Option<u32>,
     string_from_byte: Option<u32>,
+    string_from_utf8_codepoint: Option<u32>,
     string_clone: Option<u32>,
     string_slice: Option<u32>,
     string_utf8_slice: Option<u32>,
@@ -4375,6 +4389,91 @@ fn emit_string_from_byte_helper(code: &mut Vec<u8>, layout: &Layout) {
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_string_from_utf8_codepoint_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38, 0x48, 0x89, 0x4c, 0x24, 0x20]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let invalid_negative = emit_near_conditional_placeholder(code, 0x88);
+    code.extend_from_slice(&[0x48, 0x81, 0xf9, 0xff, 0xff, 0x10, 0x00]);
+    let invalid_large = emit_near_conditional_placeholder(code, 0x87);
+    code.extend_from_slice(&[0x48, 0x81, 0xf9, 0x00, 0xd8, 0x00, 0x00]);
+    let valid = emit_near_conditional_placeholder(code, 0x82);
+    code.extend_from_slice(&[0x48, 0x81, 0xf9, 0xff, 0xdf, 0x00, 0x00]);
+    let invalid_surrogate = emit_near_conditional_placeholder(code, 0x86);
+    let valid_target = code.len();
+
+    code.extend_from_slice(&[0x31, 0xc9, 0xba, 0x0d, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0xc7, 0x00, 0x0d, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc0, 0x08, 0x48, 0x89, 0x44, 0x24, 0x28]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf9, 0x7f]);
+    let ascii = emit_near_conditional_placeholder(code, 0x86);
+    code.extend_from_slice(&[0x48, 0x81, 0xf9, 0xff, 0x07, 0x00, 0x00]);
+    let two_byte = emit_near_conditional_placeholder(code, 0x86);
+    code.extend_from_slice(&[0x48, 0x81, 0xf9, 0xff, 0xff, 0x00, 0x00]);
+    let three_byte = emit_near_conditional_placeholder(code, 0x86);
+
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xca, 0x48, 0xc1, 0xea, 0x12, 0x80, 0xca, 0xf0, 0x88, 0x10,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xca, 0x48, 0xc1, 0xea, 0x0c, 0x80, 0xe2, 0x3f, 0x80, 0xca, 0x80, 0x88, 0x50,
+        0x01,
+    ]);
+    code.extend_from_slice(&[
+        0x40, 0x80, 0xe1, 0x3f, 0x40, 0x80, 0xc9, 0x80, 0x40, 0x88, 0x48, 0x02,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4c, 0x24, 0x20, 0x40, 0x80, 0xe1, 0x3f, 0x40, 0x80, 0xc9, 0x80, 0x40, 0x88,
+        0x48, 0x03,
+    ]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x28, 0xc6, 0x40, 0x04, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+
+    let three_target = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xca, 0x48, 0xc1, 0xea, 0x0c, 0x80, 0xca, 0xe0, 0x88, 0x10,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xca, 0x48, 0xc1, 0xea, 0x06, 0x80, 0xe2, 0x3f, 0x80, 0xca, 0x80, 0x88, 0x50,
+        0x01,
+    ]);
+    code.extend_from_slice(&[
+        0x40, 0x80, 0xe1, 0x3f, 0x40, 0x80, 0xc9, 0x80, 0x40, 0x88, 0x48, 0x02,
+    ]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x28, 0xc6, 0x40, 0x03, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+
+    let two_target = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xca, 0x48, 0xc1, 0xea, 0x06, 0x80, 0xca, 0xc0, 0x88, 0x10,
+    ]);
+    code.extend_from_slice(&[
+        0x40, 0x80, 0xe1, 0x3f, 0x40, 0x80, 0xc9, 0x80, 0x40, 0x88, 0x48, 0x01,
+    ]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x28, 0xc6, 0x40, 0x02, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+
+    let ascii_target = code.len();
+    code.extend_from_slice(&[0x40, 0x88, 0x08, 0xc6, 0x40, 0x01, 0x00]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    patch_near_conditional(code, invalid_negative, failure);
+    patch_near_conditional(code, invalid_large, failure);
+    patch_near_conditional(code, valid, valid_target);
+    patch_near_conditional(code, invalid_surrogate, failure);
+    patch_near_conditional(code, allocation_failed, failure);
+    patch_near_conditional(code, ascii, ascii_target);
+    patch_near_conditional(code, two_byte, two_target);
+    patch_near_conditional(code, three_byte, three_target);
 }
 
 fn emit_string_clone_helper(code: &mut Vec<u8>, layout: &Layout) {

@@ -281,6 +281,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows string runtime coverage now includes native UTF-8 codepoint-index to byte-offset conversion, next/previous boundary navigation, byte-offset to codepoint-index lookup, and boundary validation.
 - Direct Linux and Windows string runtime coverage now includes boundary-aware UTF-8 slicing with end clamping and invalid-input handling.
 - Direct Linux and Windows string runtime coverage now includes native UTF-8 character extraction and first-codepoint search, with multi-byte and out-of-range regression cases.
+- Direct Linux and Windows string runtime coverage now includes owned UTF-8 codepoint-to-string conversion for ASCII, multi-byte, four-byte, and invalid surrogate inputs.
 - Direct Linux and Windows array runtime coverage now includes byte-element allocation, length/capacity, indexed read/write, and push within the initial capacity.
 - Direct Linux and Windows array lifecycle coverage now includes capacity growth, payload-preserving clone, clear, and native release.
 - Direct Linux and Windows array mutation coverage now includes truncation, last-element pop, first-element pop with byte shifting, and invalid empty/growth handling.
@@ -298,6 +299,6 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 ## Current Priority
 
-The next best technical move is UTF-8 conversion/formatting support and the remaining typed-array algorithms, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for the core allocation-backed string and file paths.
+The next best technical move is richer formatting support and the remaining typed-array algorithms, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for the core allocation-backed string, conversion, and file paths.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.

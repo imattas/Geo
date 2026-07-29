@@ -66,6 +66,8 @@ jobs:
 
       - name: Build compiler-owned Linux byte-string-free executable
         run: cargo run --locked --quiet -- build examples/string_from_byte_free_exit.geo --target x86_64-linux -o target/ci-string-from-byte-free-linux
+      - name: Build compiler-owned Linux UTF-8 conversion executable
+        run: cargo run --locked --quiet -- build examples/string_from_utf8_codepoint_exit.geo --target x86_64-linux -o target/ci-string-from-utf8-codepoint-linux
 
       - name: Build compiler-owned Linux string-clone executable
         run: cargo run --locked --quiet -- build examples/string_clone_len_exit.geo --target x86_64-linux -o target/ci-string-clone-linux
@@ -189,6 +191,8 @@ jobs:
 
       - name: Build compiler-owned Windows byte-string-free executable
         run: cargo run --locked --quiet -- build examples/string_from_byte_free_exit.geo --target x86_64-windows -o target/ci-string-from-byte-free-windows.exe
+      - name: Build compiler-owned Windows UTF-8 conversion executable
+        run: cargo run --locked --quiet -- build examples/string_from_utf8_codepoint_exit.geo --target x86_64-windows -o target/ci-string-from-utf8-codepoint-windows.exe
 
       - name: Build compiler-owned Windows string-clone executable
         run: cargo run --locked --quiet -- build examples/string_clone_len_exit.geo --target x86_64-windows -o target/ci-string-clone-windows.exe
@@ -346,6 +350,7 @@ jobs:
           cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-windows -o target/ci-smoke-slice-free.exe
           cargo run --locked --quiet -- build examples/read_file_free_windows_exit.geo --target x86_64-windows -o target/ci-smoke-read-free.exe
           cargo run --locked --quiet -- build examples/file_read_handle_free_exit.geo --target x86_64-windows -o target/ci-smoke-handle-read-free.exe
+          cargo run --locked --quiet -- build examples/string_from_utf8_codepoint_exit.geo --target x86_64-windows -o target/ci-smoke-from-utf8.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -363,4 +368,6 @@ jobs:
           & target/ci-smoke-read-free.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-handle-read-free.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-from-utf8.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -636,6 +636,25 @@ fn emits_direct_elf64_string_from_byte_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_from_utf8_codepoint_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                return string_len(string_from_utf8_codepoint(955)) as int
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0xb8, 9, 0, 0, 0, 0x0f, 0x05]));
+    assert!(contains_bytes(
+        &executable,
+        &[0x48, 0x81, 0xff, 0xff, 0x07, 0x00, 0x00]
+    ));
+}
+
+#[test]
 fn emits_direct_elf64_string_clone_runtime() {
     let executable = executable_for(
         r#"

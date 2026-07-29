@@ -3,7 +3,9 @@ extern fn string_clone(value: str) -> str
 extern fn string_free(value: str) -> int
 extern fn string_concat(left: str, right: str) -> str
 extern fn string_from_byte(value: int) -> str
+extern fn string_from_utf8_codepoint(value: int) -> str
 extern fn string_equals(left: str, right: str) -> bool
+extern fn string_compare(left: str, right: str) -> int
 extern fn string_contains(value: str, needle: str) -> bool
 extern fn string_starts_with(value: str, prefix: str) -> bool
 extern fn string_ends_with(value: str, suffix: str) -> bool

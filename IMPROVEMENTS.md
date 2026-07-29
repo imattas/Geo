@@ -186,7 +186,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
 - Boundary-aware UTF-8 navigation and slicing are now native on both targets, including end clamping and malformed-input handling. Add formatting and conversion support next. Strict validity checking rejects malformed and out-of-range sequences.
-- Native UTF-8 character extraction and first-codepoint search now share the compiler-owned decoder on ELF64 and PE64; keep extending this family with conversion and formatting primitives.
+- Native UTF-8 character extraction, first-codepoint search, and owned codepoint-to-string conversion now share compiler-owned logic on ELF64 and PE64; keep extending this family with richer formatting primitives.
 - Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
 - Extend the byte-array runtime to the remaining typed algorithms before using it for fully dynamic token buffers; full-width push/set/fill/resize, capacity growth, clone, clear, release, reverse, search, contains, count, indexed insertion, indexed removal, extension, and bounded copying are now native on both targets.
 - Complete allocation lifetime semantics by extending the header-backed `alloc`/`free`/`realloc` contract to every compiler-owned allocation helper, with double-free and invalid-pointer diagnostics where the language can expose them.
