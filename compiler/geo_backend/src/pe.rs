@@ -5126,28 +5126,30 @@ fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
 }
 
 fn emit_create_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
     code.extend_from_slice(&[0x48, 0x85, 0xc9]);
     let invalid_path = emit_short_jump_placeholder(code, 0x74);
     code.extend_from_slice(&[0x48, 0x31, 0xd2]);
     emit_call_iat(code, layout, layout.create_directory_iat);
     code.extend_from_slice(&[0x85, 0xc0]);
     let failed = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     let failure = code.len();
-    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, invalid_path, failure);
     patch_short_jump(code, failed, failure);
 }
 
 fn emit_remove_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
     code.extend_from_slice(&[0x48, 0x85, 0xc9]);
     let invalid_path = emit_short_jump_placeholder(code, 0x74);
     emit_call_iat(code, layout, layout.remove_directory_iat);
     code.extend_from_slice(&[0x85, 0xc0]);
     let failed = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     let failure = code.len();
-    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, invalid_path, failure);
     patch_short_jump(code, failed, failure);
 }
