@@ -501,7 +501,7 @@ impl Layout {
             + u32::from(has_virtual_alloc) * 2
             + file_import_count
             + u32::from(has_file_ops)
-            + u32::from(has_file_ops) * 2
+            + u32::from(has_file_ops) * 3
             + u32::from(has_file_truncate) * 2
             + u32::from(has_file_truncate)
             + u32::from(has_file_metadata);
