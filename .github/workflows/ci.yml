@@ -47,6 +47,8 @@ jobs:
 
       - name: Build compiler-owned Linux read executable
         run: cargo run --locked --quiet -- build examples/read_file_len_exit.geo --target x86_64-linux -o target/ci-read-file-linux
+      - name: Build compiler-owned Linux read-free executable
+        run: cargo run --locked --quiet -- build examples/read_file_free_exit.geo --target x86_64-linux -o target/ci-read-file-free-linux
 
       - name: Build compiler-owned Linux read-default executable
         run: cargo run --locked --quiet -- build examples/read_file_or_len_exit.geo --target x86_64-linux -o target/ci-read-file-or-linux
@@ -134,6 +136,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_last_find_exit.geo --target x86_64-linux -o target/ci-string-last-find-linux
       - name: Build compiler-owned Linux string-slice executable
         run: cargo run --locked --quiet -- build examples/string_slice_exit.geo --target x86_64-linux -o target/ci-string-slice-linux
+      - name: Build compiler-owned Linux string-slice-free executable
+        run: cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-linux -o target/ci-string-slice-free-linux
       - name: Build compiler-owned Linux UTF-8 length executable
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-linux -o target/ci-utf8-len-linux
       - name: Build compiler-owned Linux UTF-8 codepoint executable
@@ -162,6 +166,8 @@ jobs:
 
       - name: Build compiler-owned Windows read executable
         run: cargo run --locked --quiet -- build examples/read_file_len_windows_exit.geo --target x86_64-windows -o target/ci-read-file-windows.exe
+      - name: Build compiler-owned Windows read-free executable
+        run: cargo run --locked --quiet -- build examples/read_file_free_windows_exit.geo --target x86_64-windows -o target/ci-read-file-free-windows.exe
 
       - name: Build compiler-owned Windows read-default executable
         run: cargo run --locked --quiet -- build examples/read_file_or_len_windows_exit.geo --target x86_64-windows -o target/ci-read-file-or-windows.exe
@@ -249,6 +255,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_last_find_exit.geo --target x86_64-windows -o target/ci-string-last-find-windows.exe
       - name: Build compiler-owned Windows string-slice executable
         run: cargo run --locked --quiet -- build examples/string_slice_exit.geo --target x86_64-windows -o target/ci-string-slice-windows.exe
+      - name: Build compiler-owned Windows string-slice-free executable
+        run: cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-windows -o target/ci-string-slice-free-windows.exe
       - name: Build compiler-owned Windows UTF-8 length executable
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-windows -o target/ci-utf8-len-windows.exe
       - name: Build compiler-owned Windows UTF-8 codepoint executable

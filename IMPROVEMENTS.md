@@ -94,9 +94,10 @@ Recommended improvements:
 - Suggestions for common mistakes.
 
 Runtime lifetime progress: `string_clone`, `string_from_byte`, and
-`string_concat` now store the compiler-owned mapping header and can be released
-through `std.string.string_free`; apply the same contract next to slicing and
-file-read results.
+`string_concat`, non-null `string_slice` results, and path-based `read_file`
+results now store the compiler-owned mapping header and can be released
+through `std.string.string_free`; apply the same contract next to handle-read
+results.
 
 Reason: good diagnostics are core compiler quality, especially for a new language.
 
