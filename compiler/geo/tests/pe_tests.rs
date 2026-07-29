@@ -1602,6 +1602,28 @@ fn emits_direct_pe64_directory_path_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_process_id_without_runtime_import() {
+    let pe = pe_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                if process_id() > 0 {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(
+        &pe,
+        &[0x65, 0x48, 0x8b, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00]
+    ));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

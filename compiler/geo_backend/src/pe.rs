@@ -1218,6 +1218,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "exit_geo");
+    let needs_process_id = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "process_id");
     let newline_rva = if needs_println {
         Some(layout.rdata_rva + image.rodata.len() as u32)
     } else {
@@ -1345,6 +1349,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_file_metadata
         || needs_read_line
         || needs_process_exit
+        || needs_process_id
         || needs_free
         || needs_realloc
     {
@@ -1749,6 +1754,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_process_exit {
         helpers.exit_process = Some(layout.text_rva + code.len() as u32);
         emit_process_exit_helper(&mut code, layout);
+    }
+    if needs_process_id {
+        helpers.process_id = Some(layout.text_rva + code.len() as u32);
+        emit_process_id_helper(&mut code);
     }
     if needs_file_read {
         helpers.read_file = Some(layout.text_rva + code.len() as u32);
@@ -2216,6 +2225,9 @@ fn compiled_symbol_rva(
     if symbol == "exit_geo" {
         return helpers.exit_process;
     }
+    if symbol == "process_id" {
+        return helpers.process_id;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2389,6 +2401,7 @@ struct PeHelperRvas {
     eprint: Option<u32>,
     println: Option<u32>,
     exit_process: Option<u32>,
+    process_id: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -4401,6 +4414,13 @@ fn emit_println_helper(code: &mut Vec<u8>, layout: &Layout, print_rva: u32, newl
     emit_call_iat(code, layout, layout.write_file_iat);
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28]);
     code.push(0xc3);
+}
+
+fn emit_process_id_helper(code: &mut Vec<u8>) {
+    // Read the process identifier from the Windows PEB without a runtime import.
+    code.extend_from_slice(&[
+        0x65, 0x48, 0x8b, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00, 0x8b, 0x40, 0x20, 0xc3,
+    ]);
 }
 
 fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {
