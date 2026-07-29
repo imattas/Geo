@@ -11,4 +11,4 @@ extern fn remove_dir(path: str) -> int
 extern fn remove_dir_all(path: str) -> int
 extern fn dir_entry_count(path: str) -> usize
 extern fn dir_entry_name(path: str, index: usize) -> str
-
+extern fn dir_entry_path(path: str, index: usize) -> str

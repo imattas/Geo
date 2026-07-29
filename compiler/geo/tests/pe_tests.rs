@@ -1580,6 +1580,28 @@ fn emits_direct_pe64_directory_name_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_directory_path_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                if file_is_file(dir_entry_path("target", 0)) {
+                    return 0
+                }
+                return 1
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"FindFirstFileA"));
+    assert!(contains_bytes(&pe, b"FindNextFileA"));
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, b"VirtualFree"));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

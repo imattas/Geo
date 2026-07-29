@@ -302,6 +302,8 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct native `dir_entry_name` now skips dot entries, returns an owned Geo
   string, and uses Linux `getdents64` or Win32 `FindFirstFileA`/`FindNextFileA`
   enumeration with cleanup fixtures on both executable writers.
+- Direct native `dir_entry_path` now composes an owned directory-plus-entry
+  path and releases intermediate allocations on both executable writers.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
 - Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.

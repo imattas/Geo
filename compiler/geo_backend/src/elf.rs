@@ -242,6 +242,39 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_created_time" => emit_file_stat_runtime(&mut code, FileStatKind::CreatedTime),
             "dir_entry_count" => emit_dir_entry_count_runtime(&mut code),
             "dir_entry_name" => emit_dir_entry_name_runtime(&mut code),
+            "dir_entry_path" => {
+                let name_offset = if let Some(symbol) = symbols.get("dir_entry_name") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_dir_entry_name_runtime(&mut code);
+                    symbols.insert("dir_entry_name".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let concat_offset = if let Some(symbol) = symbols.get("string_concat") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_concat_runtime(&mut code);
+                    symbols.insert("string_concat".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let free_offset = if let Some(symbol) = symbols.get("string_free") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_free_runtime(&mut code);
+                    symbols.insert("string_free".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let path_offset = code.len();
+                emit_dir_entry_path_runtime(&mut code, name_offset, concat_offset, free_offset);
+                symbols.insert(
+                    "dir_entry_path".to_string(),
+                    runtime_base + path_offset as u64,
+                );
+                continue;
+            }
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
             "read_file_or" => {
@@ -535,6 +568,34 @@ fn emit_dir_entry_name_runtime(code: &mut Vec<u8>) {
     patch_near_jump(code, advance, entry_loop);
     patch_near_jump(code, allocation_failed, failure);
     patch_near_jump(code, name_done, name_target);
+}
+
+fn emit_dir_entry_path_runtime(
+    code: &mut Vec<u8>,
+    name_offset: usize,
+    concat_offset: usize,
+    free_offset: usize,
+) {
+    // Build path + "/" + name while releasing the intermediate strings.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x7c, 0x24, 0x20, 0x48, 0x89, 0x74, 0x24, 0x28]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x20, 0x48, 0x8b, 0x74, 0x24, 0x28]);
+    emit_internal_call(code, name_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[
+        0xc6, 0x44, 0x24, 0x38, 0x2f, 0xc6, 0x44, 0x24, 0x39, 0x00, 0x48, 0x8b, 0x7c, 0x24, 0x20,
+        0x48, 0x8d, 0x74, 0x24, 0x38,
+    ]);
+    emit_internal_call(code, concat_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x40, 0x48, 0x8b, 0x74, 0x24, 0x30]);
+    emit_internal_call(code, concat_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x30]);
+    emit_internal_call(code, free_offset);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x40]);
+    emit_internal_call(code, free_offset);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
 }
 
 fn emit_string_byte_at_runtime(code: &mut Vec<u8>) {

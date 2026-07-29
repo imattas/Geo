@@ -78,10 +78,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 "write_file" | "append_file" | "file_write"
             )
         });
-    let needs_string_concat = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_concat");
+    let needs_string_concat = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_concat" | "dir_entry_path"
+        )
+    });
     let needs_virtual_alloc = needs_string_concat
         || image.relocations.iter().any(|relocation| {
             matches!(
@@ -94,6 +96,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "alloc_array"
                     | "string_from_byte"
                     | "string_from_utf8_codepoint"
+                    | "dir_entry_path"
                     | "string_clone"
                     | "alloc_copy"
                     | "free_geo"
@@ -153,6 +156,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_created_time"
                 | "dir_entry_count"
                 | "dir_entry_name"
+                | "dir_entry_path"
         )
     });
     let mut layout = Layout::new(
@@ -761,10 +765,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "read_line");
-    let needs_string_concat = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_concat");
+    let needs_string_concat = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_concat" | "dir_entry_path"
+        )
+    });
     let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1065,10 +1071,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             "array_new" | "alloc" | "alloc_zeroed" | "alloc_array"
         )
     });
-    let needs_free = image
-        .relocations
-        .iter()
-        .any(|relocation| matches!(relocation.symbol.as_str(), "free_geo" | "string_free"));
+    let needs_free = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "free_geo" | "string_free" | "dir_entry_path"
+        )
+    });
     let needs_realloc = image
         .relocations
         .iter()
@@ -1921,13 +1929,25 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             helpers.dir_entry_count = Some(layout.text_rva + code.len() as u32);
             emit_dir_entry_count_helper(&mut code, layout);
         }
+        if image.relocations.iter().any(|relocation| {
+            matches!(
+                relocation.symbol.as_str(),
+                "dir_entry_name" | "dir_entry_path"
+            )
+        }) {
+            helpers.dir_entry_name = Some(layout.text_rva + code.len() as u32);
+            emit_dir_entry_name_helper(&mut code, layout);
+        }
         if image
             .relocations
             .iter()
-            .any(|relocation| relocation.symbol == "dir_entry_name")
+            .any(|relocation| relocation.symbol == "dir_entry_path")
         {
-            helpers.dir_entry_name = Some(layout.text_rva + code.len() as u32);
-            emit_dir_entry_name_helper(&mut code, layout);
+            let name = helpers.dir_entry_name?;
+            let concat = helpers.string_concat?;
+            let free = helpers.free_geo?;
+            helpers.dir_entry_path = Some(layout.text_rva + code.len() as u32);
+            emit_dir_entry_path_helper(&mut code, layout, name, concat, free);
         }
     }
     if needs_file_metadata {
@@ -2283,6 +2303,9 @@ fn compiled_symbol_rva(
     if symbol == "dir_entry_count" {
         return helpers.dir_entry_count;
     }
+    if symbol == "dir_entry_path" {
+        return helpers.dir_entry_path;
+    }
     if symbol == "dir_entry_name" {
         return helpers.dir_entry_name;
     }
@@ -2396,6 +2419,7 @@ struct PeHelperRvas {
     file_created_time: Option<u32>,
     dir_entry_count: Option<u32>,
     dir_entry_name: Option<u32>,
+    dir_entry_path: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -5625,6 +5649,35 @@ fn emit_dir_entry_name_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_near_jump(code, more_entries, entry_loop);
     patch_near_jump(code, name_done, name_target);
     patch_near_jump(code, allocation_failed, failure);
+}
+
+fn emit_dir_entry_path_helper(
+    code: &mut Vec<u8>,
+    layout: &Layout,
+    name: u32,
+    concat: u32,
+    free: u32,
+) {
+    // Build path + "\\" + name while releasing the intermediate strings.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x28]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20, 0x48, 0x8b, 0x54, 0x24, 0x28]);
+    emit_direct_call(code, layout.text_rva, name);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[
+        0xc6, 0x44, 0x24, 0x38, 0x5c, 0xc6, 0x44, 0x24, 0x39, 0x00, 0x48, 0x8b, 0x4c, 0x24, 0x20,
+        0x48, 0x8d, 0x54, 0x24, 0x38,
+    ]);
+    emit_direct_call(code, layout.text_rva, concat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40, 0x48, 0x8b, 0x54, 0x24, 0x30]);
+    emit_direct_call(code, layout.text_rva, concat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30]);
+    emit_direct_call(code, layout.text_rva, free);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40]);
+    emit_direct_call(code, layout.text_rva, free);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
 }
 
 fn emit_file_size_helper(code: &mut Vec<u8>, layout: &Layout) {
