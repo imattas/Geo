@@ -49,7 +49,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_console_helpers = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println")
+        .any(|relocation| matches!(relocation.symbol.as_str(), "print" | "println" | "eprint"))
         || needs_read_line
         || image.relocations.iter().any(|relocation| {
             matches!(
@@ -585,7 +585,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_print = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "print" || relocation.symbol == "println");
+        .any(|relocation| matches!(relocation.symbol.as_str(), "print" | "println"));
+    let needs_eprint = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "eprint");
     let needs_println = image
         .relocations
         .iter()
@@ -1035,6 +1039,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let mut helpers = PeHelperRvas::default();
     if needs_bounds_check
         || needs_print
+        || needs_eprint
         || needs_string_concat
         || needs_string_len
         || needs_string_utf8_len
@@ -1424,7 +1429,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     }
     if needs_print {
         helpers.print = Some(layout.text_rva + code.len() as u32);
-        emit_print_helper(&mut code, layout);
+        emit_print_helper(&mut code, layout, false);
+    }
+    if needs_eprint {
+        helpers.eprint = Some(layout.text_rva + code.len() as u32);
+        emit_print_helper(&mut code, layout, true);
     }
     if needs_println {
         let print_rva = helpers.print?;
@@ -1678,6 +1687,9 @@ fn compiled_symbol_rva(
     }
     if symbol == "print" {
         return helpers.print;
+    }
+    if symbol == "eprint" {
+        return helpers.eprint;
     }
     if symbol == "println" {
         return helpers.println;
@@ -2023,6 +2035,7 @@ fn compiled_symbol_rva(
 struct PeHelperRvas {
     bounds_check: Option<u32>,
     print: Option<u32>,
+    eprint: Option<u32>,
     println: Option<u32>,
     exit_process: Option<u32>,
     alloc: Option<u32>,
@@ -4030,7 +4043,7 @@ fn emit_bounds_check_helper(code: &mut Vec<u8>, layout: &Layout) {
     emit_call_iat(code, layout, layout.exit_process_iat);
 }
 
-fn emit_print_helper(code: &mut Vec<u8>, layout: &Layout) {
+fn emit_print_helper(code: &mut Vec<u8>, layout: &Layout, stderr: bool) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
     code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x28]);
     code.extend_from_slice(&[0x4c, 0x8b, 0x54, 0x24, 0x28]);
@@ -4042,7 +4055,11 @@ fn emit_print_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x4c, 0x89, 0xc0]);
     code.extend_from_slice(&[0x4c, 0x89, 0x44, 0x24, 0x30]);
     code.push(0xb9);
-    code.extend_from_slice(&(-11_i32).to_le_bytes());
+    code.extend_from_slice(&if stderr {
+        (-12_i32).to_le_bytes()
+    } else {
+        (-11_i32).to_le_bytes()
+    });
     emit_call_iat(code, layout, layout.get_std_handle_iat);
     code.extend_from_slice(&[0x48, 0x89, 0xc1]);
     code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x28]);

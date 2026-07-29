@@ -189,8 +189,9 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_greater_or_equal" => {
                 emit_string_compare_runtime(&mut code, StringCompareKind::GreaterOrEqual)
             }
-            "print" => emit_print_runtime(&mut code, false),
-            "println" => emit_print_runtime(&mut code, true),
+            "print" => emit_print_runtime(&mut code, false, 1),
+            "println" => emit_print_runtime(&mut code, true, 1),
+            "eprint" => emit_print_runtime(&mut code, false, 2),
             "string_concat" => emit_string_concat_runtime(&mut code),
             "exit_geo" => emit_exit_runtime(&mut code),
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
@@ -1806,7 +1807,7 @@ fn emit_bounds_check_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, failed, failure);
 }
 
-fn emit_print_runtime(code: &mut Vec<u8>, newline: bool) {
+fn emit_print_runtime(code: &mut Vec<u8>, newline: bool, fd: u8) {
     code.extend_from_slice(&[0x48, 0x89, 0xfe]);
     code.extend_from_slice(&[0x49, 0x89, 0xf8]);
     code.extend_from_slice(&[0x31, 0xd2]);
@@ -1817,7 +1818,7 @@ fn emit_print_runtime(code: &mut Vec<u8>, newline: bool) {
     code.extend_from_slice(&[0xff, 0xc2]);
     code.extend_from_slice(&[0xeb, 0xf1]);
     code.extend_from_slice(&[0xb8, 1, 0, 0, 0]);
-    code.extend_from_slice(&[0xbf, 1, 0, 0, 0]);
+    code.extend_from_slice(&[0xbf, fd, 0, 0, 0]);
     code.extend_from_slice(&[0x0f, 0x05]);
     if newline {
         code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);

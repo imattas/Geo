@@ -106,6 +106,9 @@ jobs:
 
       - name: Build compiler-owned Linux string-conversions executable
         run: cargo run --locked --quiet -- build examples/string_conversions_exit.geo --target x86_64-linux -o target/ci-string-conversions-linux
+
+      - name: Build compiler-owned Linux eprint executable
+        run: cargo run --locked --quiet -- build examples/eprint_exit.geo --target x86_64-linux -o target/ci-eprint-linux
       - name: Build compiler-owned Linux string-comparison executable
         run: cargo run --locked --quiet -- build examples/string_compare_exit.geo --target x86_64-linux -o target/ci-string-compare-linux
       - name: Build compiler-owned Linux string-matching executable
@@ -209,6 +212,9 @@ jobs:
 
       - name: Build compiler-owned Windows string-conversions executable
         run: cargo run --locked --quiet -- build examples/string_conversions_exit.geo --target x86_64-windows -o target/ci-string-conversions-windows.exe
+
+      - name: Build compiler-owned Windows eprint executable
+        run: cargo run --locked --quiet -- build examples/eprint_exit.geo --target x86_64-windows -o target/ci-eprint-windows.exe
       - name: Build compiler-owned Windows string-comparison executable
         run: cargo run --locked --quiet -- build examples/string_compare_exit.geo --target x86_64-windows -o target/ci-string-compare-windows.exe
       - name: Build compiler-owned Windows string-matching executable

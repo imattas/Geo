@@ -84,6 +84,9 @@ The direct native runtime now formats signed integers, `usize`, and booleans
 as compiler-owned strings on both x86-64 backends. The Linux path was executed
 under WSL; the Windows path was validated by PE64 emission.
 
+`std.io.eprint` is also emitted directly to stderr on Linux and through the
+Win32 standard-error handle on PE64.
+
 The compiler crate is the default workspace member, so root-level `cargo run -- ...` runs the `geo` compiler.
 
 ## Verified Commands
