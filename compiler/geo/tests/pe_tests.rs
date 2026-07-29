@@ -1506,6 +1506,25 @@ fn emits_direct_pe64_string_compare_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_copy_file_as_compiled_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return copy_file("source.txt", "destination.txt")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(&pe, b"CopyFileA"));
+    assert!(contains_bytes(&pe, b"source.txt\0destination.txt\0"));
+    assert!(!contains_bytes(&pe, b"WriteFile"));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"

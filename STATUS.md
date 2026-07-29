@@ -291,6 +291,9 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct path-based file operations cover append, touch, remove, read, write, existence checks, file/directory classification, empty checks, and file size on Linux and Windows.
 - Direct native `create_dir` and `remove_dir` support now uses Linux `mkdir`/`rmdir` syscalls and Win32 `CreateDirectoryA`/`RemoveDirectoryA`, with cross-platform mutation fixtures.
 - Direct native `rename_file` support now uses Linux `rename` and Win32 `MoveFileA`, with cross-platform source/destination cleanup fixtures.
+- Direct native `copy_file` support now uses a compiler-emitted chunked Linux
+  `open`/`read`/`write` path and Win32 `CopyFileA`, with ELF64, PE64, and CI
+  execution fixtures.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
 - Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.

@@ -125,6 +125,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "create_dir"
                 | "remove_dir"
                 | "rename_file"
+                | "copy_file"
                 | "file_open"
                 | "file_open_write"
                 | "file_open_append"
@@ -459,6 +460,7 @@ struct Layout {
     create_directory_iat: u32,
     remove_directory_iat: u32,
     move_file_iat: u32,
+    copy_file_iat: u32,
     set_file_pointer_iat: u32,
     set_end_of_file_iat: u32,
     flush_file_iat: u32,
@@ -501,7 +503,7 @@ impl Layout {
             + u32::from(has_virtual_alloc) * 2
             + file_import_count
             + u32::from(has_file_ops)
-            + u32::from(has_file_ops) * 3
+            + u32::from(has_file_ops) * 4
             + u32::from(has_file_truncate) * 2
             + u32::from(has_file_truncate)
             + u32::from(has_file_metadata);
@@ -585,6 +587,10 @@ impl Layout {
         if has_file_ops {
             next_iat += 8;
         }
+        let copy_file_iat = if has_file_ops { next_iat } else { ft_rva };
+        if has_file_ops {
+            next_iat += 8;
+        }
         let set_file_pointer_iat = if has_file_truncate {
             let value = next_iat;
             next_iat += 8;
@@ -634,6 +640,7 @@ impl Layout {
             create_directory_iat,
             remove_directory_iat,
             move_file_iat,
+            copy_file_iat,
             set_file_pointer_iat,
             set_end_of_file_iat,
             flush_file_iat,
@@ -663,6 +670,7 @@ impl Layout {
         self.create_directory_iat += delta;
         self.remove_directory_iat += delta;
         self.move_file_iat += delta;
+        self.copy_file_iat += delta;
         self.set_file_pointer_iat += delta;
         self.set_end_of_file_iat += delta;
         self.flush_file_iat += delta;
@@ -1754,6 +1762,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.rename_file = Some(layout.text_rva + code.len() as u32);
         emit_rename_file_helper(&mut code, layout);
     }
+    if image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "copy_file")
+    {
+        helpers.copy_file = Some(layout.text_rva + code.len() as u32);
+        emit_copy_file_helper(&mut code, layout);
+    }
     if needs_file_open {
         if image
             .relocations
@@ -2129,6 +2145,9 @@ fn compiled_symbol_rva(
     if symbol == "rename_file" {
         return helpers.rename_file;
     }
+    if symbol == "copy_file" {
+        return helpers.copy_file;
+    }
     if symbol == "file_open" {
         return helpers.file_open;
     }
@@ -2258,6 +2277,7 @@ struct PeHelperRvas {
     create_dir: Option<u32>,
     remove_dir: Option<u32>,
     rename_file: Option<u32>,
+    copy_file: Option<u32>,
     file_open: Option<u32>,
     file_open_write: Option<u32>,
     file_open_append: Option<u32>,
@@ -5192,6 +5212,25 @@ fn emit_rename_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_short_jump(code, failed, failure);
 }
 
+fn emit_copy_file_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // CopyFileA(source, destination, FALSE), with Geo's 0-success convention.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_source = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x85, 0xd2]);
+    let null_dest = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    emit_call_iat(code, layout, layout.copy_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, null_source, failure);
+    patch_short_jump(code, null_dest, failure);
+    patch_short_jump(code, failed, failure);
+}
+
 fn emit_file_open_helper(
     code: &mut Vec<u8>,
     layout: &Layout,
@@ -5490,15 +5529,10 @@ fn build_rdata(message: &str) -> Vec<u8> {
 }
 
 fn build_idata(layout: &Layout) -> Vec<u8> {
-    let mut data = vec![0_u8; FILE_ALIGNMENT as usize];
     let oft = 40_u32;
     let ft = oft + layout.iat_size;
     let dll = ft + layout.iat_size;
     let first_name = align_to(dll + b"KERNEL32.dll\0".len() as u32, 2);
-
-    write_u32(&mut data, 0, layout.idata_rva + oft);
-    write_u32(&mut data, 12, layout.idata_rva + dll);
-    write_u32(&mut data, 16, layout.idata_rva + ft);
 
     let mut imports = Vec::new();
     if layout.has_console_io {
@@ -5524,6 +5558,7 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
         imports.push(b"CreateDirectoryA\0".as_slice());
         imports.push(b"RemoveDirectoryA\0".as_slice());
         imports.push(b"MoveFileA\0".as_slice());
+        imports.push(b"CopyFileA\0".as_slice());
     }
     if layout.has_file_truncate {
         imports.push(b"SetFilePointerEx\0".as_slice());
@@ -5533,6 +5568,15 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     if layout.has_file_metadata {
         imports.push(b"GetFileAttributesA\0".as_slice());
     }
+
+    let mut data_len = first_name;
+    for name in &imports {
+        data_len = align_to(data_len + 2 + name.len() as u32, 2);
+    }
+    let mut data = vec![0_u8; align_to(data_len, FILE_ALIGNMENT) as usize];
+    write_u32(&mut data, 0, layout.idata_rva + oft);
+    write_u32(&mut data, 12, layout.idata_rva + dll);
+    write_u32(&mut data, 16, layout.idata_rva + ft);
 
     let mut name_offset = first_name;
     for (idx, name) in imports.iter().enumerate() {
