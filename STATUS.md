@@ -271,6 +271,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows string runtime coverage also includes UTF-8 codepoint counting for valid UTF-8.
 - Direct Linux and Windows string runtime coverage also includes UTF-8 codepoint lookup for valid UTF-8.
 - Direct Linux and Windows string runtime coverage now includes strict UTF-8 validity checking for overlong encodings, surrogate ranges, truncation, and out-of-range four-byte sequences.
+- Direct Linux and Windows string runtime coverage now includes native UTF-8 codepoint-index to byte-offset conversion, next/previous boundary navigation, byte-offset to codepoint-index lookup, and boundary validation.
 - Direct Linux and Windows array runtime coverage now includes byte-element allocation, length/capacity, indexed read/write, and push within the initial capacity.
 - Direct Linux and Windows array lifecycle coverage now includes capacity growth, payload-preserving clone, clear, and native release.
 - Direct Linux and Windows byte-array algorithm coverage now includes first/last element access, fill, reverse, index search, last-index search, contains, and count.
@@ -282,6 +283,6 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 
 ## Current Priority
 
-The next best technical move is to extend UTF-8 validity into boundary-aware offsets and slicing, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
+The next best technical move is boundary-aware UTF-8 slicing and conversion/formatting support, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.

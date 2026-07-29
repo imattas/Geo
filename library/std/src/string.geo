@@ -9,5 +9,10 @@ extern fn string_ends_with(value: str, suffix: str) -> bool
 extern fn string_substring(value: str, start: usize, len: usize) -> str
 extern fn string_is_utf8(value: str) -> bool
 extern fn string_utf8_is_valid(value: str) -> bool
+extern fn string_utf8_byte_offset(value: str, index: usize) -> int
+extern fn string_utf8_next_offset(value: str, offset: usize) -> int
+extern fn string_utf8_prev_offset(value: str, offset: usize) -> int
+extern fn string_utf8_index_at(value: str, offset: usize) -> int
+extern fn string_utf8_is_boundary(value: str, offset: usize) -> bool
 extern fn int_to_string(value: int) -> str
 extern fn bool_to_string(value: bool) -> str

@@ -614,6 +614,26 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_utf8_is_valid");
+    let needs_string_utf8_byte_offset = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_byte_offset");
+    let needs_string_utf8_next_offset = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_next_offset");
+    let needs_string_utf8_prev_offset = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_prev_offset");
+    let needs_string_utf8_index_at = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_index_at");
+    let needs_string_utf8_is_boundary = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_is_boundary");
     let needs_array_new = image
         .relocations
         .iter()
@@ -937,6 +957,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_utf8_codepoint_at
         || needs_string_is_utf8
         || needs_string_utf8_is_valid
+        || needs_string_utf8_byte_offset
+        || needs_string_utf8_next_offset
+        || needs_string_utf8_prev_offset
+        || needs_string_utf8_index_at
+        || needs_string_utf8_is_boundary
         || needs_array_new
         || needs_array_clone
         || needs_array_reserve
@@ -1034,6 +1059,26 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_utf8_is_valid {
         helpers.string_utf8_is_valid = Some(layout.text_rva + code.len() as u32);
         emit_string_utf8_valid_helper(&mut code);
+    }
+    if needs_string_utf8_byte_offset {
+        helpers.string_utf8_byte_offset = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_navigation_helper(&mut code, Utf8NavigationKindPe::ByteOffset);
+    }
+    if needs_string_utf8_next_offset {
+        helpers.string_utf8_next_offset = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_navigation_helper(&mut code, Utf8NavigationKindPe::NextOffset);
+    }
+    if needs_string_utf8_prev_offset {
+        helpers.string_utf8_prev_offset = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_navigation_helper(&mut code, Utf8NavigationKindPe::PrevOffset);
+    }
+    if needs_string_utf8_index_at {
+        helpers.string_utf8_index_at = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_navigation_helper(&mut code, Utf8NavigationKindPe::IndexAt);
+    }
+    if needs_string_utf8_is_boundary {
+        helpers.string_utf8_is_boundary = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_navigation_helper(&mut code, Utf8NavigationKindPe::IsBoundary);
     }
     if needs_array_new {
         helpers.array_new = Some(layout.text_rva + code.len() as u32);
@@ -1475,6 +1520,21 @@ fn compiled_symbol_rva(
     if symbol == "string_utf8_is_valid" {
         return helpers.string_utf8_is_valid;
     }
+    if symbol == "string_utf8_byte_offset" {
+        return helpers.string_utf8_byte_offset;
+    }
+    if symbol == "string_utf8_next_offset" {
+        return helpers.string_utf8_next_offset;
+    }
+    if symbol == "string_utf8_prev_offset" {
+        return helpers.string_utf8_prev_offset;
+    }
+    if symbol == "string_utf8_index_at" {
+        return helpers.string_utf8_index_at;
+    }
+    if symbol == "string_utf8_is_boundary" {
+        return helpers.string_utf8_is_boundary;
+    }
     if symbol == "array_new" {
         return helpers.array_new;
     }
@@ -1772,6 +1832,11 @@ struct PeHelperRvas {
     string_utf8_codepoint_at: Option<u32>,
     string_is_utf8: Option<u32>,
     string_utf8_is_valid: Option<u32>,
+    string_utf8_byte_offset: Option<u32>,
+    string_utf8_next_offset: Option<u32>,
+    string_utf8_prev_offset: Option<u32>,
+    string_utf8_index_at: Option<u32>,
+    string_utf8_is_boundary: Option<u32>,
     array_new: Option<u32>,
     array_clone: Option<u32>,
     array_reserve: Option<u32>,
@@ -2026,6 +2091,134 @@ fn emit_near_unconditional_placeholder_pe(code: &mut Vec<u8>) -> usize {
     let displacement = code.len();
     code.extend_from_slice(&[0, 0, 0, 0]);
     displacement
+}
+
+#[derive(Clone, Copy)]
+enum Utf8NavigationKindPe {
+    ByteOffset,
+    NextOffset,
+    PrevOffset,
+    IndexAt,
+    IsBoundary,
+}
+
+fn emit_string_utf8_navigation_helper(code: &mut Vec<u8>, kind: Utf8NavigationKindPe) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_value = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x41, 0x54]);
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xc8, 0x48, 0x89, 0xd6, 0x31, 0xc0, 0x45, 0x31, 0xd2, 0x45, 0x31, 0xe4,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x45, 0x8a, 0x08, 0x45, 0x84, 0xc9]);
+    let end = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x80]);
+    let width_one = emit_near_jump_placeholder(code, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xe0]);
+    let width_two = emit_near_jump_placeholder(code, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf0]);
+    let width_three = emit_near_jump_placeholder(code, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf5]);
+    let invalid = emit_near_jump_placeholder(code, 0x83);
+    code.extend_from_slice(&[0x41, 0xbb, 0x04, 0, 0, 0]);
+    let width_four_loop = emit_near_unconditional_placeholder_pe(code);
+    let width_three_target = code.len();
+    code.extend_from_slice(&[0x41, 0xbb, 0x03, 0, 0, 0]);
+    let width_three_loop = emit_near_unconditional_placeholder_pe(code);
+    let width_two_target = code.len();
+    code.extend_from_slice(&[0x41, 0xbb, 0x02, 0, 0, 0]);
+    let width_two_loop = emit_near_unconditional_placeholder_pe(code);
+    let width_one_target = code.len();
+    code.extend_from_slice(&[0x41, 0xbb, 0x01, 0, 0, 0]);
+    let width_one_loop = emit_near_unconditional_placeholder_pe(code);
+    let width_ready = code.len();
+    let boundary = if matches!(kind, Utf8NavigationKindPe::ByteOffset) {
+        None
+    } else {
+        code.extend_from_slice(&[0x48, 0x39, 0xf0]);
+        Some(emit_near_jump_placeholder(code, 0x84))
+    };
+    let byte_boundary = if matches!(kind, Utf8NavigationKindPe::ByteOffset) {
+        code.extend_from_slice(&[0x4c, 0x39, 0xe6]);
+        Some(emit_near_jump_placeholder(code, 0x84))
+    } else {
+        None
+    };
+    let inside = if matches!(kind, Utf8NavigationKindPe::ByteOffset) {
+        None
+    } else {
+        code.extend_from_slice(&[0x48, 0x89, 0xc2, 0x4c, 0x01, 0xda, 0x48, 0x39, 0xd6]);
+        Some(emit_near_jump_placeholder(code, 0x82))
+    };
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xc2, 0x4c, 0x01, 0xd8, 0x4d, 0x01, 0xd8, 0x49, 0xff, 0xc4,
+    ]);
+    let advance = emit_near_unconditional_placeholder_pe(code);
+    let boundary_target = code.len();
+    emit_navigation_result_pe(code, kind, true);
+    let end_target = code.len();
+    if matches!(kind, Utf8NavigationKindPe::ByteOffset) {
+        code.extend_from_slice(&[0x4c, 0x39, 0xe6]);
+    } else {
+        code.extend_from_slice(&[0x48, 0x39, 0xf0]);
+    }
+    let end_match = emit_near_jump_placeholder(code, 0x84);
+    let failure = code.len();
+    emit_navigation_failure_pe(code, kind);
+    let success = code.len();
+    emit_navigation_result_pe(code, kind, false);
+    patch_near_jump(code, null_value, failure);
+    patch_near_jump(code, end, end_target);
+    patch_near_jump(code, end_match, success);
+    patch_near_jump(code, invalid, failure);
+    patch_near_jump(code, advance, loop_start);
+    patch_near_jump(code, width_one, width_one_target);
+    patch_near_jump(code, width_two, width_two_target);
+    patch_near_jump(code, width_three, width_three_target);
+    patch_near_jump(code, width_four_loop, width_ready);
+    patch_near_jump(code, width_three_loop, width_ready);
+    patch_near_jump(code, width_two_loop, width_ready);
+    patch_near_jump(code, width_one_loop, width_ready);
+    if let Some(jump) = boundary {
+        patch_near_jump(code, jump, boundary_target);
+    }
+    if let Some(jump) = byte_boundary {
+        patch_near_jump(code, jump, boundary_target);
+    }
+    if let Some(jump) = inside {
+        patch_near_jump(code, jump, failure);
+    }
+}
+
+fn emit_navigation_result_pe(code: &mut Vec<u8>, kind: Utf8NavigationKindPe, at_boundary: bool) {
+    match kind {
+        Utf8NavigationKindPe::ByteOffset => {
+            code.extend_from_slice(&[0x48, 0x89, 0xc0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKindPe::NextOffset if at_boundary => {
+            code.extend_from_slice(&[0x4c, 0x01, 0xd8, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKindPe::NextOffset => {
+            code.extend_from_slice(&[0x48, 0x89, 0xc0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKindPe::PrevOffset => {
+            code.extend_from_slice(&[0x4c, 0x89, 0xd0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKindPe::IndexAt => {
+            code.extend_from_slice(&[0x4c, 0x89, 0xe0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKindPe::IsBoundary => {
+            code.extend_from_slice(&[0xb8, 1, 0, 0, 0, 0x41, 0x5c, 0xc3])
+        }
+    }
+}
+
+fn emit_navigation_failure_pe(code: &mut Vec<u8>, kind: Utf8NavigationKindPe) {
+    if matches!(kind, Utf8NavigationKindPe::IsBoundary) {
+        code.extend_from_slice(&[0x31, 0xc0, 0x41, 0x5c, 0xc3]);
+    } else {
+        code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0x41, 0x5c, 0xc3]);
+    }
 }
 
 fn emit_string_utf8_codepoint_at_helper(code: &mut Vec<u8>) {

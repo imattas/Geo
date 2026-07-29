@@ -257,6 +257,7 @@ Acceptance criteria:
 - Native UTF-8 codepoint counting is covered by direct ELF64 and PE64 executable tests.
 - Native UTF-8 codepoint lookup is covered by direct ELF64 and PE64 executable tests.
 - Native strict UTF-8 validity checking is covered by direct ELF64 and PE64 executable builds, including malformed and out-of-range sequences.
+- Native UTF-8 navigation is covered by direct ELF64 and PE64 executable builds, including codepoint offsets, forward/backward boundaries, reverse index lookup, terminal offsets, and continuation-byte rejection.
 - The v1 lexer example performs a real source scan and executes through both compiler-owned writers.
 - The v1 parser example validates a token sequence with explicit cursor and error state through both compiler-owned writers.
 - A compiler-owned byte-array runtime path is covered by a direct executable fixture on ELF64 and PE64.

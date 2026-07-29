@@ -89,6 +89,21 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_utf8_codepoint_at" => emit_string_utf8_codepoint_at_runtime(&mut code),
             "string_is_utf8" => emit_string_utf8_valid_runtime(&mut code),
             "string_utf8_is_valid" => emit_string_utf8_valid_runtime(&mut code),
+            "string_utf8_byte_offset" => {
+                emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::ByteOffset)
+            }
+            "string_utf8_next_offset" => {
+                emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::NextOffset)
+            }
+            "string_utf8_prev_offset" => {
+                emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::PrevOffset)
+            }
+            "string_utf8_index_at" => {
+                emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::IndexAt)
+            }
+            "string_utf8_is_boundary" => {
+                emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::IsBoundary)
+            }
             "array_new" => emit_array_new_runtime(&mut code),
             "array_clone" => emit_array_clone_runtime(&mut code),
             "array_reserve" => emit_array_reserve_runtime(&mut code),
@@ -822,6 +837,128 @@ fn emit_near_unconditional_placeholder(code: &mut Vec<u8>) -> usize {
     let displacement = code.len();
     code.extend_from_slice(&[0, 0, 0, 0]);
     displacement
+}
+
+#[derive(Clone, Copy)]
+enum Utf8NavigationKind {
+    ByteOffset,
+    NextOffset,
+    PrevOffset,
+    IndexAt,
+    IsBoundary,
+}
+
+fn emit_string_utf8_navigation_runtime(code: &mut Vec<u8>, kind: Utf8NavigationKind) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_value = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x41, 0x54]);
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xf8, 0x31, 0xc0, 0x45, 0x31, 0xd2, 0x45, 0x31, 0xe4,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x45, 0x8a, 0x08, 0x45, 0x84, 0xc9]);
+    let end = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x80]);
+    let width_one = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xe0]);
+    let width_two = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf0]);
+    let width_three = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf5]);
+    let invalid = emit_near_jump_placeholder(code, 0x0f, 0x83);
+
+    code.extend_from_slice(&[0x41, 0xbb, 0x04, 0x00, 0x00, 0x00]);
+    let width_four_loop = emit_near_unconditional_placeholder(code);
+    let width_three_target = code.len();
+    code.extend_from_slice(&[0x41, 0xbb, 0x03, 0x00, 0x00, 0x00]);
+    let width_three_loop = emit_near_unconditional_placeholder(code);
+    let width_two_target = code.len();
+    code.extend_from_slice(&[0x41, 0xbb, 0x02, 0x00, 0x00, 0x00]);
+    let width_two_loop = emit_near_unconditional_placeholder(code);
+    let width_one_target = code.len();
+    code.extend_from_slice(&[0x41, 0xbb, 0x01, 0x00, 0x00, 0x00]);
+    let width_one_loop = emit_near_unconditional_placeholder(code);
+    let width_ready = code.len();
+
+    let (boundary, inside) = if matches!(kind, Utf8NavigationKind::ByteOffset) {
+        code.extend_from_slice(&[0x4c, 0x39, 0xe6]);
+        (Some(emit_near_jump_placeholder(code, 0x0f, 0x84)), None)
+    } else {
+        code.extend_from_slice(&[0x48, 0x39, 0xf0]);
+        let boundary = emit_near_jump_placeholder(code, 0x0f, 0x84);
+        code.extend_from_slice(&[0x48, 0x89, 0xc2, 0x4c, 0x01, 0xda, 0x48, 0x39, 0xd6]);
+        (
+            Some(boundary),
+            Some(emit_near_jump_placeholder(code, 0x0f, 0x82)),
+        )
+    };
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xc2, 0x4c, 0x01, 0xd8, 0x4d, 0x01, 0xd8, 0x49, 0xff, 0xc4,
+    ]);
+    let advance = emit_near_unconditional_placeholder(code);
+
+    let boundary_target = code.len();
+    emit_navigation_result(code, kind, true);
+    let end_target = code.len();
+    if matches!(kind, Utf8NavigationKind::ByteOffset) {
+        code.extend_from_slice(&[0x4c, 0x39, 0xe6]);
+    } else {
+        code.extend_from_slice(&[0x48, 0x39, 0xf0]);
+    }
+    let end_match = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    let failure = code.len();
+    emit_navigation_failure(code, kind);
+    let success = code.len();
+    emit_navigation_result(code, kind, false);
+    patch_near_jump(code, null_value, failure);
+    patch_near_jump(code, end, end_target);
+    patch_near_jump(code, end_match, success);
+    patch_near_jump(code, invalid, failure);
+    patch_near_jump(code, advance, loop_start);
+    patch_near_jump(code, width_one, width_one_target);
+    patch_near_jump(code, width_two, width_two_target);
+    patch_near_jump(code, width_three, width_three_target);
+    patch_near_jump(code, width_four_loop, width_ready);
+    patch_near_jump(code, width_three_loop, width_ready);
+    patch_near_jump(code, width_two_loop, width_ready);
+    patch_near_jump(code, width_one_loop, width_ready);
+    if let Some(boundary) = boundary {
+        patch_near_jump(code, boundary, boundary_target);
+    }
+    if let Some(inside) = inside {
+        patch_near_jump(code, inside, failure);
+    }
+}
+
+fn emit_navigation_result(code: &mut Vec<u8>, kind: Utf8NavigationKind, at_boundary: bool) {
+    match kind {
+        Utf8NavigationKind::ByteOffset => {
+            code.extend_from_slice(&[0x48, 0x89, 0xc0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKind::NextOffset if at_boundary => {
+            code.extend_from_slice(&[0x4c, 0x01, 0xd8, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKind::NextOffset => {
+            code.extend_from_slice(&[0x48, 0x89, 0xc0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKind::PrevOffset => {
+            code.extend_from_slice(&[0x4c, 0x89, 0xd0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKind::IndexAt => {
+            code.extend_from_slice(&[0x4c, 0x89, 0xe0, 0x41, 0x5c, 0xc3])
+        }
+        Utf8NavigationKind::IsBoundary => {
+            code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x41, 0x5c, 0xc3])
+        }
+    }
+}
+
+fn emit_navigation_failure(code: &mut Vec<u8>, kind: Utf8NavigationKind) {
+    if matches!(kind, Utf8NavigationKind::IsBoundary) {
+        code.extend_from_slice(&[0x31, 0xc0, 0x41, 0x5c, 0xc3]);
+    } else {
+        code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0x41, 0x5c, 0xc3]);
+    }
 }
 
 fn emit_string_utf8_codepoint_at_runtime(code: &mut Vec<u8>) {
