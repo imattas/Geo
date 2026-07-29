@@ -192,7 +192,7 @@ Current implemented surface includes a substantial v1-facing subset:
 - Linux and Windows target-aware assembly paths
 - direct Linux ELF64 relocatable object emission for constants, stack locals, System V register and stack-passed function parameters, integer addition/subtraction/multiplication/division/remainder, shifts, logical/bitwise operations, comparisons, labels, conditional/unconditional jumps, address-of, dereference, pointer stores, bounds-check runtime argument setup, string data, calls, symbols, and relocations in the current object subset
 - direct Windows AMD64 COFF relocatable object emission for stack code, `.rdata` strings, function/data symbols, internal function calls, Windows x64 register arguments, call shadow space, and text relocations in the current object subset
-- direct Linux ELF64 executable emission for the current System V subset, including a compiler-owned `_start` exit wrapper, internal/data relocations, `string_len`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.io.read_file`, `std.io.write_file`, and allocation-backed `string_concat` through Linux syscalls
+- direct Linux ELF64 executable emission for the current System V subset, including a compiler-owned `_start` exit wrapper, internal/data relocations, `string_len`, `print`, `println`, `std.process.exit`, `std.mem.alloc`, `std.mem.free`, `std.io.read_file`, `std.io.write_file`, and allocation-backed `string_concat` through Linux syscalls
 - direct PE64 executable emission now wraps compiled Win64 machine code for `main`, internal calls, `.rdata` references, bounds-check calls, `string_len`, `string_byte_at`, `string_find_byte`, `string_last_find_byte`, `string_index_of`, `string_last_index_of`, `string_count`, `string_parse_int`, `string_compare`, `string_contains`, `string_starts_with`, `string_ends_with`, `string_eq`, `string_not_eq`, `string_less`, `string_less_or_equal`, `string_greater`, `string_greater_or_equal`, `string_is_empty`, `string_is_ascii`, `string_is_ascii_digit`, `string_is_ascii_hex_digit`, `string_is_ascii_alpha`, `string_is_ascii_lower`, `string_is_ascii_upper`, `string_is_ascii_alnum`, `string_is_ascii_identifier`, `string_is_ascii_whitespace`, allocation-backed `string_concat`, `std.process.exit`, `std.mem.alloc`, and simple `print`/`println` string console output before calling `ExitProcess`
 - direct PE64 executable emission also includes compiler-owned `std.io.read_file` using `CreateFileA`, `GetFileSize`, `VirtualAlloc`, `ReadFile`, and `CloseHandle`, with a NUL-terminated result for Geo string helpers
 - direct ELF64 and PE64 executable emission also includes compiler-owned `std.io.read_file_or`, returning the caller-provided default string when the file cannot be opened or read
@@ -254,7 +254,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 ## Known Gaps
 
 - Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
-- Runtime ABI is not yet documented as a stable contract.
+- Runtime ABI is not yet documented as a stable contract; direct `alloc`/`free` lifetime coverage now exists on both native targets.
 - Formatter is minimal.
 - Distribution/install layout is not defined.
 - Direct object emission does not yet cover aggregate layout, full runtime linking from compiler-owned objects, or broad Windows COFF objects beyond the current object subset.
@@ -286,6 +286,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
+- Direct allocation lifetime coverage now includes compiler-owned `alloc` headers, Linux `munmap`, Windows `VirtualFree`, payload-preserving `realloc`, and two-platform `alloc`/`free`/`realloc` fixtures; allocation-backed string, file, and `alloc_copy` helpers still need the same lifetime header integration.
 - PE64 execution validation and the remaining typed-array algorithms are still open runtime work; typed push, set, fill, extend, copy, and resize initialization now execute on ELF64 and compile for PE64.
 
 ## Current Priority

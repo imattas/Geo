@@ -74,6 +74,8 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "string_from_byte"
                     | "string_clone"
                     | "alloc_copy"
+                    | "free_geo"
+                    | "realloc_geo"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -883,6 +885,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             "array_new" | "alloc" | "alloc_zeroed" | "alloc_array"
         )
     });
+    let needs_free = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "free_geo");
+    let needs_realloc = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "realloc_geo");
     let needs_mem_copy = image
         .relocations
         .iter()
@@ -1108,6 +1118,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_file_metadata
         || needs_read_line
         || needs_process_exit
+        || needs_free
+        || needs_realloc
     {
         let helper_start_rva = layout.text_rva + align_to(code.len() as u32, 16);
         while layout.text_rva + (code.len() as u32) < helper_start_rva {
@@ -1403,6 +1415,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             .iter()
             .any(|relocation| relocation.symbol == "alloc_array");
         emit_alloc_helper(&mut code, layout, array);
+    }
+    if needs_free {
+        helpers.free_geo = Some(layout.text_rva + code.len() as u32);
+        emit_free_helper(&mut code, layout);
+    }
+    if needs_realloc {
+        helpers.realloc_geo = Some(layout.text_rva + code.len() as u32);
+        emit_realloc_helper(&mut code, layout);
     }
     if needs_mem_copy {
         helpers.mem_copy = Some(layout.text_rva + code.len() as u32);
@@ -1951,6 +1971,12 @@ fn compiled_symbol_rva(
     if symbol == "alloc_copy" {
         return helpers.alloc_copy;
     }
+    if symbol == "free_geo" {
+        return helpers.free_geo;
+    }
+    if symbol == "realloc_geo" {
+        return helpers.realloc_geo;
+    }
     if let Some(function) = image
         .functions
         .iter()
@@ -2005,6 +2031,8 @@ struct PeHelperRvas {
     string_utf8_char_at: Option<u32>,
     string_utf8_find_codepoint: Option<u32>,
     alloc_copy: Option<u32>,
+    free_geo: Option<u32>,
+    realloc_geo: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
     string_utf8_len: Option<u32>,
@@ -3938,11 +3966,72 @@ fn emit_alloc_helper(code: &mut Vec<u8>, layout: &Layout, array: bool) {
         code.extend_from_slice(&[0x48, 0x0f, 0xaf, 0xca]);
     }
     code.extend_from_slice(&[0x48, 0x89, 0xca]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc2, 0x08, 0x48, 0x89, 0x54, 0x24, 0x20]);
     code.extend_from_slice(&[0x31, 0xc9]);
     code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
     code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
     emit_call_iat(code, layout, layout.virtual_alloc_iat);
-    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x54, 0x24, 0x20, 0x48, 0x89, 0x10, 0x48, 0x83, 0xc0, 0x08, 0x48, 0x83, 0xc4,
+        0x28, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_free_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28, 0x48, 0x85, 0xc9]);
+    let null = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xe9, 0x08, 0x31, 0xd2, 0x41, 0xb8, 0x00, 0x80, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_free_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let null_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, null, null_target);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_realloc_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48, 0x48, 0x85, 0xc9]);
+    let null = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x4c, 0x24, 0x20, 0x48, 0x8d, 0x41, 0xf8, 0x48, 0x89, 0x44, 0x24, 0x28, 0x48,
+        0x8b, 0x08, 0x48, 0x83, 0xe9, 0x08, 0x48, 0x89, 0x4c, 0x24, 0x30, 0x48, 0x89, 0x54, 0x24,
+        0x38, 0x48, 0x83, 0xc2, 0x08, 0x48, 0x31, 0xc9, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00, 0x41,
+        0xb9, 0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x54, 0x24, 0x38, 0x48, 0x89, 0x10, 0x48, 0x83, 0xc0, 0x08, 0x48, 0x89, 0x44,
+        0x24, 0x40, 0x4c, 0x8b, 0x44, 0x24, 0x30, 0x4c, 0x3b, 0x44, 0x24, 0x38,
+    ]);
+    let old_smaller = emit_near_conditional_placeholder(code, 0x86);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x44, 0x24, 0x38]);
+    let copy = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x74, 0x24, 0x20, 0x48, 0x8b, 0x7c, 0x24, 0x40, 0x4c, 0x89, 0xc1, 0xf3, 0xa4,
+        0x48, 0x8b, 0x4c, 0x24, 0x28, 0x31, 0xd2, 0x41, 0xb8, 0x00, 0x80, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_free_iat);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x40, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    let null_target = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_near_conditional(code, null, null_target);
+    patch_near_conditional(code, allocation_failed, failure);
+    patch_near_conditional(code, old_smaller, copy);
 }
 
 fn emit_mem_copy_helper(code: &mut Vec<u8>) {

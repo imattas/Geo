@@ -66,6 +66,12 @@ jobs:
       - name: Build compiler-owned Linux alloc-copy executable
         run: cargo run --locked --quiet -- build examples/alloc_copy_exit.geo --target x86_64-linux -o target/ci-alloc-copy-linux
 
+      - name: Build compiler-owned Linux alloc-free executable
+        run: cargo run --locked --quiet -- build examples/alloc_free_exit.geo --target x86_64-linux -o target/ci-alloc-free-linux
+
+      - name: Build compiler-owned Linux alloc-realloc executable
+        run: cargo run --locked --quiet -- build examples/alloc_realloc_exit.geo --target x86_64-linux -o target/ci-alloc-realloc-linux
+
       - name: Build compiler-owned Linux mem-fill executable
         run: cargo run --locked --quiet -- build examples/mem_fill_exit.geo --target x86_64-linux -o target/ci-mem-fill-linux
 
@@ -156,6 +162,12 @@ jobs:
 
       - name: Build compiler-owned Windows alloc-copy executable
         run: cargo run --locked --quiet -- build examples/alloc_copy_exit.geo --target x86_64-windows -o target/ci-alloc-copy-windows.exe
+
+      - name: Build compiler-owned Windows alloc-free executable
+        run: cargo run --locked --quiet -- build examples/alloc_free_exit.geo --target x86_64-windows -o target/ci-alloc-free-windows.exe
+
+      - name: Build compiler-owned Windows alloc-realloc executable
+        run: cargo run --locked --quiet -- build examples/alloc_realloc_exit.geo --target x86_64-windows -o target/ci-alloc-realloc-windows.exe
 
       - name: Build compiler-owned Windows mem-fill executable
         run: cargo run --locked --quiet -- build examples/mem_fill_exit.geo --target x86_64-windows -o target/ci-mem-fill-windows.exe

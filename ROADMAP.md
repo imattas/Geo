@@ -269,6 +269,7 @@ Acceptance criteria:
 - A compiler-owned array composition path is covered by direct ELF64 and PE64 builds, including payload extension and bounded indexed copying.
 - Full-width typed `push`/`set`/`fill`, element-scaled `extend`/`resize`, and bounded `copy` are covered by a two-byte direct ELF64 fixture; extend runtime execution coverage to PE64.
 - Byte-array resize growth, shrink, fill, capacity failure, and release are covered by direct ELF64 execution and PE64 compilation.
+- Direct `std.mem.alloc`/`free`/`realloc` lifetime is covered by Linux execution and Windows PE64 compilation fixtures; allocation-backed string/file helpers and `alloc_copy` still need unified lifetime headers.
 - Native byte-array algorithms are covered by direct ELF64 and PE64 builds, including first/last access, fill, reverse, index search, last-index search, contains, and count.
 
 ## Phase 10: Distribution
