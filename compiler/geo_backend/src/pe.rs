@@ -593,11 +593,16 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_concat");
+    let needs_string_utf8_slice = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "string_utf8_slice");
     let needs_string_len = image
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_len")
-        || needs_string_concat;
+        || needs_string_concat
+        || needs_string_utf8_slice;
     let needs_string_utf8_len = image
         .relocations
         .iter()
@@ -614,10 +619,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_utf8_is_valid");
-    let needs_string_utf8_byte_offset = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_utf8_byte_offset");
+    let needs_string_utf8_byte_offset = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_utf8_byte_offset" | "string_utf8_slice"
+        )
+    });
     let needs_string_utf8_next_offset = image
         .relocations
         .iter()
@@ -868,10 +875,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_clone");
-    let needs_string_slice = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_slice");
+    let needs_string_slice = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_slice" | "string_utf8_slice"
+        )
+    });
     let needs_alloc_copy = image
         .relocations
         .iter()
@@ -962,6 +971,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_utf8_prev_offset
         || needs_string_utf8_index_at
         || needs_string_utf8_is_boundary
+        || needs_string_utf8_slice
         || needs_array_new
         || needs_array_clone
         || needs_array_reserve
@@ -1334,13 +1344,22 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.string_clone = Some(layout.text_rva + code.len() as u32);
         emit_string_clone_helper(&mut code, layout);
     }
-    if image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_slice")
-    {
+    if needs_string_slice {
         helpers.string_slice = Some(layout.text_rva + code.len() as u32);
         emit_string_slice_helper(&mut code, layout);
+    }
+    if needs_string_utf8_slice {
+        let byte_offset = helpers
+            .string_utf8_byte_offset
+            .expect("UTF-8 slice requires byte-offset helper");
+        let string_len = helpers
+            .string_len
+            .expect("UTF-8 slice requires string length helper");
+        let string_slice = helpers
+            .string_slice
+            .expect("UTF-8 slice requires byte-slice helper");
+        helpers.string_utf8_slice = Some(layout.text_rva + code.len() as u32);
+        emit_string_utf8_slice_helper(&mut code, layout, byte_offset, string_len, string_slice);
     }
     if needs_alloc_copy {
         helpers.alloc_copy = Some(layout.text_rva + code.len() as u32);
@@ -1772,6 +1791,9 @@ fn compiled_symbol_rva(
     if symbol == "string_slice" {
         return helpers.string_slice;
     }
+    if symbol == "string_utf8_slice" {
+        return helpers.string_utf8_slice;
+    }
     if symbol == "alloc_copy" {
         return helpers.alloc_copy;
     }
@@ -1825,6 +1847,7 @@ struct PeHelperRvas {
     string_from_byte: Option<u32>,
     string_clone: Option<u32>,
     string_slice: Option<u32>,
+    string_utf8_slice: Option<u32>,
     alloc_copy: Option<u32>,
     string_concat: Option<u32>,
     string_len: Option<u32>,
@@ -1942,12 +1965,14 @@ fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, string_len_rva
 }
 
 fn emit_string_len_helper(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9, 0x74, 0x0f]);
     code.extend_from_slice(&[0x48, 0x31, 0xc0]);
     code.extend_from_slice(&[0x80, 0x3c, 0x01, 0x00]);
     code.extend_from_slice(&[0x74, 0x05]);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xf5]);
     code.push(0xc3);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
 }
 
 fn emit_string_utf8_len_helper(code: &mut Vec<u8>) {
@@ -3806,6 +3831,53 @@ fn emit_string_slice_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_near_conditional(code, clamp_length, clamp_target);
     patch_near_conditional(code, allocation_failed, failure);
     patch_near_conditional(code, copy_done, done);
+}
+
+fn emit_string_utf8_slice_helper(
+    code: &mut Vec<u8>,
+    layout: &Layout,
+    byte_offset_target: u32,
+    string_len_target: u32,
+    string_slice_target: u32,
+) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x78]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x4c, 0x24, 0x40, 0x48, 0x89, 0x54, 0x24, 0x48, 0x4c, 0x89, 0x44, 0x24, 0x50,
+    ]);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40, 0x48, 0x8b, 0x54, 0x24, 0x48]);
+    emit_direct_call(code, layout.text_rva, byte_offset_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let start_failed = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x58]);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40, 0x48, 0x8b, 0x54, 0x24, 0x50]);
+    emit_direct_call(code, layout.text_rva, byte_offset_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let end_clamp = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x60]);
+    let skip_end_clamp = emit_near_unconditional_placeholder_pe(code);
+    let end_clamp_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40]);
+    emit_direct_call(code, layout.text_rva, string_len_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x60]);
+    let end_ready = code.len();
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x60, 0x48, 0x3b, 0x44, 0x24, 0x58]);
+    let invalid_range = emit_near_conditional_placeholder(code, 0x82);
+    code.extend_from_slice(&[0x48, 0x2b, 0x44, 0x24, 0x58]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4c, 0x24, 0x40, 0x48, 0x8b, 0x54, 0x24, 0x58, 0x4c, 0x89, 0xc2,
+    ]);
+    emit_direct_call(code, layout.text_rva, string_slice_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x78, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x78, 0xc3]);
+    patch_near_conditional(code, start_failed, failure);
+    patch_near_conditional(code, end_clamp, end_clamp_target);
+    patch_near_jump(code, skip_end_clamp, end_ready);
+    patch_near_conditional(code, invalid_range, failure);
 }
 
 fn emit_alloc_copy_helper(code: &mut Vec<u8>, layout: &Layout) {

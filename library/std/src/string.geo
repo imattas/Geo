@@ -14,5 +14,6 @@ extern fn string_utf8_next_offset(value: str, offset: usize) -> int
 extern fn string_utf8_prev_offset(value: str, offset: usize) -> int
 extern fn string_utf8_index_at(value: str, offset: usize) -> int
 extern fn string_utf8_is_boundary(value: str, offset: usize) -> bool
+extern fn string_utf8_slice(value: str, start: usize, end: usize) -> str
 extern fn int_to_string(value: int) -> str
 extern fn bool_to_string(value: bool) -> str

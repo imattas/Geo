@@ -104,6 +104,46 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_utf8_is_boundary" => {
                 emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::IsBoundary)
             }
+            "string_utf8_slice" => {
+                let byte_offset_offset = if let Some(symbol) =
+                    symbols.get("string_utf8_byte_offset")
+                {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_utf8_navigation_runtime(&mut code, Utf8NavigationKind::ByteOffset);
+                    symbols.insert(
+                        "string_utf8_byte_offset".to_string(),
+                        runtime_base + offset as u64,
+                    );
+                    offset
+                };
+                let string_len_offset = if let Some(symbol) = symbols.get("string_len") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_len_runtime(&mut code);
+                    symbols.insert("string_len".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let string_slice_offset = if let Some(symbol) = symbols.get("string_slice") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_slice_runtime(&mut code);
+                    symbols.insert("string_slice".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let wrapper_offset = code.len();
+                emit_string_utf8_slice_runtime(
+                    &mut code,
+                    byte_offset_offset,
+                    string_len_offset,
+                    string_slice_offset,
+                );
+                symbols.insert(name.to_string(), runtime_base + wrapper_offset as u64);
+                continue;
+            }
             "array_new" => emit_array_new_runtime(&mut code),
             "array_clone" => emit_array_clone_runtime(&mut code),
             "array_reserve" => emit_array_reserve_runtime(&mut code),
@@ -684,6 +724,7 @@ fn patch_relocations(
 }
 
 fn emit_string_len_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff, 0x74, 0x15]);
     code.extend_from_slice(&[0x48, 0x89, 0xfe]);
     code.extend_from_slice(&[0x31, 0xc0]);
     code.extend_from_slice(&[0x0f, 0xb6, 0x0e]);
@@ -692,6 +733,7 @@ fn emit_string_len_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0xff, 0xc6]);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0xeb, 0xf1, 0xc3]);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
 }
 
 fn emit_string_utf8_len_runtime(code: &mut Vec<u8>) {
@@ -839,6 +881,13 @@ fn emit_near_unconditional_placeholder(code: &mut Vec<u8>) -> usize {
     displacement
 }
 
+fn emit_internal_call(code: &mut Vec<u8>, target: usize) {
+    code.push(0xe8);
+    let displacement = code.len();
+    code.extend_from_slice(&[0, 0, 0, 0]);
+    patch_near_jump(code, displacement, target);
+}
+
 #[derive(Clone, Copy)]
 enum Utf8NavigationKind {
     ByteOffset,
@@ -959,6 +1008,52 @@ fn emit_navigation_failure(code: &mut Vec<u8>, kind: Utf8NavigationKind) {
     } else {
         code.extend_from_slice(&[0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0x41, 0x5c, 0xc3]);
     }
+}
+
+fn emit_string_utf8_slice_runtime(
+    code: &mut Vec<u8>,
+    byte_offset_target: usize,
+    string_len_target: usize,
+    string_slice_target: usize,
+) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x3c, 0x24, 0x48, 0x89, 0x74, 0x24, 0x08, 0x48, 0x89, 0x54, 0x24, 0x10,
+    ]);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24, 0x48, 0x8b, 0x74, 0x24, 0x08]);
+    emit_internal_call(code, byte_offset_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let start_failed = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x18]);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24, 0x48, 0x8b, 0x74, 0x24, 0x10]);
+    emit_internal_call(code, byte_offset_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let end_clamp = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x20]);
+    let skip_end_clamp = emit_near_unconditional_placeholder(code);
+    let end_clamp_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x00]);
+    emit_internal_call(code, string_len_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x20]);
+    let end_ready = code.len();
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x20, 0x48, 0x3b, 0x44, 0x24, 0x18]);
+    let invalid_range = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x48, 0x2b, 0x44, 0x24, 0x18]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x3c, 0x24, 0x48, 0x8b, 0x74, 0x24, 0x18, 0x48, 0x89, 0xc2,
+    ]);
+    emit_internal_call(code, string_slice_target);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    patch_near_jump(code, start_failed, failure);
+    patch_near_jump(code, end_clamp, end_clamp_target);
+    patch_near_jump(code, skip_end_clamp, end_ready);
+    patch_near_jump(code, invalid_range, failure);
 }
 
 fn emit_string_utf8_codepoint_at_runtime(code: &mut Vec<u8>) {
@@ -2087,27 +2182,27 @@ fn emit_string_slice_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0x89, 0x74, 0x24, 0x08]);
     code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x10]);
     code.extend_from_slice(&[0x48, 0x85, 0xff]);
-    let null_source = emit_short_jump_placeholder(code, 0x74);
+    let null_source = emit_near_jump_placeholder(code, 0x0f, 0x84);
     code.extend_from_slice(&[0x31, 0xc0]);
     let length_loop = code.len();
     code.extend_from_slice(&[0x80, 0x3c, 0x07, 0x00]);
-    let length_done = emit_short_jump_placeholder(code, 0x74);
+    let length_done = emit_near_jump_placeholder(code, 0x0f, 0x84);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     emit_short_jump_back(code, length_loop);
     code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x18]);
     code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x08]);
     code.extend_from_slice(&[0x48, 0x39, 0xc1]);
-    let start_out = emit_short_jump_placeholder(code, 0x73);
+    let start_out = emit_near_jump_placeholder(code, 0x0f, 0x83);
     code.extend_from_slice(&[0x48, 0x83, 0x7c, 0x24, 0x10, 0x00]);
-    let zero_length = emit_short_jump_placeholder(code, 0x74);
+    let zero_length = emit_near_jump_placeholder(code, 0x0f, 0x84);
     code.extend_from_slice(&[0x48, 0x29, 0xc8]);
     code.extend_from_slice(&[0x48, 0x39, 0xc2]);
-    let clamp_length = emit_short_jump_placeholder(code, 0x77);
+    let clamp_length = emit_near_jump_placeholder(code, 0x0f, 0x87);
     let clamp_target = code.len();
     code.extend_from_slice(&[0x48, 0x89, 0xc2]);
     let length_ready = code.len();
     code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x20]);
-    code.extend_from_slice(&[0x48, 0x8b, 0x74, 0x24, 0x10]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x74, 0x24, 0x08]);
     code.extend_from_slice(&[0x48, 0xff, 0xc6]);
     code.extend_from_slice(&[0x31, 0xff, 0xba, 0x03, 0x00, 0x00, 0x00]);
     code.extend_from_slice(&[0x41, 0xba, 0x22, 0x00, 0x00, 0x00]);
@@ -2132,11 +2227,11 @@ fn emit_string_slice_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
-    patch_short_jump(code, null_source, failure);
-    patch_short_jump(code, length_done, length_ready);
-    patch_short_jump(code, start_out, start_out_target);
-    patch_short_jump(code, zero_length, zero_target);
-    patch_short_jump(code, clamp_length, clamp_target);
+    patch_near_jump(code, null_source, failure);
+    patch_near_jump(code, length_done, length_ready);
+    patch_near_jump(code, start_out, start_out_target);
+    patch_near_jump(code, zero_length, zero_target);
+    patch_near_jump(code, clamp_length, clamp_target);
     patch_near_jump(code, allocation_failed, failure);
 }
 
