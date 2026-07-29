@@ -1644,6 +1644,24 @@ fn emits_direct_pe64_platform_path_separator() {
 }
 
 #[test]
+fn emits_direct_pe64_path_file_name() {
+    let pe = pe_for(
+        r#"
+        import std.platform
+        import std.string
+        fn main() -> int {
+            let name = path_file_name("a/b\\only.txt")
+            string_free(name)
+            return 0
+        }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(pe.windows(8).any(|window| window == b"VirtualA"));
+}
+
+#[test]
 fn emits_direct_pe64_owned_platform_strings() {
     let pe = pe_for(
         r#"
