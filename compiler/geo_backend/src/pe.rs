@@ -76,6 +76,9 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "alloc_copy"
                     | "free_geo"
                     | "realloc_geo"
+                    | "int_to_string"
+                    | "usize_to_string"
+                    | "bool_to_string"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -879,6 +882,16 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "string_parse_int");
+    let needs_integer_to_string = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "int_to_string" | "usize_to_string"
+        )
+    });
+    let needs_bool_to_string = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "bool_to_string");
     let needs_alloc = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1092,6 +1105,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_string_last_index_of
         || needs_string_count
         || needs_string_parse_int
+        || needs_integer_to_string
+        || needs_bool_to_string
         || needs_alloc
         || needs_mem_copy
         || needs_mem_zero
@@ -1394,6 +1409,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_string_parse_int {
         helpers.string_parse_int = Some(layout.text_rva + code.len() as u32);
         emit_string_parse_int_helper(&mut code);
+    }
+    if needs_integer_to_string {
+        helpers.integer_to_string = Some(layout.text_rva + code.len() as u32);
+        emit_integer_to_string_helper(&mut code, layout);
+    }
+    if needs_bool_to_string {
+        helpers.bool_to_string = Some(layout.text_rva + code.len() as u32);
+        emit_bool_to_string_helper(&mut code, layout);
     }
     if needs_bounds_check {
         helpers.bounds_check = Some(layout.text_rva + code.len() as u32);
@@ -1860,6 +1883,12 @@ fn compiled_symbol_rva(
     if symbol == "string_parse_int" {
         return helpers.string_parse_int;
     }
+    if matches!(symbol, "int_to_string" | "usize_to_string") {
+        return helpers.integer_to_string;
+    }
+    if symbol == "bool_to_string" {
+        return helpers.bool_to_string;
+    }
     if matches!(symbol, "alloc" | "alloc_zeroed" | "alloc_array") {
         return helpers.alloc;
     }
@@ -2100,6 +2129,8 @@ struct PeHelperRvas {
     string_last_index_of: Option<u32>,
     string_count: Option<u32>,
     string_parse_int: Option<u32>,
+    integer_to_string: Option<u32>,
+    bool_to_string: Option<u32>,
 }
 
 fn emit_string_concat_helper(code: &mut Vec<u8>, layout: &Layout, string_len_rva: u32) {
@@ -3832,6 +3863,91 @@ fn emit_string_parse_int_helper(code: &mut Vec<u8>) {
     patch_short_jump(code, plus_to_digits, digit_loop);
     patch_short_jump(code, done_below, done);
     patch_short_jump(code, done_above, done);
+}
+
+fn emit_integer_to_string_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x60, 0x48, 0x89, 0xc8, 0x45, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let positive = emit_near_conditional_placeholder(code, 0x89);
+    code.extend_from_slice(&[0x48, 0xf7, 0xd8, 0x41, 0xb0, 1]);
+    let digits_start = code.len();
+    code.extend_from_slice(&[0x48, 0x8d, 0x74, 0x24, 0x50, 0xc6, 0x06, 0]);
+    code.extend_from_slice(&[0xb9, 0x0a, 0, 0, 0, 0x48, 0x85, 0xc0]);
+    let nonzero = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xff, 0xce, 0xc6, 0x06, b'0']);
+    let sign = emit_short_jump_placeholder(code, 0xeb);
+    let digit_loop = code.len();
+    code.extend_from_slice(&[
+        0x31, 0xd2, 0x48, 0xf7, 0xf1, 0x80, 0xc2, b'0', 0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85,
+        0xc0,
+    ]);
+    let more = emit_short_jump_placeholder(code, 0x75);
+    let sign_target = code.len();
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let allocate = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0xff, 0xce, 0xc6, 0x06, b'-']);
+    let allocate_target = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8d, 0x54, 0x24, 0x50, 0x48, 0x29, 0xf2, 0x48, 0xff, 0xc2,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x74, 0x24, 0x08, 0x48, 0x89, 0x54, 0x24, 0x10, 0x48, 0x89, 0xd1, 0x48, 0x83,
+        0xc1, 0x08, 0x48, 0x89, 0x4c, 0x24, 0x18,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x31, 0xd2, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00, 0x41, 0xb9, 0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_near_conditional_placeholder(code, 0x88);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4c, 0x24, 0x18, 0x48, 0x89, 0x08, 0x48, 0x83, 0xc0, 0x08, 0x48, 0x89, 0x44,
+        0x24, 0x20,
+    ]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x4c, 0x24, 0x10, 0x48, 0x8b, 0x74, 0x24, 0x08, 0x48, 0x8b, 0x7c, 0x24, 0x20,
+        0xf3, 0xa4, 0x48, 0x8b, 0x44, 0x24, 0x20, 0x48, 0x83, 0xc4, 0x60, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x60, 0xc3]);
+    patch_near_conditional(code, positive, digits_start);
+    patch_short_jump(code, nonzero, digit_loop);
+    patch_short_jump(code, sign, sign_target);
+    patch_short_jump(code, allocate, allocate_target);
+    patch_short_jump(code, more, digit_loop);
+    patch_near_conditional(code, failed, failure);
+}
+
+fn emit_bool_to_string_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x38, 0x40, 0x84, 0xc9]);
+    let false_value = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[
+        0xc7, 0x04, 0x24, 0x74, 0x72, 0x75, 0x65, 0xc6, 0x44, 0x24, 0x04, 0, 0xc6, 0x44, 0x24,
+        0x05, 0,
+    ]);
+    let allocate = emit_short_jump_placeholder(code, 0xeb);
+    let false_target = code.len();
+    code.extend_from_slice(&[
+        0xc7, 0x04, 0x24, 0x66, 0x61, 0x6c, 0x73, 0xc6, 0x44, 0x24, 0x04, 0x65, 0xc6, 0x44, 0x24,
+        0x05, 0,
+    ]);
+    let allocate_target = code.len();
+    code.extend_from_slice(&[
+        0xb9, 0x0e, 0, 0, 0, 0x48, 0x31, 0xd2, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00, 0x41, 0xb9,
+        0x04, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x08, 0x48, 0x83, 0xc0, 0x08, 0x48, 0x89, 0xc7, 0x48, 0x8d, 0x74, 0x24, 0,
+        0xb9, 0x06, 0, 0, 0, 0xf3, 0xa4, 0x48, 0x83, 0xc4, 0x38, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    patch_short_jump(code, false_value, false_target);
+    patch_short_jump(code, allocate, allocate_target);
+    patch_short_jump(code, failed, failure);
 }
 
 fn emit_string_all_bytes_in_range_helper(code: &mut Vec<u8>, min: u8, max: u8) {

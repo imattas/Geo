@@ -118,6 +118,10 @@ Acceptance criteria:
 
 - `import std.io` resolves without local files.
 - `println` lowers to a runtime call.
+
+Progress: `int_to_string`, `usize_to_string`, and `bool_to_string` now lower to
+native compiler-owned formatters on Linux and Windows, with direct execution
+and PE64 build coverage.
 - Standard library module failures produce source-aware diagnostics.
 
 ## Phase 4: Runtime ABI

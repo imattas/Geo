@@ -1,6 +1,6 @@
 # Geo Status
 
-Last updated: 2026-07-28.
+Last updated: 2026-07-29.
 
 ## Repository Layout
 
@@ -79,6 +79,10 @@ Workspace members:
 - `compiler/geo_source`
 - `src/bootstrap`
 - `src/tools/xtask`
+
+The direct native runtime now formats signed integers, `usize`, and booleans
+as compiler-owned strings on both x86-64 backends. The Linux path was executed
+under WSL; the Windows path was validated by PE64 emission.
 
 The compiler crate is the default workspace member, so root-level `cargo run -- ...` runs the `geo` compiler.
 

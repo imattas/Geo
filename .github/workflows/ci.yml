@@ -103,6 +103,9 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_metadata_exit.geo --target x86_64-linux -o target/ci-file-metadata-linux
       - name: Build compiler-owned Linux string-runtime executable
         run: cargo run --locked --quiet -- build examples/string_runtime_exit.geo --target x86_64-linux -o target/ci-string-runtime-linux
+
+      - name: Build compiler-owned Linux string-conversions executable
+        run: cargo run --locked --quiet -- build examples/string_conversions_exit.geo --target x86_64-linux -o target/ci-string-conversions-linux
       - name: Build compiler-owned Linux string-comparison executable
         run: cargo run --locked --quiet -- build examples/string_compare_exit.geo --target x86_64-linux -o target/ci-string-compare-linux
       - name: Build compiler-owned Linux string-matching executable
@@ -203,6 +206,9 @@ jobs:
         run: cargo run --locked --quiet -- build examples/file_metadata_exit.geo --target x86_64-windows -o target/ci-file-metadata-windows.exe
       - name: Build compiler-owned Windows string-runtime executable
         run: cargo run --locked --quiet -- build examples/string_runtime_exit.geo --target x86_64-windows -o target/ci-string-runtime-windows.exe
+
+      - name: Build compiler-owned Windows string-conversions executable
+        run: cargo run --locked --quiet -- build examples/string_conversions_exit.geo --target x86_64-windows -o target/ci-string-conversions-windows.exe
       - name: Build compiler-owned Windows string-comparison executable
         run: cargo run --locked --quiet -- build examples/string_compare_exit.geo --target x86_64-windows -o target/ci-string-compare-windows.exe
       - name: Build compiler-owned Windows string-matching executable
