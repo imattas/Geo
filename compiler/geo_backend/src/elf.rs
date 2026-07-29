@@ -87,6 +87,8 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "string_len" => emit_string_len_runtime(&mut code),
             "string_utf8_len" => emit_string_utf8_len_runtime(&mut code),
             "string_utf8_codepoint_at" => emit_string_utf8_codepoint_at_runtime(&mut code),
+            "string_is_utf8" => emit_string_utf8_valid_runtime(&mut code),
+            "string_utf8_is_valid" => emit_string_utf8_valid_runtime(&mut code),
             "array_new" => emit_array_new_runtime(&mut code),
             "array_clone" => emit_array_clone_runtime(&mut code),
             "array_reserve" => emit_array_reserve_runtime(&mut code),
@@ -697,6 +699,129 @@ fn emit_string_utf8_len_runtime(code: &mut Vec<u8>) {
     patch_short_jump(code, null_value, null_target);
     patch_short_jump(code, done, done_target);
     patch_short_jump(code, continuation, next);
+}
+
+fn emit_string_utf8_valid_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_value = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x49, 0x89, 0xf8]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x45, 0x8a, 0x08, 0x45, 0x84, 0xc9]);
+    let done = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0x80]);
+    let ascii = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xc2]);
+    let invalid_lead = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xe0]);
+    let two = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf0]);
+    let three = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf5]);
+    let four_invalid = emit_near_jump_placeholder(code, 0x0f, 0x87);
+
+    let four_target = code.len();
+    code.extend_from_slice(&[
+        0x45, 0x8a, 0x50, 0x01, 0x45, 0x8a, 0x58, 0x02, 0x41, 0x8a, 0x4c, 0x20, 0x03,
+    ]);
+    let four_second_checks = emit_utf8_continuation_check(code, 0x41, 0xfa);
+    let four_third_checks = emit_utf8_continuation_check(code, 0x41, 0xfb);
+    let four_fourth_checks = emit_utf8_continuation_check(code, 0x00, 0xf9);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0x90]);
+    let four_second_low = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xf4]);
+    let four_not_f4 = emit_near_jump_placeholder(code, 0x0f, 0x85);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0x8f]);
+    let four_second_high = emit_near_jump_placeholder(code, 0x0f, 0x87);
+    let four_advance = code.len();
+    code.extend_from_slice(&[0x49, 0x83, 0xc0, 0x04]);
+    let four_loop = emit_near_unconditional_placeholder(code);
+
+    let three_target = code.len();
+    code.extend_from_slice(&[0x45, 0x8a, 0x50, 0x01, 0x45, 0x8a, 0x58, 0x02]);
+    let three_second_checks = emit_utf8_continuation_check(code, 0x41, 0xfa);
+    let three_third_checks = emit_utf8_continuation_check(code, 0x41, 0xfb);
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xe0]);
+    let three_not_e0 = emit_near_jump_placeholder(code, 0x0f, 0x85);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0xa0]);
+    let three_e0_low = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    let three_e0_done = emit_near_unconditional_placeholder(code);
+    let three_ed_check = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0xf9, 0xed]);
+    let three_not_ed = emit_near_jump_placeholder(code, 0x0f, 0x85);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 0x9f]);
+    let three_ed_high = emit_near_jump_placeholder(code, 0x0f, 0x87);
+    let three_advance = code.len();
+    code.extend_from_slice(&[0x49, 0x83, 0xc0, 0x03]);
+    let three_loop = emit_near_unconditional_placeholder(code);
+
+    let two_target = code.len();
+    code.extend_from_slice(&[0x45, 0x8a, 0x50, 0x01]);
+    let two_checks = emit_utf8_continuation_check(code, 0x41, 0xfa);
+    code.extend_from_slice(&[0x49, 0x83, 0xc0, 0x02]);
+    let two_loop = emit_near_unconditional_placeholder(code);
+
+    let ascii_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    let ascii_loop = emit_near_unconditional_placeholder(code);
+
+    let success = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+
+    patch_near_jump(code, null_value, success);
+    patch_near_jump(code, done, success);
+    patch_near_jump(code, ascii, ascii_target);
+    patch_near_jump(code, invalid_lead, failure);
+    patch_near_jump(code, two, two_target);
+    patch_near_jump(code, three, three_target);
+    patch_near_jump(code, four_invalid, failure);
+    patch_near_jump(code, four_second_low, failure);
+    patch_near_jump(code, four_not_f4, four_advance);
+    patch_near_jump(code, four_second_high, failure);
+    patch_near_jump(code, three_not_e0, three_ed_check);
+    patch_near_jump(code, three_e0_low, failure);
+    patch_near_jump(code, three_e0_done, three_advance);
+    patch_near_jump(code, three_not_ed, three_advance);
+    patch_near_jump(code, three_ed_high, failure);
+    patch_near_jump(code, four_loop, loop_start);
+    patch_near_jump(code, three_loop, loop_start);
+    patch_near_jump(code, two_loop, loop_start);
+    patch_near_jump(code, ascii_loop, loop_start);
+    for displacement in four_second_checks
+        .into_iter()
+        .chain(four_third_checks)
+        .chain(four_fourth_checks)
+        .chain(three_second_checks)
+        .chain(three_third_checks)
+        .chain(two_checks)
+    {
+        patch_near_jump(code, displacement, failure);
+    }
+    let _ = four_target;
+}
+
+fn emit_utf8_continuation_check(code: &mut Vec<u8>, rex: u8, modrm: u8) -> [usize; 2] {
+    if rex != 0 {
+        code.extend_from_slice(&[rex, 0x80, modrm, 0x80]);
+    } else {
+        code.extend_from_slice(&[0x80, modrm, 0x80]);
+    }
+    let below = emit_near_jump_placeholder(code, 0x0f, 0x82);
+    if rex != 0 {
+        code.extend_from_slice(&[rex, 0x80, modrm, 0xbf]);
+    } else {
+        code.extend_from_slice(&[0x80, modrm, 0xbf]);
+    }
+    let above = emit_near_jump_placeholder(code, 0x0f, 0x87);
+    [below, above]
+}
+
+fn emit_near_unconditional_placeholder(code: &mut Vec<u8>) -> usize {
+    code.push(0xe9);
+    let displacement = code.len();
+    code.extend_from_slice(&[0, 0, 0, 0]);
+    displacement
 }
 
 fn emit_string_utf8_codepoint_at_runtime(code: &mut Vec<u8>) {

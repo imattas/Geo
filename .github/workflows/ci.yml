@@ -114,6 +114,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-linux -o target/ci-utf8-len-linux
       - name: Build compiler-owned Linux UTF-8 codepoint executable
         run: cargo run --locked --quiet -- build examples/utf8_codepoint_exit.geo --target x86_64-linux -o target/ci-utf8-codepoint-linux
+      - name: Build compiler-owned Linux UTF-8 validity executable
+        run: cargo run --locked --quiet -- build examples/utf8_validity_exit.geo --target x86_64-linux -o target/ci-utf8-validity-linux
       - name: Build compiler-owned Linux array runtime executable
         run: cargo run --locked --quiet -- build examples/array_runtime_exit.geo --target x86_64-linux -o target/ci-array-runtime-linux
       - name: Build compiler-owned Linux array lifecycle executable
@@ -191,6 +193,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-windows -o target/ci-utf8-len-windows.exe
       - name: Build compiler-owned Windows UTF-8 codepoint executable
         run: cargo run --locked --quiet -- build examples/utf8_codepoint_exit.geo --target x86_64-windows -o target/ci-utf8-codepoint-windows.exe
+      - name: Build compiler-owned Windows UTF-8 validity executable
+        run: cargo run --locked --quiet -- build examples/utf8_validity_exit.geo --target x86_64-windows -o target/ci-utf8-validity-windows.exe
       - name: Build compiler-owned Windows array runtime executable
         run: cargo run --locked --quiet -- build examples/array_runtime_exit.geo --target x86_64-windows -o target/ci-array-runtime-windows.exe
       - name: Build compiler-owned Windows array lifecycle executable

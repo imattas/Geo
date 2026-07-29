@@ -178,7 +178,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add native runtime coverage for string comparison, substring, Unicode, formatting, and conversion APIs.
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
-- Expand UTF-8 validation, boundary-aware slicing, formatting, and conversion support next.
+- Expand UTF-8 boundary-aware offsets and slicing, then formatting and conversion support; strict validity checking now rejects malformed and out-of-range sequences on both native targets.
 - Treat read-only string runtime calls as shared borrows so scanner and parser code can inspect owned source text repeatedly.
 - Extend the byte-array runtime to generic element copying, removal, resizing, and typed mutation before using it for fully dynamic token buffers; capacity growth, clone, clear, release, fill, reverse, search, contains, and count are now native on both targets.
 - Preserve pointee width through IR dereference/store lowering so `u8` buffers do not accidentally read or overwrite adjacent bytes.
