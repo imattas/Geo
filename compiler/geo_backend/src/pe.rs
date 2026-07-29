@@ -21,6 +21,7 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         false,
         false,
         false,
+        false,
     );
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
@@ -34,14 +35,14 @@ mod tests {
 
     #[test]
     fn layout_places_write_file_count_after_compiled_rodata() {
-        let layout = Layout::new(9, true, false, false, false, false);
+        let layout = Layout::new(9, true, false, false, false, false, false);
 
         assert_eq!(layout.written_rva, 0x2010);
     }
 
     #[test]
     fn layout_relocates_all_data_rvas_together() {
-        let mut layout = Layout::new(9, true, true, true, true, true);
+        let mut layout = Layout::new(9, true, true, true, true, true, true);
         let original_idata = layout.idata_rva;
         let original_written = layout.written_rva;
         let original_imports = layout.import_descriptor_rva;
@@ -128,6 +129,10 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_close"
         )
     });
+    let needs_truncate_file = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "truncate_file");
     let needs_file_metadata = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -140,6 +145,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         needs_virtual_alloc || needs_file_read,
         needs_file_read,
         needs_file_ops,
+        needs_truncate_file,
         needs_file_metadata,
     );
     let mut text = build_compiled_text(&layout, &image)?;
@@ -439,11 +445,14 @@ struct Layout {
     has_console_io: bool,
     has_virtual_alloc: bool,
     has_file_read: bool,
+    has_file_truncate: bool,
     create_file_iat: u32,
     get_file_size_iat: u32,
     read_file_iat: u32,
     close_handle_iat: u32,
     delete_file_iat: u32,
+    set_file_pointer_iat: u32,
+    set_end_of_file_iat: u32,
     has_file_ops: bool,
     get_file_attributes_iat: u32,
     has_file_metadata: bool,
@@ -456,6 +465,7 @@ impl Layout {
         has_virtual_alloc: bool,
         has_file_read: bool,
         has_file_ops: bool,
+        has_file_truncate: bool,
         has_file_metadata: bool,
     ) -> Self {
         let headers_raw = 0x200;
@@ -472,7 +482,7 @@ impl Layout {
         let oft_rva = import_descriptor_rva + 40;
         let file_import_count = if has_file_read {
             4
-        } else if has_file_ops {
+        } else if has_file_ops || has_file_truncate {
             2
         } else {
             0
@@ -519,7 +529,7 @@ impl Layout {
         } else {
             ft_rva
         };
-        let create_file_iat = if has_file_read || has_file_ops {
+        let create_file_iat = if has_file_read || has_file_ops || has_file_truncate {
             let value = next_iat;
             next_iat += 8;
             value
@@ -540,7 +550,7 @@ impl Layout {
         } else {
             ft_rva
         };
-        let close_handle_iat = if has_file_read || has_file_ops {
+        let close_handle_iat = if has_file_read || has_file_ops || has_file_truncate {
             let value = next_iat;
             next_iat += 8;
             value
@@ -551,6 +561,20 @@ impl Layout {
         if has_file_ops {
             next_iat += 8;
         }
+        let set_file_pointer_iat = if has_file_truncate {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
+        let set_end_of_file_iat = if has_file_truncate {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
+        };
         let get_file_attributes_iat = if has_file_metadata { next_iat } else { ft_rva };
         Self {
             text_rva,
@@ -570,11 +594,14 @@ impl Layout {
             has_console_io,
             has_virtual_alloc,
             has_file_read,
+            has_file_truncate,
             create_file_iat,
             get_file_size_iat,
             read_file_iat,
             close_handle_iat,
             delete_file_iat,
+            set_file_pointer_iat,
+            set_end_of_file_iat,
             has_file_ops,
             get_file_attributes_iat,
             has_file_metadata,
@@ -598,6 +625,8 @@ impl Layout {
         self.read_file_iat += delta;
         self.close_handle_iat += delta;
         self.delete_file_iat += delta;
+        self.set_file_pointer_iat += delta;
+        self.set_end_of_file_iat += delta;
         self.get_file_attributes_iat += delta;
     }
 }
@@ -1039,6 +1068,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "remove_file");
+    let needs_truncate_file = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "truncate_file");
     let needs_file_open = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1184,6 +1217,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_file_read_or
         || needs_append_file
         || needs_touch_file
+        || needs_truncate_file
         || needs_remove_file
         || needs_file_open
         || needs_file_write
@@ -1622,6 +1656,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.touch_file = Some(layout.text_rva + code.len() as u32);
         emit_touch_file_helper(&mut code, layout);
     }
+    if needs_truncate_file {
+        helpers.truncate_file = Some(layout.text_rva + code.len() as u32);
+        emit_truncate_file_helper(&mut code, layout);
+    }
     if needs_remove_file {
         helpers.remove_file = Some(layout.text_rva + code.len() as u32);
         emit_remove_file_helper(&mut code, layout);
@@ -1980,6 +2018,9 @@ fn compiled_symbol_rva(
     if symbol == "touch_file" {
         return helpers.touch_file;
     }
+    if symbol == "truncate_file" {
+        return helpers.truncate_file;
+    }
     if symbol == "remove_file" {
         return helpers.remove_file;
     }
@@ -2105,6 +2146,7 @@ struct PeHelperRvas {
     write_file: Option<u32>,
     append_file: Option<u32>,
     touch_file: Option<u32>,
+    truncate_file: Option<u32>,
     remove_file: Option<u32>,
     file_open: Option<u32>,
     file_open_write: Option<u32>,
@@ -4911,6 +4953,50 @@ fn emit_touch_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_near_jump(code, invalid_handle, failure);
 }
 
+fn emit_truncate_file_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // Win64 ABI: keep the path, requested size, and handle outside call shadow space.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x40]);
+    code.extend_from_slice(&[0xba, 0x00, 0x00, 0x00, 0x40]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x41, 0xb9, 0x03, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x20, 0, 0, 0, 0]);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x28, 0, 0, 0, 0]);
+    emit_call_iat(code, layout, layout.create_file_iat);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xff]);
+    let invalid_handle = emit_near_conditional_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x45, 0x31, 0xc9]);
+    emit_call_iat(code, layout, layout.set_file_pointer_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let pointer_failed = emit_near_conditional_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x50]);
+    emit_call_iat(code, layout, layout.set_end_of_file_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let end_failed = emit_near_conditional_placeholder(code, 0x84);
+
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x50]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    let failure = code.len();
+    let close_failure = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x50]);
+    emit_call_iat(code, layout, layout.close_handle_iat);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    patch_near_conditional(code, invalid_handle, failure);
+    patch_near_conditional(code, pointer_failed, close_failure);
+    patch_near_conditional(code, end_failed, close_failure);
+}
+
 fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x85, 0xc9]);
     let null_path = emit_short_jump_placeholder(code, 0x74);
@@ -5247,12 +5333,16 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
         imports.push(b"GetFileSize\0".as_slice());
         imports.push(b"ReadFile\0".as_slice());
         imports.push(b"CloseHandle\0".as_slice());
-    } else if layout.has_file_ops {
+    } else if layout.has_file_ops || layout.has_file_truncate {
         imports.push(b"CreateFileA\0".as_slice());
         imports.push(b"CloseHandle\0".as_slice());
     }
     if layout.has_file_ops {
         imports.push(b"DeleteFileA\0".as_slice());
+    }
+    if layout.has_file_truncate {
+        imports.push(b"SetFilePointerEx\0".as_slice());
+        imports.push(b"SetEndOfFile\0".as_slice());
     }
     if layout.has_file_metadata {
         imports.push(b"GetFileAttributesA\0".as_slice());

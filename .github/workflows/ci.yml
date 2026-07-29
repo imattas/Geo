@@ -103,6 +103,16 @@ jobs:
         run: cargo run --locked --quiet -- build examples/append_file_exit.geo --target x86_64-linux -o target/ci-append-file-linux
       - name: Build compiler-owned Linux touch/remove executable
         run: cargo run --locked --quiet -- build examples/touch_remove_file_exit.geo --target x86_64-linux -o target/ci-touch-remove-file-linux
+      - name: Build compiler-owned Linux truncate executable
+        run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-linux -o target/ci-truncate-file-linux
+      - name: Execute compiler-owned Linux truncate executable
+        shell: bash
+        run: |
+          set +e
+          target/ci-truncate-file-linux
+          status=$?
+          rm -f target/geo-truncate-file.txt
+          test "$status" -eq 3
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
       - name: Build compiler-owned Linux append-handle executable
@@ -230,6 +240,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/append_file_exit.geo --target x86_64-windows -o target/ci-append-file-windows.exe
       - name: Build compiler-owned Windows touch/remove executable
         run: cargo run --locked --quiet -- build examples/touch_remove_file_exit.geo --target x86_64-windows -o target/ci-touch-remove-file-windows.exe
+      - name: Build compiler-owned Windows truncate executable
+        run: cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-windows -o target/ci-truncate-file-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -361,6 +373,7 @@ jobs:
           cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-composition.exe
           cargo run --locked --quiet -- build examples/array_resize_exit.geo --target x86_64-windows -o target/ci-smoke-array-resize.exe
           cargo run --locked --quiet -- build examples/array_typed_search_exit.geo --target x86_64-windows -o target/ci-smoke-array-typed-search.exe
+          cargo run --locked --quiet -- build examples/truncate_file_exit.geo --target x86_64-windows -o target/ci-smoke-truncate-file.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -393,3 +406,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & target/ci-smoke-array-typed-search.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-truncate-file.exe
+          if ($LASTEXITCODE -ne 3) { exit $LASTEXITCODE }
+          Remove-Item -Force target/geo-truncate-file.txt
