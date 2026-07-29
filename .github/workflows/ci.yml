@@ -266,24 +266,6 @@ jobs:
       - name: Build compiler-owned Windows string-slice-free executable
         run: cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-windows -o target/ci-string-slice-free-windows.exe
 
-      - name: Execute compiler-owned Windows PE64 smoke fixtures
-        if: ${{ matrix.os == 'windows-latest' }}
-        shell: pwsh
-        run: |
-          & target/ci-hello-world-windows.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & target/ci-string-clone-windows.exe
-          if ($LASTEXITCODE -ne 3) { exit $LASTEXITCODE }
-          & target/ci-string-clone-free-windows.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & target/ci-string-concat-free-windows.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & target/ci-string-slice-free-windows.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & target/ci-read-file-free-windows.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & target/ci-file-read-handle-free-windows.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build compiler-owned Windows UTF-8 length executable
         run: cargo run --locked --quiet -- build examples/utf8_len_exit.geo --target x86_64-windows -o target/ci-utf8-len-windows.exe
       - name: Build compiler-owned Windows UTF-8 codepoint executable
@@ -343,3 +325,42 @@ jobs:
 
       - name: Emit Windows assembly
         run: cargo run --locked --quiet -- emit-asm examples/return_42.geo --target x86_64-windows -o target/ci-return-42-windows.asm
+
+  pe64-windows-smoke:
+    name: PE64 execution smoke (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native PE64 smoke fixtures
+        shell: pwsh
+        run: |
+          cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-smoke-hello.exe
+          cargo run --locked --quiet -- build examples/string_clone_len_exit.geo --target x86_64-windows -o target/ci-smoke-clone-len.exe
+          cargo run --locked --quiet -- build examples/string_clone_free_exit.geo --target x86_64-windows -o target/ci-smoke-clone-free.exe
+          cargo run --locked --quiet -- build examples/string_concat_free_exit.geo --target x86_64-windows -o target/ci-smoke-concat-free.exe
+          cargo run --locked --quiet -- build examples/string_slice_free_exit.geo --target x86_64-windows -o target/ci-smoke-slice-free.exe
+          cargo run --locked --quiet -- build examples/read_file_free_windows_exit.geo --target x86_64-windows -o target/ci-smoke-read-free.exe
+          cargo run --locked --quiet -- build examples/file_read_handle_free_exit.geo --target x86_64-windows -o target/ci-smoke-handle-read-free.exe
+
+      - name: Execute native PE64 smoke fixtures
+        shell: pwsh
+        run: |
+          & target/ci-smoke-hello.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-clone-len.exe
+          if ($LASTEXITCODE -ne 3) { exit $LASTEXITCODE }
+          & target/ci-smoke-clone-free.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-concat-free.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-slice-free.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-read-free.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/ci-smoke-handle-read-free.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
