@@ -2,7 +2,7 @@ import std.array
 import std.mem
 
 fn main() -> int {
-    var left: *u8 = array_new(2usize, 2usize)
+    var left: *u8 = array_new(2usize, 4usize)
     var right: *u8 = array_new(2usize, 2usize)
     let value: *u8 = alloc(2usize)
     let replacement: *u8 = alloc(2usize)
@@ -46,6 +46,14 @@ fn main() -> int {
         if set_value == 0 as *u8 || set16 == 0 as *u16 || *set16 != 0x0b0a {
             return 6
         }
+        if array_resize(left, 3usize, replacement) != 0 {
+            return 14
+        }
+        let resized: *u8 = array_get(left, 2usize)
+        let resized16: *u16 = resized as *u16
+        if resized == 0 as *u8 || resized16 == 0 as *u16 || *resized16 != 0x0b0a {
+            return 15
+        }
         if array_fill(right, replacement) != 0 {
             return 7
         }
@@ -56,6 +64,9 @@ fn main() -> int {
         }
         if *filled != 10 {
             return 12
+        }
+        if filled16 == 0 as *u16 || *filled16 != 0x0b0a {
+            return 13
         }
         if array_copy(left, 0usize, right, 0usize, 1usize) != 0 {
             return 9

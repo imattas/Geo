@@ -286,10 +286,10 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - `examples/v1/lexer.geo` now scans a source string with token boundaries, byte classification, mutable state, and public standard-library APIs.
 - `examples/v1/mini_parser.geo` now validates a three-token function grammar with parser state and explicit error paths.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, read-to-string, and close; seeking, truncation controls, and metadata remain open.
-- Typed fill and resize initialization, PE64 execution validation, and the remaining typed-array algorithms are still open runtime work.
+- PE64 execution validation and the remaining typed-array algorithms are still open runtime work; typed push, set, fill, extend, copy, and resize initialization now execute on ELF64 and compile for PE64.
 
 ## Current Priority
 
-The next best technical move is typed fill/resize initialization and UTF-8 conversion/formatting support, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
+The next best technical move is PE64 execution validation, UTF-8 conversion/formatting support, and the remaining typed-array algorithms, then continue replacing placeholder self-hosting examples with real lexer, parser, and diagnostics flows.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.
