@@ -63,6 +63,9 @@ jobs:
       - name: Build compiler-owned Linux string-clone executable
         run: cargo run --locked --quiet -- build examples/string_clone_len_exit.geo --target x86_64-linux -o target/ci-string-clone-linux
 
+      - name: Build compiler-owned Linux string-clone-free executable
+        run: cargo run --locked --quiet -- build examples/string_clone_free_exit.geo --target x86_64-linux -o target/ci-string-clone-free-linux
+
       - name: Build compiler-owned Linux alloc-copy executable
         run: cargo run --locked --quiet -- build examples/alloc_copy_exit.geo --target x86_64-linux -o target/ci-alloc-copy-linux
 
@@ -168,6 +171,9 @@ jobs:
 
       - name: Build compiler-owned Windows string-clone executable
         run: cargo run --locked --quiet -- build examples/string_clone_len_exit.geo --target x86_64-windows -o target/ci-string-clone-windows.exe
+
+      - name: Build compiler-owned Windows string-clone-free executable
+        run: cargo run --locked --quiet -- build examples/string_clone_free_exit.geo --target x86_64-windows -o target/ci-string-clone-free-windows.exe
 
       - name: Build compiler-owned Windows alloc-copy executable
         run: cargo run --locked --quiet -- build examples/alloc_copy_exit.geo --target x86_64-windows -o target/ci-alloc-copy-windows.exe

@@ -1,5 +1,6 @@
 extern fn string_len(value: str) -> usize
 extern fn string_clone(value: str) -> str
+extern fn string_free(value: str) -> int
 extern fn string_concat(left: str, right: str) -> str
 extern fn string_from_byte(value: int) -> str
 extern fn string_equals(left: str, right: str) -> bool

@@ -93,6 +93,10 @@ Recommended improvements:
 - Snapshot tests for important error rendering.
 - Suggestions for common mistakes.
 
+Runtime lifetime progress: `string_clone` now stores the compiler-owned mapping
+header and can be released through `std.string.string_free`; apply the same
+contract next to substring, concatenation, and file-read results.
+
 Reason: good diagnostics are core compiler quality, especially for a new language.
 
 ## Language Improvements

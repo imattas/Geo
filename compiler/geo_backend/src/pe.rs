@@ -905,7 +905,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_free = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "free_geo");
+        .any(|relocation| matches!(relocation.symbol.as_str(), "free_geo" | "string_free"));
     let needs_realloc = image
         .relocations
         .iter()
@@ -2012,7 +2012,7 @@ fn compiled_symbol_rva(
     if symbol == "alloc_copy" {
         return helpers.alloc_copy;
     }
-    if symbol == "free_geo" {
+    if matches!(symbol, "free_geo" | "string_free") {
         return helpers.free_geo;
     }
     if symbol == "realloc_geo" {
@@ -4383,15 +4383,19 @@ fn emit_string_clone_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x38]);
     code.extend_from_slice(&[0x48, 0xff, 0xc0]);
     code.extend_from_slice(&[0x48, 0x89, 0xc2]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc2, 0x08, 0x48, 0x89, 0x54, 0x24, 0x30]);
     code.extend_from_slice(&[0x31, 0xc9]);
     code.extend_from_slice(&[0x41, 0xb8, 0x00, 0x30, 0x00, 0x00]);
     code.extend_from_slice(&[0x41, 0xb9, 0x04, 0x00, 0x00, 0x00]);
     emit_call_iat(code, layout, layout.virtual_alloc_iat);
     code.extend_from_slice(&[0x48, 0x85, 0xc0]);
     let allocation_failed = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x44, 0x24, 0x48, 0x48, 0x8b, 0x44, 0x24, 0x30, 0x48, 0x89, 0x10,
+    ]);
     code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x40]);
     code.extend_from_slice(&[0x4c, 0x8b, 0x54, 0x24, 0x48]);
+    code.extend_from_slice(&[0x49, 0x83, 0xc2, 0x08]);
     code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
     code.extend_from_slice(&[0x4d, 0x31, 0xdb]);
     let copy_loop = code.len();
@@ -4403,7 +4407,7 @@ fn emit_string_clone_helper(code: &mut Vec<u8>, layout: &Layout) {
         0x75,
         (copy_loop as isize - (code.len() as isize + 2)) as i8 as u8,
     ]);
-    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48, 0x48, 0x83, 0xc0, 0x08]);
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x58, 0xc3]);
     let failure = code.len();
     code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);

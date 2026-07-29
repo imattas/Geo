@@ -1752,6 +1752,13 @@ pub fn functions_for_import(path: &[String]) -> Result<Vec<RuntimeFunction>, Dia
                 vec![param("value", Type::Int)],
                 Type::String,
             ),
+            runtime_fn_with_symbol(
+                path,
+                "string_free",
+                "free_geo",
+                vec![param("value", Type::String)],
+                Type::Int,
+            ),
             runtime_fn(
                 path,
                 "usize_to_string",
