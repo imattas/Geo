@@ -80,12 +80,53 @@ pub fn run_cli(cli: Cli) -> Result<(), Vec<Diagnostic>> {
             fmt_source_file(&input)?;
             Ok(())
         }
+        Command::DumpTokens { input } => {
+            print_dump(dump_tokens(&input)?);
+            Ok(())
+        }
+        Command::DumpAst { input } => {
+            print_dump(dump_ast(&input)?);
+            Ok(())
+        }
+        Command::DumpIr { input } => {
+            print_dump(dump_ir(&input)?);
+            Ok(())
+        }
         Command::Test { path } => {
             let config = compile_config(None, false)?;
             test_geo_path(&path, &config)?;
             Ok(())
         }
     }
+}
+
+fn print_dump(dump: String) {
+    print!("{dump}");
+    if !dump.ends_with('\n') {
+        println!();
+    }
+}
+
+fn dump_tokens(path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let source = SourceFile::load(path)?;
+    let tokens = geo_syntax::lexer::lex(&source.text)
+        .map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
+    Ok(format!("{tokens:#?}\n"))
+}
+
+fn dump_ast(path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let source = SourceFile::load(path)?;
+    let tokens = geo_syntax::lexer::lex(&source.text)
+        .map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
+    let program = geo_syntax::parser::parse(&tokens)
+        .map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
+    Ok(format!("{program:#?}\n"))
+}
+
+fn dump_ir(path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let program = load_checked_program(path)?;
+    let ir = crate::lower::lower(&program);
+    Ok(format!("{ir:#?}\n"))
 }
 
 pub fn read_geo_source(path: &Path) -> Result<String, Vec<Diagnostic>> {

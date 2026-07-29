@@ -205,7 +205,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add formatter tests for canonical syntax.
 - Add `geo fmt --check`.
 - Add `geo --version`.
-- Add `geo dump-tokens`, `geo dump-ast`, `geo dump-ir`, and `geo dump-asm` for compiler development.
+- `geo dump-tokens`, `geo dump-ast`, and `geo dump-ir` are now available for compiler development; add `geo dump-asm` with stable machine-readable output next.
 - Add CI for Windows and Linux.
 - Add a small `xtask` crate for repeatable dev workflows.
 - Add benchmark fixtures once backend behavior stabilizes.

@@ -47,6 +47,15 @@ pub enum Command {
     Fmt {
         input: PathBuf,
     },
+    DumpTokens {
+        input: PathBuf,
+    },
+    DumpAst {
+        input: PathBuf,
+    },
+    DumpIr {
+        input: PathBuf,
+    },
     Test {
         path: PathBuf,
     },

@@ -163,6 +163,9 @@ The `geo` CLI currently exposes:
 - `geo build`
 - `geo run`
 - `geo fmt`
+- `geo dump-tokens`
+- `geo dump-ast`
+- `geo dump-ir`
 - `geo test`
 
 The compiler currently has modules for:
@@ -185,6 +188,9 @@ The compiler currently has modules for:
 - tokens
 - type checking
 - x86-64 assembly emission
+
+The developer introspection commands print the compiler-owned token stream,
+parsed AST, and lowered IR without invoking an external compiler framework.
 
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,
