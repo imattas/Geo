@@ -122,6 +122,8 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
             "append_file"
                 | "touch_file"
                 | "remove_file"
+                | "create_dir"
+                | "remove_dir"
                 | "file_open"
                 | "file_open_write"
                 | "file_open_append"
@@ -453,6 +455,8 @@ struct Layout {
     read_file_iat: u32,
     close_handle_iat: u32,
     delete_file_iat: u32,
+    create_directory_iat: u32,
+    remove_directory_iat: u32,
     set_file_pointer_iat: u32,
     set_end_of_file_iat: u32,
     flush_file_iat: u32,
@@ -495,6 +499,7 @@ impl Layout {
             + u32::from(has_virtual_alloc) * 2
             + file_import_count
             + u32::from(has_file_ops)
+            + u32::from(has_file_ops) * 2
             + u32::from(has_file_truncate) * 2
             + u32::from(has_file_truncate)
             + u32::from(has_file_metadata);
@@ -566,6 +571,14 @@ impl Layout {
         if has_file_ops {
             next_iat += 8;
         }
+        let create_directory_iat = if has_file_ops { next_iat } else { ft_rva };
+        if has_file_ops {
+            next_iat += 8;
+        }
+        let remove_directory_iat = if has_file_ops { next_iat } else { ft_rva };
+        if has_file_ops {
+            next_iat += 8;
+        }
         let set_file_pointer_iat = if has_file_truncate {
             let value = next_iat;
             next_iat += 8;
@@ -612,6 +625,8 @@ impl Layout {
             read_file_iat,
             close_handle_iat,
             delete_file_iat,
+            create_directory_iat,
+            remove_directory_iat,
             set_file_pointer_iat,
             set_end_of_file_iat,
             flush_file_iat,
@@ -638,6 +653,8 @@ impl Layout {
         self.read_file_iat += delta;
         self.close_handle_iat += delta;
         self.delete_file_iat += delta;
+        self.create_directory_iat += delta;
+        self.remove_directory_iat += delta;
         self.set_file_pointer_iat += delta;
         self.set_end_of_file_iat += delta;
         self.flush_file_iat += delta;
@@ -1082,6 +1099,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "remove_file");
+    let needs_create_dir = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "create_dir");
+    let needs_remove_dir = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "remove_dir");
     let needs_truncate_file = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1235,6 +1260,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_touch_file
         || needs_truncate_file
         || needs_remove_file
+        || needs_create_dir
+        || needs_remove_dir
         || needs_file_open
         || needs_file_write
         || needs_file_close
@@ -1702,6 +1729,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.remove_file = Some(layout.text_rva + code.len() as u32);
         emit_remove_file_helper(&mut code, layout);
     }
+    if needs_create_dir {
+        helpers.create_dir = Some(layout.text_rva + code.len() as u32);
+        emit_create_dir_helper(&mut code, layout);
+    }
+    if needs_remove_dir {
+        helpers.remove_dir = Some(layout.text_rva + code.len() as u32);
+        emit_remove_dir_helper(&mut code, layout);
+    }
     if needs_file_open {
         if image
             .relocations
@@ -2068,6 +2103,12 @@ fn compiled_symbol_rva(
     if symbol == "remove_file" {
         return helpers.remove_file;
     }
+    if symbol == "create_dir" {
+        return helpers.create_dir;
+    }
+    if symbol == "remove_dir" {
+        return helpers.remove_dir;
+    }
     if symbol == "file_open" {
         return helpers.file_open;
     }
@@ -2194,6 +2235,8 @@ struct PeHelperRvas {
     file_seek: Option<u32>,
     file_flush: Option<u32>,
     remove_file: Option<u32>,
+    create_dir: Option<u32>,
+    remove_dir: Option<u32>,
     file_open: Option<u32>,
     file_open_write: Option<u32>,
     file_open_append: Option<u32>,
@@ -5082,6 +5125,33 @@ fn emit_remove_file_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_short_jump(code, failed, failure);
 }
 
+fn emit_create_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let invalid_path = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x31, 0xd2]);
+    emit_call_iat(code, layout, layout.create_directory_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, invalid_path, failure);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_remove_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let invalid_path = emit_short_jump_placeholder(code, 0x74);
+    emit_call_iat(code, layout, layout.remove_directory_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, invalid_path, failure);
+    patch_short_jump(code, failed, failure);
+}
+
 fn emit_file_open_helper(
     code: &mut Vec<u8>,
     layout: &Layout,
@@ -5411,6 +5481,8 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     }
     if layout.has_file_ops {
         imports.push(b"DeleteFileA\0".as_slice());
+        imports.push(b"CreateDirectoryA\0".as_slice());
+        imports.push(b"RemoveDirectoryA\0".as_slice());
     }
     if layout.has_file_truncate {
         imports.push(b"SetFilePointerEx\0".as_slice());

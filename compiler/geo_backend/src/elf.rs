@@ -220,6 +220,8 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "touch_file" => emit_touch_file_runtime(&mut code),
             "truncate_file" => emit_truncate_file_runtime(&mut code),
             "remove_file" => emit_remove_file_runtime(&mut code),
+            "create_dir" => emit_create_dir_runtime(&mut code),
+            "remove_dir" => emit_remove_dir_runtime(&mut code),
             "file_open" => emit_file_open_runtime(&mut code, 0),
             "file_open_write" => emit_file_open_runtime(&mut code, 0x241),
             "file_open_append" => emit_file_open_runtime(&mut code, 0x441),
@@ -2174,6 +2176,31 @@ fn emit_remove_file_runtime(code: &mut Vec<u8>) {
     let null_path = emit_short_jump_placeholder(code, 0x74);
     code.extend_from_slice(&[0xb8, 0x57, 0x00, 0x00, 0x00, 0x0f, 0x05]);
     code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x78);
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3]);
+    patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, failed, failure);
+}
+
+fn emit_create_dir_runtime(code: &mut Vec<u8>) {
+    emit_directory_runtime(code, 83, true);
+}
+
+fn emit_remove_dir_runtime(code: &mut Vec<u8>) {
+    emit_directory_runtime(code, 84, false);
+}
+
+fn emit_directory_runtime(code: &mut Vec<u8>, syscall: u32, create: bool) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let null_path = emit_short_jump_placeholder(code, 0x74);
+    if create {
+        code.extend_from_slice(&[0xbe, 0xed, 0x01, 0x00, 0x00]);
+    }
+    code.extend_from_slice(&[0xb8]);
+    code.extend_from_slice(&syscall.to_le_bytes());
+    code.extend_from_slice(&[0x0f, 0x05, 0x48, 0x85, 0xc0]);
     let failed = emit_short_jump_placeholder(code, 0x78);
     code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
     let failure = code.len();

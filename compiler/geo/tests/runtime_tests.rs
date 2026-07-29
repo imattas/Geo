@@ -74,6 +74,15 @@ fn exposes_std_io_functions() {
             && function.params[0].ty == Type::Int
             && function.return_type == Type::Int
     }));
+    for name in ["create_dir", "remove_dir"] {
+        let function = functions
+            .iter()
+            .find(|function| function.name == name)
+            .unwrap_or_else(|| panic!("{name} signature should exist"));
+        assert_eq!(function.params.len(), 1);
+        assert_eq!(function.params[0].ty, Type::String);
+        assert_eq!(function.return_type, Type::Int);
+    }
     assert!(functions.iter().any(|function| {
         function.name == "file_exists"
             && function.params.len() == 1
