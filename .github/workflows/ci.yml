@@ -102,6 +102,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_suffix_exit.geo --target x86_64-linux -o target/ci-string-suffix-linux
       - name: Build compiler-owned Linux string-index executable
         run: cargo run --locked --quiet -- build examples/string_index_exit.geo --target x86_64-linux -o target/ci-string-index-linux
+      - name: Build compiler-owned Linux string-count executable
+        run: cargo run --locked --quiet -- build examples/string_count_exit.geo --target x86_64-linux -o target/ci-string-count-linux
 
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
@@ -163,6 +165,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/string_suffix_exit.geo --target x86_64-windows -o target/ci-string-suffix-windows.exe
       - name: Build compiler-owned Windows string-index executable
         run: cargo run --locked --quiet -- build examples/string_index_exit.geo --target x86_64-windows -o target/ci-string-index-windows.exe
+      - name: Build compiler-owned Windows string-count executable
+        run: cargo run --locked --quiet -- build examples/string_count_exit.geo --target x86_64-windows -o target/ci-string-count-windows.exe
 
       - name: Build v1 buffer example with direct Linux writer
         run: cargo run --locked --quiet -- build examples/v1/buffer.geo --target x86_64-linux -o target/ci-v1-buffer-linux

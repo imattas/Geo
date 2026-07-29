@@ -395,6 +395,27 @@ fn emits_direct_elf64_string_index_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_string_count_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.string
+
+            fn main() -> int {
+                if string_count("aaaa", "aa") != 2usize {
+                    return 1
+                }
+                if string_count("Geo compiler", "o") != 2usize {
+                    return 2
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x4c, 0x89, 0xd0, 0xc3]));
+}
+
+#[test]
 fn emits_direct_elf64_file_read_runtime() {
     let executable = executable_for(
         r#"

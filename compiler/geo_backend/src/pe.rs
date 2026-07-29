@@ -2213,23 +2213,23 @@ fn emit_string_last_index_of_helper(code: &mut Vec<u8>) {
 
 fn emit_string_count_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x49, 0x89, 0xc8]);
-    code.extend_from_slice(&[0x49, 0x31, 0xc9]);
+    code.extend_from_slice(&[0x4d, 0x31, 0xc9]);
     code.extend_from_slice(&[0x80, 0x3a, 0x00]);
     let empty_needle = emit_short_jump_placeholder(code, 0x74);
     let outer = code.len();
     code.extend_from_slice(&[0x41, 0x80, 0x38, 0x00]);
     let source_end = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
+    code.extend_from_slice(&[0x4d, 0x89, 0xc3]);
     code.extend_from_slice(&[0x49, 0x89, 0xd2]);
     let inner = code.len();
     code.extend_from_slice(&[0x41, 0x8a, 0x02]);
     code.extend_from_slice(&[0x84, 0xc0]);
     let matched = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x41, 0x80, 0x39, 0x00]);
+    code.extend_from_slice(&[0x41, 0x80, 0x3b, 0x00]);
     let advance = emit_short_jump_placeholder(code, 0x74);
-    code.extend_from_slice(&[0x41, 0x3a, 0x01]);
+    code.extend_from_slice(&[0x41, 0x3a, 0x03]);
     let mismatch = emit_short_jump_placeholder(code, 0x75);
-    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc3]);
     code.extend_from_slice(&[0x49, 0xff, 0xc2]);
     emit_short_jump_back(code, inner);
     let found_target = code.len();
