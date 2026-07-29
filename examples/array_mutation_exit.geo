@@ -15,23 +15,46 @@ fn main() -> int {
         if array_push(items, &third) != 0 {
             return 3
         }
-
-        if array_truncate(items, 2usize) != 0 || array_len(items) != 2usize {
+        if array_swap(items, 0usize, 2usize) != 0 {
             return 4
         }
-        let last: *u8 = array_pop(items)
-        if last == 0 as *u8 || *last != 4 || array_len(items) != 1usize {
+        let swapped: *u8 = array_get(items, 0usize)
+        if swapped == 0 as *u8 || *swapped != 8 {
             return 5
         }
-        let first_value: *u8 = array_pop_first(items)
-        if first_value == 0 as *u8 || *first_value != 3 || array_len(items) != 0usize {
+        if array_swap(items, 0usize, 9usize) != 1 {
             return 6
         }
-        if array_pop(items) != 0 as *u8 || array_pop_first(items) != 0 as *u8 {
+        if array_swap_remove(items, 1usize) != 0 || array_len(items) != 2usize {
             return 7
         }
-        if array_truncate(items, 1usize) != 1 {
+        let removed: *u8 = array_get(items, 1usize)
+        if removed == 0 as *u8 || *removed != 3 {
             return 8
+        }
+        if array_truncate(items, 1usize) != 0 || array_len(items) != 1usize {
+            return 9
+        }
+        let last: *u8 = array_pop(items)
+        if last == 0 as *u8 || *last != 8 || array_len(items) != 0usize {
+            return 10
+        }
+        if array_pop(items) != 0 as *u8 || array_pop_first(items) != 0 as *u8 {
+            return 11
+        }
+        if array_push(items, &first) != 0 || array_push(items, &second) != 0 {
+            return 12
+        }
+        let first_value: *u8 = array_pop_first(items)
+        if first_value == 0 as *u8 || *first_value != 4 || array_len(items) != 1usize {
+            return 13
+        }
+        let final_value: *u8 = array_pop(items)
+        if final_value == 0 as *u8 || *final_value != 4 || array_len(items) != 0usize {
+            return 14
+        }
+        if array_truncate(items, 1usize) != 1 {
+            return 15
         }
         array_free(items)
     }
