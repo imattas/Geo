@@ -115,6 +115,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/rename_file_exit.geo --target x86_64-linux -o target/ci-rename-file-linux
       - name: Build compiler-owned Linux copy executable
         run: cargo run --locked --quiet -- build examples/copy_file_exit.geo --target x86_64-linux -o target/ci-copy-file-linux
+      - name: Build compiler-owned Linux timestamp executable
+        run: cargo run --locked --quiet -- build examples/file_timestamps_exit.geo --target x86_64-linux -o target/ci-file-timestamps-linux
       - name: Execute compiler-owned Linux truncate executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -180,6 +182,16 @@ jobs:
           status=$?
           test ! -e target/geo-copy-source.txt
           test ! -e target/geo-copy-dest.txt
+          test "$status" -eq 0
+      - name: Execute compiler-owned Linux timestamp executable
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-file-timestamps-linux
+          target/ci-file-timestamps-linux
+          status=$?
+          test ! -e target/geo-file-timestamps.txt
           test "$status" -eq 0
       - name: Build compiler-owned Linux handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-linux -o target/ci-file-handle-linux
@@ -320,6 +332,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/rename_file_exit.geo --target x86_64-windows -o target/ci-rename-file-windows.exe
       - name: Build compiler-owned Windows copy executable
         run: cargo run --locked --quiet -- build examples/copy_file_exit.geo --target x86_64-windows -o target/ci-copy-file-windows.exe
+      - name: Build compiler-owned Windows timestamp executable
+        run: cargo run --locked --quiet -- build examples/file_timestamps_exit.geo --target x86_64-windows -o target/ci-file-timestamps-windows.exe
       - name: Build compiler-owned Windows handle-file executable
         run: cargo run --locked --quiet -- build examples/file_handle_exit.geo --target x86_64-windows -o target/ci-file-handle-windows.exe
       - name: Build compiler-owned Windows append-handle executable
@@ -457,6 +471,7 @@ jobs:
           cargo run --locked --quiet -- build examples/directory_mutation_exit.geo --target x86_64-windows -o target/ci-smoke-directory-mutation.exe
           cargo run --locked --quiet -- build examples/rename_file_exit.geo --target x86_64-windows -o target/ci-smoke-rename-file.exe
           cargo run --locked --quiet -- build examples/copy_file_exit.geo --target x86_64-windows -o target/ci-smoke-copy-file.exe
+          cargo run --locked --quiet -- build examples/file_timestamps_exit.geo --target x86_64-windows -o target/ci-smoke-file-timestamps.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -538,4 +553,9 @@ jobs:
           $copyDestExists = Test-Path target/geo-copy-dest.txt
           Write-Host "copy status=$copyStatus source=$copySourceExists dest=$copyDestExists"
           if ($copyStatus -ne 0 -or $copySourceExists -or $copyDestExists) { exit 1 }
+          & target/ci-smoke-file-timestamps.exe
+          $timestampStatus = $LASTEXITCODE
+          $timestampExists = Test-Path target/geo-file-timestamps.txt
+          Write-Host "timestamps status=$timestampStatus exists=$timestampExists"
+          if ($timestampStatus -ne 0 -or $timestampExists) { exit 1 }
           exit 0

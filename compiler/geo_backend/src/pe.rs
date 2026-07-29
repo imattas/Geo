@@ -142,7 +142,14 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_file_metadata = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "file_exists" | "file_is_file" | "file_is_dir" | "file_is_empty" | "file_size"
+            "file_exists"
+                | "file_is_file"
+                | "file_is_dir"
+                | "file_is_empty"
+                | "file_size"
+                | "file_modified_time"
+                | "file_accessed_time"
+                | "file_created_time"
         )
     });
     let mut layout = Layout::new(
@@ -466,6 +473,7 @@ struct Layout {
     flush_file_iat: u32,
     has_file_ops: bool,
     get_file_attributes_iat: u32,
+    get_file_attributes_ex_iat: u32,
     has_file_metadata: bool,
 }
 
@@ -506,7 +514,7 @@ impl Layout {
             + u32::from(has_file_ops) * 4
             + u32::from(has_file_truncate) * 2
             + u32::from(has_file_truncate)
-            + u32::from(has_file_metadata);
+            + u32::from(has_file_metadata) * 2;
         let iat_size = (import_count + 1) * 8;
         let ft_rva = oft_rva + iat_size;
         let mut next_iat = ft_rva;
@@ -613,6 +621,10 @@ impl Layout {
             ft_rva
         };
         let get_file_attributes_iat = if has_file_metadata { next_iat } else { ft_rva };
+        if has_file_metadata {
+            next_iat += 8;
+        }
+        let get_file_attributes_ex_iat = if has_file_metadata { next_iat } else { ft_rva };
         Self {
             text_rva,
             rdata_rva,
@@ -646,6 +658,7 @@ impl Layout {
             flush_file_iat,
             has_file_ops,
             get_file_attributes_iat,
+            get_file_attributes_ex_iat,
             has_file_metadata,
         }
     }
@@ -675,6 +688,7 @@ impl Layout {
         self.set_end_of_file_iat += delta;
         self.flush_file_iat += delta;
         self.get_file_attributes_iat += delta;
+        self.get_file_attributes_ex_iat += delta;
     }
 }
 
@@ -1156,7 +1170,14 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_file_metadata = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "file_exists" | "file_is_file" | "file_is_dir" | "file_is_empty" | "file_size"
+            "file_exists"
+                | "file_is_file"
+                | "file_is_dir"
+                | "file_is_empty"
+                | "file_size"
+                | "file_modified_time"
+                | "file_accessed_time"
+                | "file_created_time"
         )
     });
     let needs_process_exit = image
@@ -1842,6 +1863,30 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             helpers.file_is_dir = Some(layout.text_rva + code.len() as u32);
             emit_file_attribute_helper(&mut code, layout, true);
         }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_modified_time")
+        {
+            helpers.file_modified_time = Some(layout.text_rva + code.len() as u32);
+            emit_file_time_helper(&mut code, layout, 20);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_accessed_time")
+        {
+            helpers.file_accessed_time = Some(layout.text_rva + code.len() as u32);
+            emit_file_time_helper(&mut code, layout, 12);
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "file_created_time")
+        {
+            helpers.file_created_time = Some(layout.text_rva + code.len() as u32);
+            emit_file_time_helper(&mut code, layout, 4);
+        }
     }
     if needs_file_metadata {
         helpers.file_exists = Some(layout.text_rva + code.len() as u32);
@@ -2184,6 +2229,15 @@ fn compiled_symbol_rva(
     if symbol == "file_size" {
         return helpers.file_size;
     }
+    if symbol == "file_modified_time" {
+        return helpers.file_modified_time;
+    }
+    if symbol == "file_accessed_time" {
+        return helpers.file_accessed_time;
+    }
+    if symbol == "file_created_time" {
+        return helpers.file_created_time;
+    }
     if symbol == "read_line" {
         return helpers.read_line;
     }
@@ -2289,6 +2343,9 @@ struct PeHelperRvas {
     file_is_dir: Option<u32>,
     file_is_empty: Option<u32>,
     file_size: Option<u32>,
+    file_modified_time: Option<u32>,
+    file_accessed_time: Option<u32>,
+    file_created_time: Option<u32>,
     read_line: Option<u32>,
     mem_copy: Option<u32>,
     mem_zero: Option<u32>,
@@ -5336,6 +5393,28 @@ fn emit_file_attribute_helper(code: &mut Vec<u8>, layout: &Layout, directory: bo
     patch_short_jump(code, missing, failure);
 }
 
+fn emit_file_time_helper(code: &mut Vec<u8>, layout: &Layout, filetime_offset: u8) {
+    // GetFileAttributesExA returns FILETIME values in 100ns ticks since 1601.
+    // Convert the selected timestamp to Unix seconds for the std API.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let null_path = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x31, 0xd2, 0x4c, 0x8d, 0x44, 0x24, 0x20]);
+    emit_call_iat(code, layout, layout.get_file_attributes_ex_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let failed = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, filetime_offset + 0x20]);
+    code.extend_from_slice(&[0x48, 0xb9, 0x00, 0x80, 0x3e, 0xd5, 0xde, 0xb1, 0x9d, 0x01]);
+    code.extend_from_slice(&[0x48, 0x29, 0xc8]);
+    code.extend_from_slice(&[0x48, 0xb9, 0x80, 0x96, 0x98, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x31, 0xd2, 0x48, 0xf7, 0xf1]);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_short_jump(code, null_path, failure);
+    patch_short_jump(code, failed, failure);
+}
+
 fn emit_file_size_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
     code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x38]);
@@ -5567,6 +5646,7 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
     }
     if layout.has_file_metadata {
         imports.push(b"GetFileAttributesA\0".as_slice());
+        imports.push(b"GetFileAttributesExA\0".as_slice());
     }
 
     let mut data_len = first_name;

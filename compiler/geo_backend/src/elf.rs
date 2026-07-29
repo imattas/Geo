@@ -237,6 +237,9 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "file_is_dir" => emit_file_stat_runtime(&mut code, FileStatKind::Directory),
             "file_is_empty" => emit_file_stat_runtime(&mut code, FileStatKind::Empty),
             "file_size" => emit_file_stat_runtime(&mut code, FileStatKind::Size),
+            "file_accessed_time" => emit_file_stat_runtime(&mut code, FileStatKind::AccessedTime),
+            "file_modified_time" => emit_file_stat_runtime(&mut code, FileStatKind::ModifiedTime),
+            "file_created_time" => emit_file_stat_runtime(&mut code, FileStatKind::CreatedTime),
             "read_file" => emit_read_file_runtime(&mut code),
             "read_line" => emit_read_line_runtime(&mut code),
             "read_file_or" => {
@@ -315,6 +318,9 @@ enum FileStatKind {
     Directory,
     Empty,
     Size,
+    AccessedTime,
+    ModifiedTime,
+    CreatedTime,
 }
 
 fn emit_file_stat_runtime(code: &mut Vec<u8>, kind: FileStatKind) {
@@ -348,6 +354,19 @@ fn emit_file_stat_runtime(code: &mut Vec<u8>, kind: FileStatKind) {
         }
         FileStatKind::Size => {
             code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x30]);
+        }
+        FileStatKind::AccessedTime => {
+            // Linux struct stat: st_atime seconds at offset 0x48.
+            code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x48]);
+        }
+        FileStatKind::ModifiedTime => {
+            // Linux struct stat: st_mtime seconds at offset 0x58.
+            code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x58]);
+        }
+        FileStatKind::CreatedTime => {
+            // Linux has no portable birth-time field in the legacy stat ABI;
+            // expose the inode-change timestamp consistently for v1.
+            code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x68]);
         }
     }
     code.extend_from_slice(&[0x48, 0x81, 0xc4, 0xa0, 0x00, 0x00, 0x00, 0xc3]);

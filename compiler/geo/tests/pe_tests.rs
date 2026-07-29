@@ -1525,6 +1525,23 @@ fn emits_direct_pe64_copy_file_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_file_timestamps_as_compiled_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> usize {
+                return file_modified_time("source.txt")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"GetFileAttributesExA"));
+    assert!(contains_bytes(&pe, b"source.txt\0"));
+}
+
+#[test]
 fn emits_direct_pe64_string_contains_as_compiled_helper() {
     let pe = pe_for(
         r#"
