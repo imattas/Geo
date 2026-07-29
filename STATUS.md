@@ -323,6 +323,8 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
   both executable writers.
 - Direct native `path_stem` now preserves multi-dot stems, resets at both
   separator styles, and preserves dotfiles on both executable writers.
+- Direct native `path_without_extension` now removes only the final
+  non-dotfile extension while preserving directory prefixes and dotfiles.
 - Direct native `truncate_file` support now uses the Linux `truncate` syscall and Win32 `CreateFileA`/`SetFilePointerEx`/`SetEndOfFile` paths, with Linux execution and Windows PE64 execution coverage.
 - Direct native `file_seek` support now uses Linux `lseek` and Win32 `SetFilePointerEx`, with compiler-owned Linux and PE64 fixtures that rewrite a file at an offset.
 - Direct native `file_flush` support now uses Linux `fsync` and Win32 `FlushFileBuffers`, with compiler-owned Linux and PE64 durability fixtures.

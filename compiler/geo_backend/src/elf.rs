@@ -265,6 +265,23 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
                 symbols.insert("path_stem".to_string(), runtime_base + stem_offset as u64);
                 continue;
             }
+            "path_without_extension" => {
+                let slice_offset = if let Some(symbol) = symbols.get("string_slice") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_slice_runtime(&mut code);
+                    symbols.insert("string_slice".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let without_extension_offset = code.len();
+                emit_path_without_extension_runtime(&mut code, slice_offset);
+                symbols.insert(
+                    "path_without_extension".to_string(),
+                    runtime_base + without_extension_offset as u64,
+                );
+                continue;
+            }
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "free_geo" => emit_free_runtime(&mut code),
@@ -2456,6 +2473,48 @@ fn emit_path_stem_runtime(code: &mut Vec<u8>, slice_offset: usize) {
     code.extend_from_slice(&[
         0x4c, 0x89, 0x44, 0x24, 0x28, 0x4c, 0x89, 0x4c, 0x24, 0x30, 0x48, 0x8b, 0x7c, 0x24, 0x20,
         0x48, 0x8b, 0x74, 0x24, 0x28, 0x48, 0x8b, 0x54, 0x24, 0x30, 0x48, 0x29, 0xf2,
+    ]);
+    emit_internal_call(code, slice_offset);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, slash, separator);
+    patch_short_jump(code, backslash, separator);
+    patch_short_jump(code, not_dot, advance);
+    patch_short_jump(code, dot_at_start, advance);
+    patch_short_jump(code, has_dot, slice_args);
+}
+
+fn emit_path_without_extension_runtime(code: &mut Vec<u8>, slice_offset: usize) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48, 0x48, 0x89, 0x7c, 0x24, 0x20]);
+    code.extend_from_slice(&[
+        0x31, 0xc9, 0x45, 0x31, 0xc0, 0x45, 0x31, 0xc9, 0x45, 0x31, 0xd2,
+    ]);
+    let loop_start = code.len();
+    code.extend_from_slice(&[0x8a, 0x14, 0x0f, 0x84, 0xd2]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0xfa, b'/']);
+    let slash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0xfa, b'\\']);
+    let backslash = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x80, 0xfa, b'.']);
+    let not_dot = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x4c, 0x39, 0xd1]);
+    let dot_at_start = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x49, 0x89, 0xc9]);
+    let advance = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc1]);
+    emit_short_jump_back(code, loop_start);
+    let separator = code.len();
+    code.extend_from_slice(&[0x4c, 0x8d, 0x51, 0x01, 0x45, 0x31, 0xc9]);
+    emit_short_jump_back(code, advance);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x85, 0xc9]);
+    let has_dot = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x49, 0x89, 0xc9]);
+    let slice_args = code.len();
+    code.extend_from_slice(&[
+        0x4c, 0x89, 0x4c, 0x24, 0x28, 0x48, 0x8b, 0x7c, 0x24, 0x20, 0x31, 0xf6, 0x48, 0x8b, 0x54,
+        0x24, 0x28,
     ]);
     emit_internal_call(code, slice_offset);
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);

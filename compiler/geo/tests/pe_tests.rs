@@ -1654,10 +1654,12 @@ fn emits_direct_pe64_path_file_name() {
             let parent = path_parent("a/b\\only.txt")
             let extension = path_extension("a/b\\only.txt")
             let stem = path_stem("a/b\\only.txt")
+            let without_extension = path_without_extension("a/b\\only.txt")
             string_free(name)
             string_free(parent)
             string_free(extension)
             string_free(stem)
+            string_free(without_extension)
             return 0
         }
         "#,
