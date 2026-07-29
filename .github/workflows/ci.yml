@@ -128,6 +128,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/array_lifecycle_exit.geo --target x86_64-linux -o target/ci-array-lifecycle-linux
       - name: Build compiler-owned Linux array mutation executable
         run: cargo run --locked --quiet -- build examples/array_mutation_exit.geo --target x86_64-linux -o target/ci-array-mutation-linux
+      - name: Build compiler-owned Linux typed array composition executable
+        run: cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-linux -o target/ci-array-typed-composition-linux
 
       - name: Build compiler-owned Windows executable
         run: cargo run --locked --quiet -- build examples/hello_world.geo --target x86_64-windows -o target/ci-hello-world-windows.exe
@@ -215,6 +217,8 @@ jobs:
         run: cargo run --locked --quiet -- build examples/array_lifecycle_exit.geo --target x86_64-windows -o target/ci-array-lifecycle-windows.exe
       - name: Build compiler-owned Windows array mutation executable
         run: cargo run --locked --quiet -- build examples/array_mutation_exit.geo --target x86_64-windows -o target/ci-array-mutation-windows.exe
+      - name: Build compiler-owned Windows typed array composition executable
+        run: cargo run --locked --quiet -- build examples/array_typed_composition_exit.geo --target x86_64-windows -o target/ci-array-typed-composition-windows.exe
 
       - name: Build v1 buffer example with direct Linux writer
         run: cargo run --locked --quiet -- build examples/v1/buffer.geo --target x86_64-linux -o target/ci-v1-buffer-linux
