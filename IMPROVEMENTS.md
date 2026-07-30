@@ -219,7 +219,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Add `CONTRIBUTING.md` with local verification commands.
 - Add `docs/architecture/` for compiler pipeline docs.
 - Add `docs/language/` for syntax and type-system reference.
-- Add `docs/runtime/` for runtime ABI and standard library design.
+- Add `docs/runtime/` for runtime ABI and standard library design. `docs/runtime/ABI.md` now documents the current compiler-owned scalar, aggregate, entry, and trap conventions.
 - Add `tests/ui/` for diagnostic snapshot tests.
 - Add `tests/run-pass/`, `tests/check-pass/`, and `tests/check-fail/` for Geo source tests.
 - Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently regress to a non-native build path.
@@ -264,7 +264,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 
 - Add formatter tests for canonical syntax.
 - Add `geo fmt --check`.
-- Add `geo --version`.
+- Add `geo --version`. The CLI now reports its package version through clap metadata.
 - `geo dump-tokens`, `geo dump-ast`, and `geo dump-ir` are now available for compiler development; add `geo dump-asm` with stable machine-readable output next.
 - Add CI for Windows and Linux.
 - Add a small `xtask` crate for repeatable dev workflows.

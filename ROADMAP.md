@@ -273,6 +273,8 @@ Acceptance criteria:
 - Linux target emits valid System V calls.
 - Windows target emits valid Windows x64 calls.
 - Object writer tests cover sections, symbols, and relocations.
+- Object writer tests cover scalarized struct/fixed-array calls and hidden
+  aggregate return buffers on both target object formats.
 - CI emits Linux and Windows objects without invoking NASM, and executable builds do not resolve a C runtime.
 
 Current PE64 progress: current-subset programs now use compiled Win64 machine code for entry, internal calls, `.rdata` references, bounds checks, `print`/`println`, string helpers, allocation-backed `string_concat`, `std.process.exit`, `std.mem.alloc`, and `std.io.read_file` using compiler-emitted Windows helpers and imports. The read path uses the Win64 ABI directly and returns a NUL-terminated buffer for Geo string operations.

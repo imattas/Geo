@@ -17,6 +17,15 @@ fn parses_run_args_after_separator() {
 }
 
 #[test]
+fn exposes_compiler_version_metadata() {
+    let error = Cli::try_parse_from(["geo", "--version"])
+        .expect_err("--version should terminate argument parsing");
+
+    assert_eq!(error.kind(), clap::error::ErrorKind::DisplayVersion);
+    assert!(error.to_string().contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn parses_emit_obj_command() {
     let cli = Cli::try_parse_from([
         "geo",

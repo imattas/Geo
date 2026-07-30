@@ -100,6 +100,26 @@ fn emits_win64_coff_calls_with_windows_argument_registers() {
 }
 
 #[test]
+fn emits_win64_coff_aggregate_return_abi() {
+    let object = coff_for(include_str!("../../../examples/v1/aggregate_return.geo"));
+
+    assert!(contains_bytes(&object, b"make_pair"));
+    assert!(contains_bytes(&object, &[0x4c, 0x89, 0x10]));
+    assert!(contains_bytes(&object, &[0x4c, 0x89, 0x50, 0xf8]));
+    assert!(text_relocation_count(&object) > 0);
+}
+
+#[test]
+fn emits_win64_coff_flattened_aggregate_arguments() {
+    let object = coff_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
+
+    assert!(contains_bytes(&object, b"read_value"));
+    assert!(contains_opcode_with_disp8(&object, &[0x48, 0x8b, 0x4d]));
+    assert!(contains_opcode_with_disp8(&object, &[0x48, 0x8b, 0x55]));
+    assert!(text_relocation_count(&object) > 0);
+}
+
+#[test]
 fn emits_win64_coff_bounds_check_call_with_windows_shadow_space() {
     let object = coff_for(
         r#"

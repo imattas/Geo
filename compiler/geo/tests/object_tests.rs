@@ -139,6 +139,27 @@ fn emits_machine_code_for_stack_passed_function_arguments() {
 }
 
 #[test]
+fn emits_elf64_machine_code_for_aggregate_return_abi() {
+    let object = object_for(include_str!("../../../examples/v1/aggregate_return.geo"));
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(&object, b"make_pair"));
+    assert!(contains_bytes(text, &[0x4c, 0x89, 0x10]));
+    assert!(contains_bytes(text, &[0x4c, 0x89, 0x50, 0xf8]));
+    assert!(contains_bytes(&object, b".rela.text"));
+}
+
+#[test]
+fn emits_elf64_machine_code_for_flattened_aggregate_arguments() {
+    let object = object_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
+    let text = section_payload(&object, 1);
+
+    assert!(contains_bytes(text, b"\xe8\0\0\0\0"));
+    assert!(contains_bytes(text, &[0x48, 0x8b, 0x7d]));
+    assert!(contains_bytes(&object, b"read_value"));
+}
+
+#[test]
 fn emits_relocation_for_bounds_check_runtime_call() {
     let object = object_for(
         r#"

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "geo")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "The Geo programming language compiler")]
 pub struct Cli {
     #[command(subcommand)]

@@ -62,6 +62,7 @@ src/
       tests/
 docs/
   superpowers/
+  runtime/
 examples/
 target/
 ```
@@ -187,6 +188,7 @@ The `geo` CLI currently exposes:
 - `geo dump-ast`
 - `geo dump-ir`
 - `geo test`
+- `geo --version`
 
 The compiler currently has modules for:
 
@@ -317,13 +319,14 @@ Existing design/spec documents:
 - `docs/superpowers/specs/2026-07-24-geo-language-design.md`
 - `docs/superpowers/specs/2026-07-24-geo-v1-self-hosting-foundation-design.md`
 - `docs/superpowers/specs/2026-07-28-geo-clean-core-syntax-design.md`
+- `docs/runtime/ABI.md`
 
 Existing implementation plans cover the original v0.1 path, v1 phases, clean syntax, runtime/stdlib scaffold, object writing, target ABI work, multi-file resolution, and self-hosting examples.
 
 ## Known Gaps
 
 - Compiler internals are now split across syntax, IR, semantic, lowering, backend, and driver crates; `compiler/geo` is the compatibility/library shell and binary entry point.
-- Runtime ABI is not yet documented as a stable contract; direct `alloc`/`free` lifetime coverage now exists on both native targets.
+- Runtime ABI is documented in `docs/runtime/ABI.md`; versioning and compatibility guarantees remain open until the ABI is frozen.
 - Lexer and parser diagnostics now carry token spans and are attached to source paths, lines, columns, and underlines during module loading. Semantic diagnostics now preserve expression-level spans, top-level statement fallbacks, and originating module paths.
 - `geo fmt` now parses the program and emits canonical indentation, declaration,
   statement, type, and expression layout. Comment preservation and configurable
