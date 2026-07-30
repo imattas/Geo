@@ -408,3 +408,12 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 The next best technical move is richer standard-library/runtime coverage and continued replacement of placeholder self-hosting examples with real lexer, parser, and diagnostics flows. PE64 execution now has a Windows-host smoke gate for strings, file paths, and array mutation.
 
 That gives the native backends the source-text operations needed for compiler-shaped Geo programs while keeping the compiler implementation independent of external toolchains.
+
+## Ownership Checking
+
+- Mutable references can be reborrowed through `&mut *reference`.
+- A retained child mutable reborrow suspends its parent reference for the
+  child's lifetime and rejects parent use while the child is active.
+- Temporary mutable reborrows restore the parent at statement end.
+- Nested-scope cleanup restores suspended parent borrows after child bindings
+  are released, with regression coverage for both accepted and rejected cases.

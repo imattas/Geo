@@ -408,3 +408,13 @@ Acceptance criteria:
 - A fresh checkout can run one documented command to verify the compiler.
 - An installed compiler can build hello world without repo-relative paths.
 - Windows and Linux release artifacts are documented.
+
+## Ownership Milestone
+
+Status: in progress.
+
+The borrow checker now models mutable reborrows as ownership transitions:
+`&mut *view` suspends the parent reference, retains the child borrow, rejects
+parent use during the child lifetime, and restores the parent when the child
+scope ends. Continue extending this model to branch joins, nested reborrow
+chains, and richer place expressions.

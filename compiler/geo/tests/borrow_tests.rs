@@ -321,3 +321,39 @@ fn releases_all_possible_branch_origins_on_reassignment() {
 
     borrow_check(source).unwrap();
 }
+
+#[test]
+fn accepts_mutable_reborrow_after_child_scope_ends() {
+    let source = r#"
+        fn main() -> int {
+            var value: int = 1
+            var view: &mut int = &mut value
+            if true {
+                let nested: &mut int = &mut *view
+                *nested = 2
+            }
+            *view = 3
+            return value
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
+fn rejects_parent_use_while_mutable_reborrow_is_active() {
+    let source = r#"
+        fn main() -> int {
+            var value: int = 1
+            var view: &mut int = &mut value
+            let nested: &mut int = &mut *view
+            *view = 2
+            return value
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("reborrowed reference 'view'")));
+}

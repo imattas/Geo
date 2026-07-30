@@ -12,6 +12,11 @@ Both executable backends now also emit native `int_to_string`, `usize_to_string`
 
 External assembler/linker tools are allowed only as temporary build-tool steps. The compiler pipeline itself must remain owned by Geo.
 
+Borrow checking now tracks mutable reborrow ownership explicitly. Keep adding
+small UI-style fixtures for branch joins, nested `&mut *reference` chains,
+place expressions, and diagnostics so ownership behavior remains independent
+of backend lowering.
+
 ### 1. Split Compiler Internals Into Smaller Crates
 
 Current state: syntax, IR, semantic analysis, lowering, target backends/object writers, and driver orchestration are owned by dedicated compiler crates. `compiler/geo` remains the compatibility/library shell and binary entry point; diagnostics and source loading remain dedicated crates.

@@ -23,6 +23,9 @@ fn check_function(function: &Function, diagnostics: &mut Vec<Diagnostic>) {
         moved: HashSet::new(),
         borrows: HashMap::new(),
         reference_origins: HashMap::new(),
+        suspended_references: HashMap::new(),
+        reborrow_parents: HashMap::new(),
+        temporary_reborrow_parents: Vec::new(),
         diagnostics,
     };
 
@@ -69,6 +72,9 @@ struct BorrowCtx<'a> {
     moved: HashSet<String>,
     borrows: HashMap<String, BorrowState>,
     reference_origins: HashMap<String, ReferenceOrigin>,
+    suspended_references: HashMap<String, ReferenceOrigin>,
+    reborrow_parents: HashMap<String, String>,
+    temporary_reborrow_parents: Vec<String>,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
@@ -120,10 +126,12 @@ impl BorrowCtx<'_> {
                             .zip(saved_locals.get(name.as_str()))
                             .is_some_and(|(current, saved)| local_changed(current, saved)))
             })
-            .map(|(_, origin)| origin.clone())
+            .map(|(name, origin)| (name.clone(), origin.clone()))
             .collect::<Vec<_>>();
-        for origin in inner_references {
-            self.release_reference_origin(&origin);
+        let mut inner_references = inner_references;
+        inner_references.sort_by_key(|(name, _)| !self.reborrow_parents.contains_key(name));
+        for (name, origin) in inner_references {
+            self.release_reference_binding(&name, &origin);
         }
         for (name, origin) in &saved_origins {
             if current_locals
@@ -169,6 +177,11 @@ impl BorrowCtx<'_> {
                                 mutable: matches!(ty, Type::Reference { mutable: true, .. }),
                             },
                         );
+                        if let Some(parent) = self.mutable_reborrow_parent_from_borrow(value) {
+                            self.temporary_reborrow_parents
+                                .retain(|candidate| candidate != &parent);
+                            self.reborrow_parents.insert(name.clone(), parent);
+                        }
                     }
                 } else {
                     self.reference_origins.remove(name);
@@ -184,7 +197,7 @@ impl BorrowCtx<'_> {
                 let old_origin = self.reference_origins.get(name).cloned();
                 self.consume_expr(value);
                 if let Some(origin) = old_origin {
-                    self.release_reference_origin(&origin);
+                    self.release_reference_binding(name, &origin);
                 }
                 self.moved.remove(name);
                 self.reference_origins.remove(name);
@@ -198,6 +211,11 @@ impl BorrowCtx<'_> {
                                 mutable,
                             },
                         );
+                        if let Some(parent) = self.mutable_reborrow_parent_from_borrow(value) {
+                            self.temporary_reborrow_parents
+                                .retain(|candidate| candidate != &parent);
+                            self.reborrow_parents.insert(name.clone(), parent);
+                        }
                     }
                 }
             }
@@ -289,9 +307,13 @@ impl BorrowCtx<'_> {
             Expr::Var(name) if self.is_owned_local(name) => {
                 self.ensure_not_moved(name);
                 self.ensure_not_borrowed_for_move(name);
+                self.ensure_not_reborrowed(name);
                 self.moved.insert(name.clone());
             }
-            Expr::Var(name) => self.ensure_not_moved(name),
+            Expr::Var(name) => {
+                self.ensure_not_moved(name);
+                self.ensure_not_reborrowed(name);
+            }
             Expr::Struct { fields, .. } => {
                 for (_, value) in fields {
                     self.consume_expr(value);
@@ -360,7 +382,10 @@ impl BorrowCtx<'_> {
 
     fn read_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Var(name) => self.ensure_not_moved(name),
+            Expr::Var(name) => {
+                self.ensure_not_moved(name);
+                self.ensure_not_reborrowed(name);
+            }
             Expr::Unary { op, expr } => match op {
                 UnaryOp::AddressOf => self.borrow_expr(expr, false),
                 UnaryOp::MutableAddressOf => self.borrow_expr(expr, true),
@@ -458,8 +483,31 @@ impl BorrowCtx<'_> {
         }
     }
 
+    fn ensure_not_reborrowed(&mut self, name: &str) {
+        if self.suspended_references.contains_key(name) {
+            self.diagnostics.push(Diagnostic::error(format!(
+                "cannot use reborrowed reference '{name}' while nested borrow is active"
+            )));
+        }
+    }
+
     fn borrow_expr(&mut self, expr: &Expr, mutable: bool) {
         self.read_expr(expr);
+        let reborrow_parent = if mutable {
+            self.mutable_reborrow_parent(expr)
+        } else {
+            None
+        };
+        if let Some(parent) = reborrow_parent.as_ref() {
+            if self.suspended_references.contains_key(parent) {
+                return;
+            }
+            if let Some(origin) = self.reference_origins.get(parent).cloned() {
+                self.release_reference_origin(&origin);
+                self.suspended_references.insert(parent.clone(), origin);
+                self.temporary_reborrow_parents.push(parent.clone());
+            }
+        }
         let Some(name) = self.borrow_target(expr) else {
             return;
         };
@@ -522,6 +570,10 @@ impl BorrowCtx<'_> {
             state.mutable = state.retained_mutable;
             state.shared > 0 || state.mutable
         });
+        let parents = std::mem::take(&mut self.temporary_reborrow_parents);
+        for parent in parents {
+            self.restore_suspended_reference(&parent);
+        }
     }
 
     fn promote_temporary_borrows(&mut self) {
@@ -534,9 +586,36 @@ impl BorrowCtx<'_> {
         }
     }
 
+    fn release_reference_binding(&mut self, name: &str, origin: &ReferenceOrigin) {
+        self.release_reference_origin(origin);
+        if let Some(parent) = self.reborrow_parents.remove(name) {
+            self.restore_suspended_reference(&parent);
+        }
+    }
+
     fn release_reference_origin(&mut self, origin: &ReferenceOrigin) {
         for source in &origin.sources {
             self.release_retained_borrow(source, origin.mutable);
+        }
+    }
+
+    fn restore_suspended_reference(&mut self, parent: &str) {
+        let Some(origin) = self.suspended_references.remove(parent) else {
+            return;
+        };
+        for source in origin.sources {
+            self.retain_borrow(&source, origin.mutable);
+        }
+    }
+
+    fn retain_borrow(&mut self, source: &str, mutable: bool) {
+        let state = self.borrows.entry(source.to_string()).or_default();
+        if mutable {
+            state.retained_mutable = true;
+            state.mutable = true;
+        } else {
+            state.retained_shared += 1;
+            state.shared += 1;
         }
     }
 
@@ -574,6 +653,31 @@ impl BorrowCtx<'_> {
             } => self.borrow_target(expr),
             _ => borrowed_local(expr),
         }
+    }
+
+    fn mutable_reborrow_parent(&self, expr: &Expr) -> Option<String> {
+        let Expr::Unary {
+            op: UnaryOp::Deref,
+            expr,
+        } = expr
+        else {
+            return None;
+        };
+        let parent = borrowed_local(expr)?;
+        self.reference_origins
+            .contains_key(&parent)
+            .then_some(parent)
+    }
+
+    fn mutable_reborrow_parent_from_borrow(&self, expr: &Expr) -> Option<String> {
+        let Expr::Unary {
+            op: UnaryOp::MutableAddressOf,
+            expr,
+        } = expr
+        else {
+            return None;
+        };
+        self.mutable_reborrow_parent(expr)
     }
 
     fn root_reference_source(&self, name: &str) -> String {
