@@ -61,6 +61,18 @@ impl ResolveCtx {
             for function in &mut program.externs {
                 function.is_public = true;
             }
+            for alias in &mut program.type_aliases {
+                alias.is_public = true;
+            }
+            for constant in &mut program.consts {
+                constant.is_public = true;
+            }
+            for structure in &mut program.structs {
+                structure.is_public = true;
+            }
+            for enumeration in &mut program.enums {
+                enumeration.is_public = true;
+            }
         }
         let mut merged = empty_program();
 
@@ -84,6 +96,13 @@ impl ResolveCtx {
 fn has_explicit_visibility(program: &Program) -> bool {
     program.functions.iter().any(|function| function.is_public)
         || program.externs.iter().any(|function| function.is_public)
+        || program.type_aliases.iter().any(|alias| alias.is_public)
+        || program.consts.iter().any(|constant| constant.is_public)
+        || program.structs.iter().any(|structure| structure.is_public)
+        || program
+            .enums
+            .iter()
+            .any(|enumeration| enumeration.is_public)
 }
 
 fn parse_source(source: &SourceFile) -> Result<Program, Vec<Diagnostic>> {
@@ -127,19 +146,27 @@ fn rewrite_qualified_imports(program: &mut Program, import: &Import, imported: &
         }
     }
     for struct_decl in &imported.structs {
-        type_names.insert(format!("{prefix}.{}", struct_decl.name));
+        if struct_decl.is_public {
+            type_names.insert(format!("{prefix}.{}", struct_decl.name));
+        }
     }
     for enum_decl in &imported.enums {
-        type_names.insert(format!("{prefix}.{}", enum_decl.name));
-        for variant in &enum_decl.variants {
-            enum_variant_names.insert(format!("{prefix}.{}.{}", enum_decl.name, variant.name));
+        if enum_decl.is_public {
+            type_names.insert(format!("{prefix}.{}", enum_decl.name));
+            for variant in &enum_decl.variants {
+                enum_variant_names.insert(format!("{prefix}.{}.{}", enum_decl.name, variant.name));
+            }
         }
     }
     for alias in &imported.type_aliases {
-        type_names.insert(format!("{prefix}.{}", alias.name));
+        if alias.is_public {
+            type_names.insert(format!("{prefix}.{}", alias.name));
+        }
     }
     for const_decl in &imported.consts {
-        const_names.insert(format!("{prefix}.{}", const_decl.name));
+        if const_decl.is_public {
+            const_names.insert(format!("{prefix}.{}", const_decl.name));
+        }
     }
 
     for alias in &mut program.type_aliases {

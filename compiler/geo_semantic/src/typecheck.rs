@@ -318,6 +318,7 @@ fn expand_program_type_aliases(
                 name: decl.name.clone(),
                 ty: expand_type_alias(&decl.ty, aliases, &mut Vec::new(), diagnostics),
                 value: expand_expr_type_aliases(&decl.value, aliases, diagnostics),
+                is_public: decl.is_public,
             })
             .collect(),
         structs: program
@@ -333,6 +334,7 @@ fn expand_program_type_aliases(
                         ty: expand_type_alias(&field.ty, aliases, &mut Vec::new(), diagnostics),
                     })
                     .collect(),
+                is_public: decl.is_public,
             })
             .collect(),
         enums: program.enums.clone(),

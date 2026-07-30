@@ -37,6 +37,24 @@ fn parses_public_functions_and_externs() {
 }
 
 #[test]
+fn parses_public_type_and_data_declarations() {
+    let program = parse_source(
+        r#"
+            pub type Word = int
+            pub const ANSWER: Word = 42
+            pub struct Result { value: Word }
+            pub enum State { Ready }
+            fn main() {}
+        "#,
+    );
+
+    assert!(program.type_aliases[0].is_public);
+    assert!(program.consts[0].is_public);
+    assert!(program.structs[0].is_public);
+    assert!(program.enums[0].is_public);
+}
+
+#[test]
 fn parses_top_level_const_declaration() {
     let program = parse_source("const LIMIT: int = 42 fn main() -> int { return LIMIT }");
 

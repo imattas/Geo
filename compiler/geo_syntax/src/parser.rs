@@ -45,35 +45,15 @@ impl<'a> Parser<'a> {
                 }
                 imports.push(self.parse_import()?);
             } else if self.at(&TokenKind::Type) {
-                if is_public {
-                    return Err(vec![
-                        self.error_at_current("'pub' currently supports functions only")
-                    ]);
-                }
-                type_aliases.push(self.parse_type_alias()?);
+                type_aliases.push(self.parse_type_alias(is_public)?);
             } else if self.at(&TokenKind::Const) {
-                if is_public {
-                    return Err(vec![
-                        self.error_at_current("'pub' currently supports functions only")
-                    ]);
-                }
-                consts.push(self.parse_const()?);
+                consts.push(self.parse_const(is_public)?);
             } else if self.at(&TokenKind::Extern) {
                 externs.push(self.parse_extern_function(is_public)?);
             } else if self.at(&TokenKind::Struct) {
-                if is_public {
-                    return Err(vec![
-                        self.error_at_current("'pub' currently supports functions only")
-                    ]);
-                }
-                structs.push(self.parse_struct()?);
+                structs.push(self.parse_struct(is_public)?);
             } else if self.at(&TokenKind::Enum) {
-                if is_public {
-                    return Err(vec![
-                        self.error_at_current("'pub' currently supports functions only")
-                    ]);
-                }
-                enums.push(self.parse_enum()?);
+                enums.push(self.parse_enum(is_public)?);
             } else if self.at(&TokenKind::Eof) {
                 break;
             } else {
@@ -106,16 +86,20 @@ impl<'a> Parser<'a> {
         Ok(Import { path, alias })
     }
 
-    fn parse_type_alias(&mut self) -> Result<TypeAlias, Vec<Diagnostic>> {
+    fn parse_type_alias(&mut self, is_public: bool) -> Result<TypeAlias, Vec<Diagnostic>> {
         self.expect(&TokenKind::Type, "expected 'type'")?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::Equal, "expected '='")?;
         let ty = self.parse_type()?;
         self.consume_semicolons();
-        Ok(TypeAlias { name, ty })
+        Ok(TypeAlias {
+            name,
+            ty,
+            is_public,
+        })
     }
 
-    fn parse_const(&mut self) -> Result<crate::ast::ConstDecl, Vec<Diagnostic>> {
+    fn parse_const(&mut self, is_public: bool) -> Result<crate::ast::ConstDecl, Vec<Diagnostic>> {
         self.expect(&TokenKind::Const, "expected 'const'")?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::Colon, "expected ':'")?;
@@ -123,7 +107,12 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::Equal, "expected '='")?;
         let value = self.parse_expr()?;
         self.consume_semicolons();
-        Ok(crate::ast::ConstDecl { name, ty, value })
+        Ok(crate::ast::ConstDecl {
+            name,
+            ty,
+            value,
+            is_public,
+        })
     }
 
     fn parse_extern_function(
@@ -145,7 +134,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_struct(&mut self) -> Result<StructDecl, Vec<Diagnostic>> {
+    fn parse_struct(&mut self, is_public: bool) -> Result<StructDecl, Vec<Diagnostic>> {
         self.expect(&TokenKind::Struct, "expected 'struct'")?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::LeftBrace, "expected '{'")?;
@@ -164,10 +153,14 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(&TokenKind::RightBrace, "expected '}'")?;
-        Ok(StructDecl { name, fields })
+        Ok(StructDecl {
+            name,
+            fields,
+            is_public,
+        })
     }
 
-    fn parse_enum(&mut self) -> Result<EnumDecl, Vec<Diagnostic>> {
+    fn parse_enum(&mut self, is_public: bool) -> Result<EnumDecl, Vec<Diagnostic>> {
         self.expect(&TokenKind::Enum, "expected 'enum'")?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::LeftBrace, "expected '{'")?;
@@ -198,7 +191,11 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(&TokenKind::RightBrace, "expected '}'")?;
-        Ok(EnumDecl { name, variants })
+        Ok(EnumDecl {
+            name,
+            variants,
+            is_public,
+        })
     }
 
     fn parse_function(&mut self, is_public: bool) -> Result<Function, Vec<Diagnostic>> {

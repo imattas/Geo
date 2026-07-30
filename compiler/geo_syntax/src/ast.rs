@@ -22,6 +22,7 @@ pub struct Import {
 pub struct TypeAlias {
     pub name: String,
     pub ty: Type,
+    pub is_public: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +30,7 @@ pub struct ConstDecl {
     pub name: String,
     pub ty: Type,
     pub value: Expr,
+    pub is_public: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,7 @@ pub struct ExternFunction {
 pub struct StructDecl {
     pub name: String,
     pub fields: Vec<Field>,
+    pub is_public: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +59,7 @@ pub struct Field {
 pub struct EnumDecl {
     pub name: String,
     pub variants: Vec<EnumVariant>,
+    pub is_public: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

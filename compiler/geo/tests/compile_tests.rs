@@ -612,6 +612,20 @@ fn rejects_unqualified_calls_to_private_imported_functions() {
 }
 
 #[test]
+fn rejects_private_imported_types() {
+    let config = CompileConfig {
+        target: Target::parse("x86_64-linux").unwrap(),
+        runtime_entry: false,
+    };
+    let diagnostics = compile_to_asm(&workspace_path("examples/modules_private_types"), &config)
+        .expect_err("private imported types must not be visible");
+
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unknown type 'types.Secret'")));
+}
+
+#[test]
 fn emits_data_for_string_literal_calls() {
     let source = r#"
         import std.io

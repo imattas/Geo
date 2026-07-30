@@ -89,6 +89,10 @@ defining module but are excluded from importing scopes during type checking.
 Modules that contain no visibility annotations retain implicit exports for
 backward compatibility.
 
+Public aliases, constants, structs, and enums now participate in the same
+qualified import rewrite, while private qualified types and constants remain
+unresolved at the import boundary.
+
 The compiler driver now exposes `dump-tokens`, `dump-ast`, and `dump-ir` for
 inspecting each owned frontend and lowering stage directly from the CLI. Parsed
 functions also retain their source span, expression spans, top-level statement

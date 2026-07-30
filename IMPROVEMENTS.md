@@ -25,6 +25,8 @@ make the import boundary visible in source and give the semantic checker enough
 ownership information to reject private cross-module calls.
 Legacy modules with no visibility annotations continue to export their callable
 declarations implicitly so existing packages remain source-compatible.
+Extend the same explicit export model to public aliases, constants, structs, and
+enums; these declarations now have native multi-file coverage.
 
 Recommended split:
 

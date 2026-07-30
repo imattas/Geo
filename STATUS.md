@@ -99,6 +99,9 @@ usable by their own module and are rejected from importing callers.
 Modules without any visibility annotations retain legacy implicit exports for
 source compatibility.
 
+The same boundary now covers `pub const`, `pub type`, `pub struct`, and
+`pub enum` declarations, including qualified imported type and constant use.
+
 ## Verified Commands
 
 These commands were run successfully after the repository restructure:
