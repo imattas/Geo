@@ -221,3 +221,19 @@ fn accepts_move_inside_a_loop_that_may_not_run() {
 
     borrow_check(source).unwrap();
 }
+
+#[test]
+fn releases_reference_borrow_when_inner_scope_ends() {
+    let source = r#"
+        fn main() -> int {
+            var value: int = 1
+            if true {
+                let view: &int = &value
+            }
+            value = 2
+            return value
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}

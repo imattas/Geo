@@ -68,7 +68,7 @@ struct BorrowCtx<'a> {
     locals: HashMap<String, Type>,
     moved: HashSet<String>,
     borrows: HashMap<String, BorrowState>,
-    reference_origins: HashMap<String, String>,
+    reference_origins: HashMap<String, ReferenceOrigin>,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
@@ -78,6 +78,14 @@ struct BorrowState {
     mutable: bool,
     temporary_shared: usize,
     temporary_mutable: bool,
+    retained_shared: usize,
+    retained_mutable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReferenceOrigin {
+    source: String,
+    mutable: bool,
 }
 
 impl BorrowCtx<'_> {
@@ -86,6 +94,28 @@ impl BorrowCtx<'_> {
             self.check_stmt(stmt);
             self.expire_temporary_borrows();
         }
+    }
+
+    fn check_scoped_stmts(&mut self, stmts: &[Stmt]) {
+        let saved_locals = self.locals.clone();
+        self.check_stmts(stmts);
+        self.restore_scope(saved_locals);
+    }
+
+    fn restore_scope(&mut self, saved_locals: HashMap<String, Type>) {
+        let inner_references = self
+            .reference_origins
+            .iter()
+            .filter(|(name, _)| !saved_locals.contains_key(name.as_str()))
+            .map(|(_, origin)| origin.clone())
+            .collect::<Vec<_>>();
+        for origin in inner_references {
+            self.release_retained_borrow(&origin.source, origin.mutable);
+        }
+        self.locals = saved_locals;
+        self.reference_origins
+            .retain(|name, _| self.locals.contains_key(name));
+        self.moved.retain(|name| self.locals.contains_key(name));
     }
 
     fn check_stmt(&mut self, stmt: &Stmt) {
@@ -110,7 +140,13 @@ impl BorrowCtx<'_> {
                 if matches!(ty, Type::Reference { .. }) {
                     self.promote_temporary_borrows();
                     if let Some(source) = borrowed_source(value) {
-                        self.reference_origins.insert(name.clone(), source);
+                        self.reference_origins.insert(
+                            name.clone(),
+                            ReferenceOrigin {
+                                source,
+                                mutable: matches!(ty, Type::Reference { mutable: true, .. }),
+                            },
+                        );
                     }
                 } else {
                     self.reference_origins.remove(name);
@@ -151,14 +187,14 @@ impl BorrowCtx<'_> {
                 let before = self.moved.clone();
                 let before_borrows = self.borrows.clone();
                 let before_origins = self.reference_origins.clone();
-                self.check_stmts(then_body);
+                self.check_scoped_stmts(then_body);
                 let then_moved = self.moved.clone();
                 let then_borrows = self.borrows.clone();
                 let then_origins = self.reference_origins.clone();
                 self.moved = before.clone();
                 self.borrows = before_borrows.clone();
                 self.reference_origins = before_origins.clone();
-                self.check_stmts(else_body);
+                self.check_scoped_stmts(else_body);
                 let else_moved = self.moved.clone();
                 let else_borrows = self.borrows.clone();
                 let else_origins = self.reference_origins.clone();
@@ -171,7 +207,7 @@ impl BorrowCtx<'_> {
                 let before = self.moved.clone();
                 let before_borrows = self.borrows.clone();
                 let before_origins = self.reference_origins.clone();
-                self.check_stmts(body);
+                self.check_scoped_stmts(body);
                 self.moved = before;
                 self.borrows = before_borrows;
                 self.reference_origins = before_origins;
@@ -190,7 +226,7 @@ impl BorrowCtx<'_> {
                 let before_origins = self.reference_origins.clone();
                 let previous = self.locals.insert(name.clone(), Type::Int);
                 self.moved.remove(name);
-                self.check_stmts(body);
+                self.check_scoped_stmts(body);
                 if let Some(previous) = previous {
                     self.locals.insert(name.clone(), previous);
                 } else {
@@ -201,10 +237,10 @@ impl BorrowCtx<'_> {
                 self.reference_origins = before_origins;
             }
             Stmt::Loop(body) => {
-                self.check_stmts(body);
+                self.check_scoped_stmts(body);
             }
             Stmt::Unsafe(body) => {
-                self.check_stmts(body);
+                self.check_scoped_stmts(body);
             }
             Stmt::Break | Stmt::Continue => {}
         }
@@ -268,10 +304,7 @@ impl BorrowCtx<'_> {
                 self.consume_expr(else_value);
             }
             Expr::Block { statements, value } => {
-                for stmt in statements {
-                    self.check_stmt(stmt);
-                }
-                self.consume_expr(value);
+                self.check_expr_block(statements, value, true);
             }
             Expr::Field { base, .. } => self.read_expr(base),
             Expr::Index { base, index } => {
@@ -321,10 +354,7 @@ impl BorrowCtx<'_> {
                 self.read_expr(else_value);
             }
             Expr::Block { statements, value } => {
-                for stmt in statements {
-                    self.check_stmt(stmt);
-                }
-                self.read_expr(value);
+                self.check_expr_block(statements, value, false);
             }
             Expr::Call { name, args } => {
                 for arg in args {
@@ -427,28 +457,57 @@ impl BorrowCtx<'_> {
         } else if let Expr::Var(name) = expr {
             if let Some(source) = self.reference_origins.get(name) {
                 self.diagnostics.push(Diagnostic::error(format!(
-                    "borrow of '{source}' escapes through reference '{name}'"
+                    "borrow of '{}' escapes through reference '{name}'",
+                    source.source
                 )));
             }
         }
+    }
+
+    fn check_expr_block(&mut self, statements: &[Stmt], value: &Expr, consume: bool) {
+        let saved_locals = self.locals.clone();
+        self.check_stmts(statements);
+        if consume {
+            self.consume_expr(value);
+        } else {
+            self.read_expr(value);
+        }
+        self.restore_scope(saved_locals);
     }
 
     fn expire_temporary_borrows(&mut self) {
         self.borrows.retain(|_, state| {
             state.shared = state.shared.saturating_sub(state.temporary_shared);
             state.temporary_shared = 0;
-            if state.temporary_mutable {
-                state.mutable = false;
-                state.temporary_mutable = false;
-            }
+            state.temporary_mutable = false;
+            state.mutable = state.retained_mutable;
             state.shared > 0 || state.mutable
         });
     }
 
     fn promote_temporary_borrows(&mut self) {
         for state in self.borrows.values_mut() {
+            state.retained_shared += state.temporary_shared;
+            state.retained_mutable |= state.temporary_mutable;
             state.temporary_shared = 0;
             state.temporary_mutable = false;
+            state.mutable = state.retained_mutable;
+        }
+    }
+
+    fn release_retained_borrow(&mut self, source: &str, mutable: bool) {
+        let Some(state) = self.borrows.get_mut(source) else {
+            return;
+        };
+        if mutable {
+            state.retained_mutable = false;
+            state.mutable = state.retained_mutable;
+        } else {
+            state.retained_shared = state.retained_shared.saturating_sub(1);
+            state.shared = state.shared.saturating_sub(1);
+        }
+        if state.shared == 0 && !state.mutable {
+            self.borrows.remove(source);
         }
     }
 
@@ -520,14 +579,16 @@ fn merge_borrows(
         state.mutable |= else_state.mutable;
         state.temporary_shared = state.temporary_shared.max(else_state.temporary_shared);
         state.temporary_mutable |= else_state.temporary_mutable;
+        state.retained_shared = state.retained_shared.max(else_state.retained_shared);
+        state.retained_mutable |= else_state.retained_mutable;
     }
     merged
 }
 
 fn merge_reference_origins(
-    then_origins: &HashMap<String, String>,
-    else_origins: &HashMap<String, String>,
-) -> HashMap<String, String> {
+    then_origins: &HashMap<String, ReferenceOrigin>,
+    else_origins: &HashMap<String, ReferenceOrigin>,
+) -> HashMap<String, ReferenceOrigin> {
     let mut merged = then_origins.clone();
     for (name, source) in else_origins {
         merged.entry(name.clone()).or_insert_with(|| source.clone());

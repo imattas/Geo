@@ -1334,6 +1334,7 @@ fn check_stmts<'a>(
                 {
                     diagnostics.push(Diagnostic::error("if condition must be bool"));
                 }
+                let before_locals = locals.clone();
                 check_stmts(
                     then_body,
                     return_type,
@@ -1346,6 +1347,7 @@ fn check_stmts<'a>(
                     unsafe_depth,
                     false,
                 );
+                *locals = before_locals.clone();
                 check_stmts(
                     else_body,
                     return_type,
@@ -1358,6 +1360,7 @@ fn check_stmts<'a>(
                     unsafe_depth,
                     false,
                 );
+                *locals = before_locals;
             }
             Stmt::While { condition, body } => {
                 if expr_type(
@@ -1373,6 +1376,7 @@ fn check_stmts<'a>(
                 {
                     diagnostics.push(Diagnostic::error("while condition must be bool"));
                 }
+                let before_locals = locals.clone();
                 check_stmts(
                     body,
                     return_type,
@@ -1385,6 +1389,7 @@ fn check_stmts<'a>(
                     unsafe_depth,
                     false,
                 );
+                *locals = before_locals;
             }
             Stmt::For {
                 name,
@@ -1419,7 +1424,8 @@ fn check_stmts<'a>(
                     ));
                 }
                 let loop_ty = start_ty.filter(is_integer_type).unwrap_or(Type::Int);
-                let previous = locals.insert(
+                let before_locals = locals.clone();
+                locals.insert(
                     name.as_str(),
                     Local {
                         ty: loop_ty,
@@ -1439,13 +1445,10 @@ fn check_stmts<'a>(
                     unsafe_depth,
                     false,
                 );
-                if let Some(previous) = previous {
-                    locals.insert(name.as_str(), previous);
-                } else {
-                    locals.remove(name.as_str());
-                }
+                *locals = before_locals;
             }
             Stmt::Loop(body) => {
+                let before_locals = locals.clone();
                 check_stmts(
                     body,
                     return_type,
@@ -1458,6 +1461,7 @@ fn check_stmts<'a>(
                     unsafe_depth,
                     false,
                 );
+                *locals = before_locals;
             }
             Stmt::Break => {
                 if loop_depth == 0 {
@@ -1470,6 +1474,7 @@ fn check_stmts<'a>(
                 }
             }
             Stmt::Unsafe(body) => {
+                let before_locals = locals.clone();
                 check_stmts(
                     body,
                     return_type,
@@ -1482,6 +1487,7 @@ fn check_stmts<'a>(
                     unsafe_depth + 1,
                     false,
                 );
+                *locals = before_locals;
             }
             Stmt::Expr(expr) => {
                 let expected = if is_tail_stmt && return_type != &Type::Unit {

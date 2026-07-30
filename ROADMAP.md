@@ -235,6 +235,9 @@ through a direct `&value` return.
 Move state now uses definite-after-branch merging: a move on only one `if` path
 does not poison later code, while moves on all paths remain rejected. Loop-body
 moves are likewise not assumed definite after a possibly empty loop.
+Semantic and borrow scopes now agree for nested blocks. Locals declared inside
+conditionals, loops, `unsafe` blocks, and expression blocks do not leak, and
+reference borrows owned by those locals are released at scope exit.
 
 Acceptance criteria:
 

@@ -164,6 +164,8 @@ fn main() {
   definite-move and conservative-borrow rules.
 - Treat loop bodies as potentially zero-iteration when propagating ownership
   state.
+- Restore lexical locals after nested blocks and release retained inner
+  reference borrows when their owners leave scope.
 - Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
 - Keep runtime/platform internals as the primary place for unsafe code.
 

@@ -424,6 +424,40 @@ fn rejects_unknown_variable() {
 }
 
 #[test]
+fn rejects_local_declared_inside_if_after_scope() {
+    let source = r#"
+        fn main() -> int {
+            if true {
+                let value: int = 1
+            }
+            return value
+        }
+    "#;
+
+    let err = check_source(source).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unknown variable 'value'")));
+}
+
+#[test]
+fn rejects_local_declared_inside_loop_after_scope() {
+    let source = r#"
+        fn main() -> int {
+            while false {
+                let value: int = 1
+            }
+            return value
+        }
+    "#;
+
+    let err = check_source(source).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unknown variable 'value'")));
+}
+
+#[test]
 fn rejects_wrong_call_arity() {
     let source =
         "fn add(a: int, b: int) -> int { return a + b } fn main() -> int { return add(1) }";
