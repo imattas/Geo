@@ -54,6 +54,9 @@ fn lower_function(program: &Program, function: &crate::ast::Function) -> IrFunct
         loop_stack: Vec::new(),
         instructions: Vec::new(),
     };
+    for param in &function.params {
+        ctx.register_fixed_array_lengths(&param.name, &param.ty);
+    }
 
     if let Some((Stmt::Expr(expr), prefix)) = function
         .body
@@ -1043,7 +1046,9 @@ impl LowerCtx {
             Type::Named(name) if self.structs.contains_key(name) => {
                 self.lower_struct_into(prefix, name, value)
             }
-            Type::Array(element_ty) => self.lower_array_into(prefix, element_ty, value),
+            Type::Array(element_ty) | Type::ArrayFixed(element_ty, _) => {
+                self.lower_array_into(prefix, element_ty, value)
+            }
             _ => {
                 let value = self.lower_expr(value);
                 self.instructions.push(Instruction::Store {
@@ -1055,11 +1060,13 @@ impl LowerCtx {
     }
 
     fn lower_call_argument(&mut self, value: &Expr, ty: &Type) -> Vec<ValueId> {
-        if !self.is_struct_type(ty) {
-            return vec![self.lower_expr(value)];
+        if self.is_struct_type(ty) {
+            return self.lower_struct_argument(value, ty);
         }
-
-        self.lower_struct_argument(value, ty)
+        if let Type::ArrayFixed(element_ty, length) = ty {
+            return self.lower_array_argument(value, element_ty, *length);
+        }
+        vec![self.lower_expr(value)]
     }
 
     fn lower_struct_argument(&mut self, value: &Expr, ty: &Type) -> Vec<ValueId> {
@@ -1121,11 +1128,64 @@ impl LowerCtx {
             .collect()
     }
 
+    fn lower_array_argument(
+        &mut self,
+        value: &Expr,
+        element_ty: &Type,
+        length: usize,
+    ) -> Vec<ValueId> {
+        match value {
+            Expr::Array(elements) => elements
+                .iter()
+                .take(length)
+                .map(|element| self.lower_call_argument(element, element_ty))
+                .flatten()
+                .collect(),
+            Expr::Var(_) | Expr::Field { .. } | Expr::Index { .. } => {
+                let source = self
+                    .aggregate_place(value)
+                    .unwrap_or_else(|| panic!("unsupported array call argument"));
+                self.flatten_array_loads(&source, element_ty, length)
+            }
+            _ => panic!("unsupported array call argument"),
+        }
+    }
+
+    fn flatten_array_loads(
+        &mut self,
+        prefix: &str,
+        element_ty: &Type,
+        length: usize,
+    ) -> Vec<ValueId> {
+        (0..length)
+            .flat_map(|index| {
+                let slot = format!("{prefix}[{index}]");
+                if let Type::Named(name) = element_ty {
+                    if self.structs.contains_key(name) {
+                        return self.flatten_struct_loads(&slot, name);
+                    }
+                }
+                if let Type::ArrayFixed(nested, nested_length) = element_ty {
+                    return self.flatten_array_loads(&slot, nested, *nested_length);
+                }
+                let value = self.fresh();
+                self.instructions.push(Instruction::Load {
+                    dst: value,
+                    local: slot,
+                });
+                vec![value]
+            })
+            .collect()
+    }
+
     fn abi_param_slots(&self, name: &str, ty: &Type) -> Vec<String> {
         if let Type::Named(struct_name) = ty {
             if self.structs.contains_key(struct_name) {
                 return self.abi_struct_slots(name, struct_name);
             }
+        }
+        if let Type::ArrayFixed(element_ty, length) = ty {
+            return self.abi_array_slots(name, element_ty, *length);
         }
         vec![name.to_string()]
     }
@@ -1143,6 +1203,43 @@ impl LowerCtx {
                 vec![slot]
             })
             .collect()
+    }
+
+    fn abi_array_slots(&self, prefix: &str, element_ty: &Type, length: usize) -> Vec<String> {
+        (0..length)
+            .flat_map(|index| {
+                let slot = format!("{prefix}[{index}]");
+                if let Type::Named(name) = element_ty {
+                    if self.structs.contains_key(name) {
+                        return self.abi_struct_slots(&slot, name);
+                    }
+                }
+                if let Type::ArrayFixed(nested, nested_length) = element_ty {
+                    return self.abi_array_slots(&slot, nested, *nested_length);
+                }
+                vec![slot]
+            })
+            .collect()
+    }
+
+    fn register_fixed_array_lengths(&mut self, prefix: &str, ty: &Type) {
+        match ty {
+            Type::ArrayFixed(element_ty, length) => {
+                self.array_lengths.insert(prefix.to_string(), *length);
+                for index in 0..*length {
+                    self.register_fixed_array_lengths(&format!("{prefix}[{index}]"), element_ty);
+                }
+            }
+            Type::Named(name) if self.structs.contains_key(name) => {
+                for field in self.struct_fields(name) {
+                    self.register_fixed_array_lengths(
+                        &format!("{prefix}.{}", field.name),
+                        &field.ty,
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 
     fn lower_struct_into(&mut self, prefix: &str, name: &str, value: &Expr) {
@@ -1237,7 +1334,7 @@ impl LowerCtx {
                     );
                 }
             }
-            Type::Array(element_ty) => {
+            Type::Array(element_ty) | Type::ArrayFixed(element_ty, _) => {
                 self.copy_array_slots(target_slot, element_ty, source_slot);
             }
             _ => {
@@ -1290,7 +1387,8 @@ impl LowerCtx {
                     return None;
                 }
                 let base_name = self.aggregate_place(base)?;
-                let Type::Array(inner) = self.expr_type(base)? else {
+                let array_ty = self.expr_type(base)?;
+                let (Type::Array(inner) | Type::ArrayFixed(inner, _)) = array_ty else {
                     return None;
                 };
                 let len = self.array_lengths.get(&base_name).copied()?;
@@ -1463,7 +1561,9 @@ impl LowerCtx {
                     .map(|field| field.ty.clone())
             }
             Expr::Index { base, .. } => match self.expr_type(base) {
-                Some(Type::Array(inner)) | Some(Type::Slice(inner)) => Some(*inner),
+                Some(Type::Array(inner))
+                | Some(Type::ArrayFixed(inner, _))
+                | Some(Type::Slice(inner)) => Some(*inner),
                 Some(Type::String) => Some(Type::Char),
                 _ => None,
             },
@@ -1496,7 +1596,7 @@ impl LowerCtx {
     fn is_aggregate_type(&self, ty: &Type) -> bool {
         match ty {
             Type::Named(name) => self.structs.contains_key(name),
-            Type::Array(_) => true,
+            Type::Array(_) | Type::ArrayFixed(_, _) => true,
             _ => false,
         }
     }
@@ -1529,6 +1629,7 @@ impl LowerCtx {
             | Type::Reference { .. }
             | Type::Pointer(_) => 8,
             Type::Array(inner) => self.type_size(inner),
+            Type::ArrayFixed(inner, length) => self.type_size(inner) * *length as i64,
             Type::Named(name) => {
                 if let Some(struct_decl) = self.structs.get(name) {
                     self.struct_layout(struct_decl).0
@@ -1553,7 +1654,7 @@ impl LowerCtx {
             | Type::Slice(_)
             | Type::Reference { .. }
             | Type::Pointer(_) => 8,
-            Type::Array(inner) => self.type_align(inner),
+            Type::Array(inner) | Type::ArrayFixed(inner, _) => self.type_align(inner),
             Type::Named(name) => {
                 if let Some(struct_decl) = self.structs.get(name) {
                     struct_decl

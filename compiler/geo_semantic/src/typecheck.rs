@@ -361,6 +361,7 @@ fn check_alias_type_visibility(
             }
         }
         Type::Array(inner)
+        | Type::ArrayFixed(inner, _)
         | Type::Slice(inner)
         | Type::Pointer(inner)
         | Type::Reference { inner, .. } => {
@@ -754,6 +755,10 @@ fn expand_type_alias(
             visiting,
             diagnostics,
         ))),
+        Type::ArrayFixed(inner, length) => Type::ArrayFixed(
+            Box::new(expand_type_alias(inner, aliases, visiting, diagnostics)),
+            *length,
+        ),
         Type::Slice(inner) => Type::Slice(Box::new(expand_type_alias(
             inner,
             aliases,
@@ -1862,11 +1867,18 @@ fn expr_type<'a>(
         }
         Expr::Array(values) => {
             let expected_inner = match expected {
-                Some(Type::Array(inner)) | Some(Type::Slice(inner)) => Some(inner.as_ref()),
+                Some(Type::Array(inner))
+                | Some(Type::ArrayFixed(inner, _))
+                | Some(Type::Slice(inner)) => Some(inner.as_ref()),
                 _ => None,
             };
             if values.is_empty() {
-                return expected_inner.map(|inner| Type::Array(Box::new(inner.clone())));
+                return expected_inner.map(|inner| match expected {
+                    Some(Type::ArrayFixed(_, length)) => {
+                        Type::ArrayFixed(Box::new(inner.clone()), *length)
+                    }
+                    _ => Type::Array(Box::new(inner.clone())),
+                });
             }
 
             let mut element_ty = None;
@@ -1898,7 +1910,19 @@ fn expr_type<'a>(
                     ));
                 }
             }
-            element_ty.map(|ty| Type::Array(Box::new(ty)))
+            element_ty.map(|ty| match expected {
+                Some(Type::ArrayFixed(_, length)) => {
+                    if values.len() != *length {
+                        diagnostics.push(Diagnostic::error(format!(
+                            "array literal has {} elements but expected {}",
+                            values.len(),
+                            length
+                        )));
+                    }
+                    Type::ArrayFixed(Box::new(ty), *length)
+                }
+                _ => Type::Array(Box::new(ty)),
+            })
         }
         Expr::Match { value, arms } => {
             let value_ty = expr_type(
@@ -2100,7 +2124,9 @@ fn expr_type<'a>(
                 diagnostics.push(Diagnostic::error("index expression must be an integer"));
             }
             match base_ty {
-                Some(Type::Array(inner)) | Some(Type::Slice(inner)) => Some(*inner),
+                Some(Type::Array(inner))
+                | Some(Type::ArrayFixed(inner, _))
+                | Some(Type::Slice(inner)) => Some(*inner),
                 Some(Type::String) => Some(Type::Char),
                 _ => {
                     diagnostics.push(Diagnostic::error(
@@ -2500,6 +2526,7 @@ fn validate_type(
         Type::Array(inner) | Type::Slice(inner) | Type::Pointer(inner) => {
             validate_type(inner, structs, enums, diagnostics)
         }
+        Type::ArrayFixed(inner, _) => validate_type(inner, structs, enums, diagnostics),
         Type::Reference { inner, .. } => validate_type(inner, structs, enums, diagnostics),
         Type::Named(name) => {
             if !structs.contains_key(name.as_str()) && !enums.contains_key(name.as_str()) {
@@ -2542,6 +2569,7 @@ fn is_integer_type(ty: &Type) -> bool {
 fn type_matches_expr(expected: &Type, actual: Option<&Type>, expr: &Expr) -> bool {
     actual == Some(expected)
         || matches!((expected, actual), (Type::Slice(expected_inner), Some(Type::Array(actual_inner))) if expected_inner == actual_inner)
+        || matches!((expected, actual), (Type::ArrayFixed(expected_inner, expected_len), Some(Type::Array(actual_inner))) if expected_inner == actual_inner && matches!(expr, Expr::Array(values) if values.len() == *expected_len))
         || (matches!(expected, Type::Pointer(_)) && matches!(expr, Expr::Null))
         || (matches!(expected, Type::Pointer(_)) && matches!(expr, Expr::Int(0)))
         || (actual == Some(&Type::Int)
@@ -2620,7 +2648,7 @@ fn type_name(ty: &Type) -> &'static str {
         Type::U16 => "u16",
         Type::U32 => "u32",
         Type::U64 => "u64",
-        Type::Array(_) => "array",
+        Type::Array(_) | Type::ArrayFixed(_, _) => "array",
         Type::Slice(_) => "slice",
         Type::Reference { .. } => "reference",
         Type::Pointer(_) => "pointer",

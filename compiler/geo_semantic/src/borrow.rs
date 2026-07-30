@@ -803,5 +803,8 @@ fn non_consuming_string_call(function: &str) -> bool {
 }
 
 fn is_owned_type(ty: &Type) -> bool {
-    matches!(ty, Type::String | Type::Array(_) | Type::Named(_))
+    matches!(
+        ty,
+        Type::String | Type::Array(_) | Type::ArrayFixed(_, _) | Type::Named(_)
+    )
 }

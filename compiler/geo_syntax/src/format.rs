@@ -462,6 +462,7 @@ fn format_type(ty: &Type) -> String {
         Type::U32 => "u32".to_string(),
         Type::U64 => "u64".to_string(),
         Type::Array(inner) => format!("[{}]", format_type(inner)),
+        Type::ArrayFixed(inner, length) => format!("[{}; {}]", format_type(inner), length),
         Type::Slice(inner) => format!("[]{}", format_type(inner)),
         Type::Reference { mutable, inner } => {
             format!(

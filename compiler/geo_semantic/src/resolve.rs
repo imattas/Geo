@@ -721,6 +721,7 @@ fn rewrite_qualified_type(ty: &mut Type, type_names: &HashSet<String>, prefix: &
         Type::Array(inner) | Type::Slice(inner) | Type::Pointer(inner) => {
             rewrite_qualified_type(inner, type_names, prefix)
         }
+        Type::ArrayFixed(inner, _) => rewrite_qualified_type(inner, type_names, prefix),
         Type::Reference { inner, .. } => rewrite_qualified_type(inner, type_names, prefix),
         Type::Unit
         | Type::Int

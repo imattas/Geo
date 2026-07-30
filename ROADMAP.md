@@ -400,7 +400,10 @@ Acceptance criteria:
   places and compound assignment on both native executable writers.
 - Struct parameters and struct call arguments now flatten recursively into
   scalar ABI values, preserving field order across compiler-owned ELF64 and
-  PE64 calls; fixed-array parameter metadata remains a separate design item.
+  PE64 calls.
+- Fixed-array metadata is now explicit in the type system as `[T; N]`, with
+  parser, formatter, semantic length checks, and native parameter flattening;
+  aggregate returns remain a separate ABI design item.
 - The Linux ELF64 writer now preserves the initial process stack and implements
   native `std.process` argument accessors. The PE64 writer now provides
   quote-aware `arg_count`, `arg_exists`, owned `arg` token extraction, and

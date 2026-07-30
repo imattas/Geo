@@ -427,6 +427,19 @@ impl<'a> Parser<'a> {
                 return Ok(Type::Slice(Box::new(inner)));
             }
             let inner = self.parse_type()?;
+            if self.matches(&TokenKind::Semicolon) {
+                let length = match &self.peek().kind {
+                    TokenKind::IntLiteral(value) if *value >= 0 => *value as usize,
+                    _ => {
+                        return Err(vec![
+                            self.error_at_current("expected non-negative array length")
+                        ])
+                    }
+                };
+                self.advance();
+                self.expect(&TokenKind::RightBracket, "expected ']'")?;
+                return Ok(Type::ArrayFixed(Box::new(inner), length));
+            }
             self.expect(&TokenKind::RightBracket, "expected ']'")?;
             return Ok(Type::Array(Box::new(inner)));
         }

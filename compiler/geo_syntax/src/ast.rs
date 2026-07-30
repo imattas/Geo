@@ -110,6 +110,7 @@ pub enum Type {
     U32,
     U64,
     Array(Box<Type>),
+    ArrayFixed(Box<Type>, usize),
     Slice(Box<Type>),
     Reference { mutable: bool, inner: Box<Type> },
     Pointer(Box<Type>),

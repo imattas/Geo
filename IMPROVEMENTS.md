@@ -245,6 +245,9 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Flatten struct parameters and by-value struct arguments recursively into
   scalar native ABI slots so ordinary multi-function programs can pass and
   inspect aggregates without a C runtime or external linker.
+- Carry explicit `[T; N]` fixed-array lengths through syntax and semantic
+  checking so array parameters can be flattened into deterministic native ABI
+  slots instead of relying on local literal inference.
 - Keep process argument access target-specific: Linux uses preserved
   `argc`/`argv`, while Windows uses a dedicated quoted-command-line parser
   rather than assuming a C runtime entry signature. The PE parser now also
