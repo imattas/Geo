@@ -1237,6 +1237,61 @@ fn executes_direct_pe64_recursive_directory_creation() {
 }
 
 #[test]
+fn emits_direct_pe64_recursive_directory_removal_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return remove_dir_all("C:\\geo-remove-dir-all")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"FindFirstFileA"));
+    assert!(contains_bytes(&pe, b"DeleteFileA"));
+    assert!(contains_bytes(&pe, b"RemoveDirectoryA"));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_recursive_directory_removal() {
+    let root = std::env::temp_dir().join(format!("geo-remove-dir-all-{}", std::process::id()));
+    let nested = root.join("cache").join("objects");
+    std::fs::create_dir_all(&nested).expect("failed to create recursive removal fixture");
+    std::fs::write(nested.join("artifact.txt"), b"geo")
+        .expect("failed to write recursive removal fixture");
+    let source = format!(
+        r#"
+            import std.io
+
+            fn main() -> int {{
+                return remove_dir_all("{}")
+            }}
+        "#,
+        nested
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("fixture should have a root")
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+    );
+    let executable = pe_for(&source);
+    let path = std::env::temp_dir().join(format!("geo-remove-dir-all-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write recursive removal fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute recursive removal fixture");
+    let root_exists = root.exists();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(status.code(), Some(0));
+    assert!(!root_exists);
+}
+
+#[test]
 fn emits_direct_pe64_file_metadata_as_compiled_helpers() {
     let pe = pe_for(
         r#"

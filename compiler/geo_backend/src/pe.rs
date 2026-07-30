@@ -82,7 +82,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_string_concat = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_concat" | "dir_entry_path" | "path_with_extension"
+            "string_concat" | "dir_entry_path" | "path_with_extension" | "remove_dir_all"
         )
     });
     let needs_virtual_alloc = needs_string_concat
@@ -140,6 +140,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "remove_file"
                 | "create_dir"
                 | "create_dir_all"
+                | "remove_dir_all"
                 | "remove_dir"
                 | "rename_file"
                 | "copy_file"
@@ -154,6 +155,10 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "create_dir_all");
+    let needs_remove_dir_all = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "remove_dir_all");
     let needs_truncate_file = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -173,6 +178,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_created_time"
                 | "dir_entry_count"
                 | "dir_entry_name"
+                | "remove_dir_all"
                 | "dir_entry_path"
         )
     });
@@ -189,7 +195,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         needs_file_read,
         needs_file_ops,
         needs_truncate_file,
-        needs_file_metadata || needs_create_dir_all,
+        needs_file_metadata || needs_create_dir_all || needs_remove_dir_all,
         needs_process_args,
     );
     let mut text = build_compiled_text(&layout, &image)?;
@@ -806,7 +812,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_string_concat = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_concat" | "dir_entry_path" | "path_with_extension"
+            "string_concat" | "dir_entry_path" | "path_with_extension" | "remove_dir_all"
         )
     });
     let needs_platform_os = image
@@ -1154,7 +1160,11 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_free = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "free_geo" | "string_free" | "dir_entry_path" | "path_with_extension"
+            "free_geo"
+                | "string_free"
+                | "dir_entry_path"
+                | "path_with_extension"
+                | "remove_dir_all"
         )
     });
     let needs_realloc = image
@@ -1259,6 +1269,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "create_dir_all");
+    let needs_remove_dir_all = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "remove_dir_all");
     let needs_remove_dir = image
         .relocations
         .iter()
@@ -1306,6 +1320,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
                 | "file_created_time"
                 | "dir_entry_count"
                 | "dir_entry_name"
+                | "remove_dir_all"
         )
     });
     let needs_process_exit = image
@@ -1445,6 +1460,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_remove_file
         || needs_create_dir
         || needs_create_dir_all
+        || needs_remove_dir_all
         || needs_remove_dir
         || needs_rename_file
         || needs_file_open
@@ -2010,7 +2026,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             emit_file_flush_helper(&mut code, layout);
         }
     }
-    if needs_remove_file {
+    if needs_remove_file || needs_remove_dir_all {
         helpers.remove_file = Some(layout.text_rva + code.len() as u32);
         emit_remove_file_helper(&mut code, layout);
     }
@@ -2022,7 +2038,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.create_dir_all = Some(layout.text_rva + code.len() as u32);
         emit_create_dir_all_helper(&mut code, layout);
     }
-    if needs_remove_dir {
+    if needs_remove_dir || needs_remove_dir_all {
         helpers.remove_dir = Some(layout.text_rva + code.len() as u32);
         emit_remove_dir_helper(&mut code, layout);
     }
@@ -2106,6 +2122,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             .relocations
             .iter()
             .any(|relocation| relocation.symbol == "file_is_dir")
+            || needs_remove_dir_all
         {
             helpers.file_is_dir = Some(layout.text_rva + code.len() as u32);
             emit_file_attribute_helper(&mut code, layout, true);
@@ -2138,6 +2155,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             .relocations
             .iter()
             .any(|relocation| relocation.symbol == "dir_entry_count")
+            || needs_remove_dir_all
         {
             helpers.dir_entry_count = Some(layout.text_rva + code.len() as u32);
             emit_dir_entry_count_helper(&mut code, layout);
@@ -2147,7 +2165,8 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
                 relocation.symbol.as_str(),
                 "dir_entry_name" | "dir_entry_path"
             )
-        }) {
+        }) || needs_remove_dir_all
+        {
             helpers.dir_entry_name = Some(layout.text_rva + code.len() as u32);
             emit_dir_entry_name_helper(&mut code, layout);
         }
@@ -2155,6 +2174,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
             .relocations
             .iter()
             .any(|relocation| relocation.symbol == "dir_entry_path")
+            || needs_remove_dir_all
         {
             let name = helpers.dir_entry_name?;
             let concat = helpers.string_concat?;
@@ -2166,6 +2186,27 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_file_metadata {
         helpers.file_exists = Some(layout.text_rva + code.len() as u32);
         emit_file_exists_helper(&mut code, layout);
+    }
+    if needs_remove_dir_all {
+        let count = helpers.dir_entry_count?;
+        let path = helpers.dir_entry_path?;
+        let is_dir = helpers.file_is_dir?;
+        let remove_file = helpers.remove_file?;
+        let remove_dir = helpers.remove_dir?;
+        let free = helpers.free_geo?;
+        let self_rva = layout.text_rva + code.len() as u32;
+        helpers.remove_dir_all = Some(self_rva);
+        emit_remove_dir_all_helper(
+            &mut code,
+            layout,
+            count,
+            path,
+            is_dir,
+            remove_file,
+            remove_dir,
+            free,
+            self_rva,
+        );
     }
     if needs_read_line {
         helpers.read_line = Some(layout.text_rva + code.len() as u32);
@@ -2513,6 +2554,9 @@ fn compiled_symbol_rva(
     if symbol == "remove_dir" {
         return helpers.remove_dir;
     }
+    if symbol == "remove_dir_all" {
+        return helpers.remove_dir_all;
+    }
     if symbol == "rename_file" {
         return helpers.rename_file;
     }
@@ -2682,6 +2726,7 @@ struct PeHelperRvas {
     create_dir: Option<u32>,
     create_dir_all: Option<u32>,
     remove_dir: Option<u32>,
+    remove_dir_all: Option<u32>,
     rename_file: Option<u32>,
     copy_file: Option<u32>,
     file_open: Option<u32>,
@@ -6184,6 +6229,91 @@ fn emit_remove_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, invalid_path, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_remove_dir_all_helper(
+    code: &mut Vec<u8>,
+    layout: &Layout,
+    count: u32,
+    path: u32,
+    is_dir: u32,
+    remove_file: u32,
+    remove_dir: u32,
+    free: u32,
+    self_rva: u32,
+) {
+    // Recursively remove children using the compiler-emitted Win32 helpers.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x20]);
+    code.extend_from_slice(&[0x48, 0x85, 0xc9]);
+    let invalid_path = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20]);
+    emit_direct_call(code, layout.text_rva, count);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0x44, 0x24, 0x28, 0x31, 0xc0, 0x48, 0x89, 0x44, 0x24, 0x30,
+    ]);
+
+    let child_loop = layout.text_rva + code.len() as u32;
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x30, 0x48, 0x3b, 0x44, 0x24, 0x28]);
+    let children_done = emit_near_jump_placeholder(code, 0x83);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20, 0x48, 0x8b, 0x54, 0x24, 0x30]);
+    emit_direct_call(code, layout.text_rva, path);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x38, 0x48, 0x85, 0xc0]);
+    let child_path_failed = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    emit_direct_call(code, layout.text_rva, is_dir);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let child_is_dir = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    emit_direct_call(code, layout.text_rva, remove_file);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x40]);
+    let file_to_release = emit_near_unconditional_placeholder_pe(code);
+
+    let directory_target = layout.text_rva + code.len() as u32;
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    emit_direct_call(code, layout.text_rva, self_rva);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x40]);
+
+    let release_child = layout.text_rva + code.len() as u32;
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x38]);
+    emit_direct_call(code, layout.text_rva, free);
+    code.extend_from_slice(&[0x83, 0x7c, 0x24, 0x40, 0x00]);
+    let child_failed = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0xff, 0x44, 0x24, 0x30]);
+    emit_near_unconditional_placeholder_pe(code);
+    let loop_back = code.len() - 4;
+
+    let root_target = layout.text_rva + code.len() as u32;
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20]);
+    emit_direct_call(code, layout.text_rva, remove_dir);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    let failure = layout.text_rva + code.len() as u32;
+    code.extend_from_slice(&[0xb8, 1, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+
+    patch_near_jump(code, invalid_path, (failure - layout.text_rva) as usize);
+    patch_near_jump(
+        code,
+        children_done,
+        (root_target - layout.text_rva) as usize,
+    );
+    patch_near_jump(
+        code,
+        child_path_failed,
+        (failure - layout.text_rva) as usize,
+    );
+    patch_near_jump(
+        code,
+        child_is_dir,
+        (directory_target - layout.text_rva) as usize,
+    );
+    patch_near_jump(
+        code,
+        file_to_release,
+        (release_child - layout.text_rva) as usize,
+    );
+    patch_near_jump(code, child_failed, (failure - layout.text_rva) as usize);
+    patch_near_jump(code, loop_back, (child_loop - layout.text_rva) as usize);
 }
 
 fn emit_rename_file_helper(code: &mut Vec<u8>, layout: &Layout) {

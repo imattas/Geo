@@ -293,9 +293,8 @@ The ELF64 and PE64 paths now also emit `std.fs.create_dir` and
 The ELF64 and PE64 paths now emit `std.fs.create_dir_all` through bounded,
 compiler-owned recursive directory helpers. Linux uses `mkdir` and Windows uses
 `CreateDirectoryA` with directory-attribute validation for existing prefixes.
-The ELF64 runtime now also provides recursive removal by composing its native
-directory enumeration, file removal, directory removal, and allocation helpers;
-the matching PE64 implementation remains next.
+Both executable runtimes now provide recursive removal by composing native
+directory enumeration, file removal, directory removal, and allocation helpers.
 
 The ELF64 and PE64 paths now also emit `std.fs.rename_file` through compiler-owned
 `rename` and `MoveFileA` paths.

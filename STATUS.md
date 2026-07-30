@@ -337,6 +337,7 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct native `create_dir` and `remove_dir` support now uses Linux `mkdir`/`rmdir` syscalls and Win32 `CreateDirectoryA`/`RemoveDirectoryA`, with cross-platform mutation fixtures.
 - Direct Linux and Windows `create_dir_all` now use compiler-emitted bounded recursive helpers. Linux creates POSIX prefixes with `mkdir`; Windows calls `CreateDirectoryA` and validates existing prefixes with `GetFileAttributesA`.
 - Direct Linux `remove_dir_all` now recursively enumerates compiler-owned directory entries, removes files and child directories, releases child paths, and removes the root directory; Linux execution coverage is in CI.
+- Direct Linux and Windows `remove_dir_all` now recursively enumerate and remove files and child directories through compiler-emitted native helpers; both target execution paths are covered by CI and Windows-host tests.
 - Direct native `rename_file` support now uses Linux `rename` and Win32 `MoveFileA`, with cross-platform source/destination cleanup fixtures.
 - Direct native `copy_file` support now uses a compiler-emitted chunked Linux
   `open`/`read`/`write` path and Win32 `CopyFileA`, with ELF64, PE64, and CI
