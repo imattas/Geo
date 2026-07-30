@@ -230,6 +230,9 @@ are released at scope exit, while moves of outer values still propagate.
 Nested scopes now support intentional shadowing while same-scope duplicate
 locals remain errors. Reassigning a reference releases its previous source
 borrow before retaining the new one.
+Reference-chain diagnostics now trace through intermediate references to the
+root source value, and dereference reborrows target the pointee rather than the
+reference variable itself.
 
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,

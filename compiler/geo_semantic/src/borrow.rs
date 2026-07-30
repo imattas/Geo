@@ -161,7 +161,7 @@ impl BorrowCtx<'_> {
                     .unwrap_or(Type::Int);
                 if matches!(ty, Type::Reference { .. }) {
                     self.promote_temporary_borrows();
-                    if let Some(source) = borrowed_source(value) {
+                    if let Some(source) = self.borrow_source(value) {
                         self.reference_origins.insert(
                             name.clone(),
                             ReferenceOrigin {
@@ -190,7 +190,7 @@ impl BorrowCtx<'_> {
                 self.reference_origins.remove(name);
                 if let Some(Type::Reference { mutable, .. }) = self.locals.get(name).cloned() {
                     self.promote_temporary_borrows();
-                    if let Some(source) = borrowed_source(value) {
+                    if let Some(source) = self.borrow_source(value) {
                         self.reference_origins
                             .insert(name.clone(), ReferenceOrigin { source, mutable });
                     }
@@ -455,7 +455,7 @@ impl BorrowCtx<'_> {
 
     fn borrow_expr(&mut self, expr: &Expr, mutable: bool) {
         self.read_expr(expr);
-        let Some(name) = borrowed_local(expr) else {
+        let Some(name) = self.borrow_target(expr) else {
             return;
         };
         let state = self.borrows.entry(name.clone()).or_default();
@@ -483,7 +483,7 @@ impl BorrowCtx<'_> {
             expr,
         } = expr
         {
-            if let Some(name) = borrowed_local(expr) {
+            if let Some(name) = self.borrow_target(expr) {
                 self.diagnostics
                     .push(Diagnostic::error(format!("borrow of '{name}' escapes")));
             }
@@ -491,7 +491,7 @@ impl BorrowCtx<'_> {
             if let Some(source) = self.reference_origins.get(name) {
                 self.diagnostics.push(Diagnostic::error(format!(
                     "borrow of '{}' escapes through reference '{name}'",
-                    source.source
+                    self.root_reference_source(&source.source)
                 )));
             }
         }
@@ -543,6 +543,38 @@ impl BorrowCtx<'_> {
         if state.shared == 0 && !state.mutable {
             self.borrows.remove(source);
         }
+    }
+
+    fn borrow_target(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Unary {
+                op: UnaryOp::Deref,
+                expr,
+            } => borrowed_local(expr).map(|name| self.root_reference_source(&name)),
+            _ => borrowed_local(expr),
+        }
+    }
+
+    fn borrow_source(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Unary {
+                op: UnaryOp::AddressOf | UnaryOp::MutableAddressOf,
+                expr,
+            } => self.borrow_target(expr),
+            _ => borrowed_local(expr),
+        }
+    }
+
+    fn root_reference_source(&self, name: &str) -> String {
+        let mut current = name.to_string();
+        let mut seen = HashSet::new();
+        while seen.insert(current.clone()) {
+            let Some(origin) = self.reference_origins.get(&current) else {
+                break;
+            };
+            current = origin.source.clone();
+        }
+        current
     }
 
     fn is_owned_local(&self, name: &str) -> bool {
@@ -639,16 +671,6 @@ fn borrowed_local(expr: &Expr) -> Option<String> {
         Expr::Var(name) => Some(name.clone()),
         Expr::Field { base, .. } | Expr::Index { base, .. } => borrowed_local(base),
         _ => None,
-    }
-}
-
-fn borrowed_source(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Unary {
-            op: UnaryOp::AddressOf | UnaryOp::MutableAddressOf,
-            expr,
-        } => borrowed_local(expr),
-        _ => borrowed_local(expr),
     }
 }
 

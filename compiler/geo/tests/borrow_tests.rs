@@ -269,3 +269,34 @@ fn releases_shadowed_reference_at_scope_exit() {
 
     borrow_check(source).unwrap();
 }
+
+#[test]
+fn reports_root_source_for_chained_reference_escape() {
+    let source = r#"
+        fn main() -> & &int {
+            let value: int = 1
+            let first: &int = &value
+            let second: & &int = &first
+            return second
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0]
+        .message
+        .contains("borrow of 'value' escapes through reference 'second'"));
+}
+
+#[test]
+fn reports_root_source_for_dereference_borrow_escape() {
+    let source = r#"
+        fn main() -> &int {
+            let value: int = 1
+            let view: &int = &value
+            return &*view
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0].message.contains("borrow of 'value' escapes"));
+}

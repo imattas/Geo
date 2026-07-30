@@ -241,6 +241,8 @@ reference borrows owned by those locals are released at scope exit.
 Nested lexical scopes may shadow outer locals, while same-scope duplicates are
 still rejected. Reference reassignment updates ownership by releasing the old
 origin and retaining the new one.
+Reference origins now support chained escape diagnostics and dereference
+reborrow targeting, keeping lifetime accounting attached to the actual pointee.
 
 Acceptance criteria:
 

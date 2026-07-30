@@ -168,6 +168,8 @@ fn main() {
   reference borrows when their owners leave scope.
 - Support nested shadowing and release old retained borrows on reference
   reassignment.
+- Trace chained reference escapes to their root source and model `&*reference`
+  as a borrow of the referenced pointee.
 - Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
 - Keep runtime/platform internals as the primary place for unsafe code.
 
