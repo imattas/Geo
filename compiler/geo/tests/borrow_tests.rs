@@ -170,3 +170,54 @@ fn rejects_reference_local_return_escape() {
         .message
         .contains("borrow of 'x' escapes through reference 'borrowed'"));
 }
+
+#[test]
+fn accepts_move_that_only_occurs_on_one_if_path() {
+    let source = r#"
+        fn main() -> int {
+            let name: string = "Geo"
+            if true {
+                let moved: string = name
+            }
+            let still_available: string = name
+            return 0
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
+fn rejects_move_that_occurs_on_every_if_path() {
+    let source = r#"
+        fn main() -> int {
+            let name: string = "Geo"
+            if true {
+                let first: string = name
+            } else {
+                let second: string = name
+            }
+            let moved_again: string = name
+            return 0
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0].message.contains("use of moved value 'name'"));
+}
+
+#[test]
+fn accepts_move_inside_a_loop_that_may_not_run() {
+    let source = r#"
+        fn main() -> int {
+            let name: string = "Geo"
+            while false {
+                let moved: string = name
+            }
+            let still_available: string = name
+            return 0
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}

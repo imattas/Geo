@@ -232,6 +232,9 @@ Progress: the borrow checker now models temporary statement borrows separately
 from borrows retained by reference locals, and records reference origins so
 returning a local reference to stack data is rejected indirectly as well as
 through a direct `&value` return.
+Move state now uses definite-after-branch merging: a move on only one `if` path
+does not poison later code, while moves on all paths remain rejected. Loop-body
+moves are likewise not assumed definite after a possibly empty loop.
 
 Acceptance criteria:
 

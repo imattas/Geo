@@ -220,6 +220,10 @@ The borrow checker now distinguishes statement-scoped temporary borrows from
 borrows retained by named reference locals. Calls such as `inspect(&value)` no
 longer keep a borrow alive after the call, while `let view: &T = &value` retains
 the borrow and indirect returns through `view` are rejected as escaping.
+Control-flow analysis now treats a move as definite only when every `if` path
+moves the value; moves inside `while` and `for` bodies are not propagated past
+loops that may execute zero times. Borrow and reference-origin state is merged
+conservatively across conditional branches.
 
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,

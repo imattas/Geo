@@ -160,6 +160,10 @@ fn main() {
 - Expire temporary borrows at statement boundaries while retaining borrows held
   by named references.
 - Track reference origins so indirect returns cannot hide stack-borrow escapes.
+- Merge moved, borrowed, and reference-origin state across branches using
+  definite-move and conservative-borrow rules.
+- Treat loop bodies as potentially zero-iteration when propagating ownership
+  state.
 - Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
 - Keep runtime/platform internals as the primary place for unsafe code.
 

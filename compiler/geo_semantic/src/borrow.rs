@@ -112,6 +112,8 @@ impl BorrowCtx<'_> {
                     if let Some(source) = borrowed_source(value) {
                         self.reference_origins.insert(name.clone(), source);
                     }
+                } else {
+                    self.reference_origins.remove(name);
                 }
                 self.locals.insert(name.clone(), ty);
                 self.moved.remove(name);
@@ -123,6 +125,7 @@ impl BorrowCtx<'_> {
                 }
                 self.consume_expr(value);
                 self.moved.remove(name);
+                self.reference_origins.remove(name);
             }
             Stmt::PointerAssign { pointer, value, .. } => {
                 self.read_expr(pointer);
@@ -146,15 +149,32 @@ impl BorrowCtx<'_> {
             } => {
                 self.read_expr(condition);
                 let before = self.moved.clone();
+                let before_borrows = self.borrows.clone();
+                let before_origins = self.reference_origins.clone();
                 self.check_stmts(then_body);
                 let then_moved = self.moved.clone();
+                let then_borrows = self.borrows.clone();
+                let then_origins = self.reference_origins.clone();
                 self.moved = before.clone();
+                self.borrows = before_borrows.clone();
+                self.reference_origins = before_origins.clone();
                 self.check_stmts(else_body);
-                self.moved.extend(then_moved);
+                let else_moved = self.moved.clone();
+                let else_borrows = self.borrows.clone();
+                let else_origins = self.reference_origins.clone();
+                self.moved = definitely_moved_after_branches(&then_moved, &else_moved);
+                self.borrows = merge_borrows(&then_borrows, &else_borrows);
+                self.reference_origins = merge_reference_origins(&then_origins, &else_origins);
             }
             Stmt::While { condition, body } => {
                 self.read_expr(condition);
+                let before = self.moved.clone();
+                let before_borrows = self.borrows.clone();
+                let before_origins = self.reference_origins.clone();
                 self.check_stmts(body);
+                self.moved = before;
+                self.borrows = before_borrows;
+                self.reference_origins = before_origins;
             }
             Stmt::For {
                 name,
@@ -165,6 +185,9 @@ impl BorrowCtx<'_> {
             } => {
                 self.read_expr(start);
                 self.read_expr(end);
+                let before_moved = self.moved.clone();
+                let before_borrows = self.borrows.clone();
+                let before_origins = self.reference_origins.clone();
                 let previous = self.locals.insert(name.clone(), Type::Int);
                 self.moved.remove(name);
                 self.check_stmts(body);
@@ -173,6 +196,9 @@ impl BorrowCtx<'_> {
                 } else {
                     self.locals.remove(name);
                 }
+                self.moved = before_moved;
+                self.borrows = before_borrows;
+                self.reference_origins = before_origins;
             }
             Stmt::Loop(body) => {
                 self.check_stmts(body);
@@ -474,6 +500,39 @@ impl BorrowCtx<'_> {
             Expr::Field { .. } | Expr::Index { .. } | Expr::Call { .. } => None,
         }
     }
+}
+
+fn definitely_moved_after_branches(
+    then_moved: &HashSet<String>,
+    else_moved: &HashSet<String>,
+) -> HashSet<String> {
+    then_moved.intersection(else_moved).cloned().collect()
+}
+
+fn merge_borrows(
+    then_borrows: &HashMap<String, BorrowState>,
+    else_borrows: &HashMap<String, BorrowState>,
+) -> HashMap<String, BorrowState> {
+    let mut merged = then_borrows.clone();
+    for (name, else_state) in else_borrows {
+        let state = merged.entry(name.clone()).or_default();
+        state.shared = state.shared.max(else_state.shared);
+        state.mutable |= else_state.mutable;
+        state.temporary_shared = state.temporary_shared.max(else_state.temporary_shared);
+        state.temporary_mutable |= else_state.temporary_mutable;
+    }
+    merged
+}
+
+fn merge_reference_origins(
+    then_origins: &HashMap<String, String>,
+    else_origins: &HashMap<String, String>,
+) -> HashMap<String, String> {
+    let mut merged = then_origins.clone();
+    for (name, source) in else_origins {
+        merged.entry(name.clone()).or_insert_with(|| source.clone());
+    }
+    merged
 }
 
 fn borrowed_local(expr: &Expr) -> Option<String> {
