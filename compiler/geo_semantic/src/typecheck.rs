@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
     let mut diagnostics = Vec::new();
+    check_private_alias_uses(program, &mut diagnostics);
     let raw_structs = struct_map(&program.structs);
     let raw_enums = enum_map(&program.enums);
     let aliases = type_alias_map(program, &raw_structs, &raw_enums, &mut diagnostics);
@@ -223,12 +224,34 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
             })
             .map(|(name, callable)| (name.clone(), callable.clone()))
             .collect::<HashMap<_, _>>();
+        let visible_structs = structs
+            .iter()
+            .filter(|(_, structure)| {
+                declaration_is_visible(
+                    structure.is_public,
+                    structure.source_path.as_ref(),
+                    function.source_path.as_ref(),
+                )
+            })
+            .map(|(name, structure)| (*name, *structure))
+            .collect::<HashMap<_, _>>();
+        let visible_enums = enums
+            .iter()
+            .filter(|(_, enumeration)| {
+                declaration_is_visible(
+                    enumeration.is_public,
+                    enumeration.source_path.as_ref(),
+                    function.source_path.as_ref(),
+                )
+            })
+            .map(|(name, enumeration)| (*name, *enumeration))
+            .collect::<HashMap<_, _>>();
         check_function(
             function,
             &program.consts,
             &visible_functions,
-            &structs,
-            &enums,
+            &visible_structs,
+            &visible_enums,
             &mut diagnostics,
         );
     }
@@ -237,6 +260,113 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
         Ok(())
     } else {
         Err(diagnostics)
+    }
+}
+
+fn declaration_is_visible(
+    is_public: bool,
+    declaration_path: Option<&PathBuf>,
+    current_path: Option<&PathBuf>,
+) -> bool {
+    is_public || declaration_path.is_none() || declaration_path == current_path
+}
+
+fn check_private_alias_uses(program: &Program, diagnostics: &mut Vec<Diagnostic>) {
+    let aliases = program
+        .type_aliases
+        .iter()
+        .map(|alias| (alias.name.as_str(), alias))
+        .collect::<HashMap<_, _>>();
+
+    for function in &program.functions {
+        for param in &function.params {
+            check_alias_type_visibility(
+                &param.ty,
+                &aliases,
+                function.source_path.as_ref(),
+                diagnostics,
+            );
+        }
+        check_alias_type_visibility(
+            &function.return_type,
+            &aliases,
+            function.source_path.as_ref(),
+            diagnostics,
+        );
+        for statement in &function.body {
+            check_alias_stmt_visibility(
+                statement,
+                &aliases,
+                function.source_path.as_ref(),
+                diagnostics,
+            );
+        }
+    }
+}
+
+fn check_alias_stmt_visibility(
+    statement: &Stmt,
+    aliases: &HashMap<&str, &crate::ast::TypeAlias>,
+    current_path: Option<&PathBuf>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match statement {
+        Stmt::Let { ty: Some(ty), .. } => {
+            check_alias_type_visibility(ty, aliases, current_path, diagnostics)
+        }
+        Stmt::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            for statement in then_body.iter().chain(else_body) {
+                check_alias_stmt_visibility(statement, aliases, current_path, diagnostics);
+            }
+        }
+        Stmt::While { body, .. }
+        | Stmt::For { body, .. }
+        | Stmt::Loop(body)
+        | Stmt::Unsafe(body) => {
+            for statement in body {
+                check_alias_stmt_visibility(statement, aliases, current_path, diagnostics);
+            }
+        }
+        Stmt::Let { ty: None, .. }
+        | Stmt::Return(_)
+        | Stmt::Assign { .. }
+        | Stmt::PointerAssign { .. }
+        | Stmt::PlaceAssign { .. }
+        | Stmt::Expr(_)
+        | Stmt::Break
+        | Stmt::Continue => {}
+    }
+}
+
+fn check_alias_type_visibility(
+    ty: &Type,
+    aliases: &HashMap<&str, &crate::ast::TypeAlias>,
+    current_path: Option<&PathBuf>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match ty {
+        Type::Named(name) => {
+            if let Some(alias) = aliases.get(name.as_str()) {
+                if !declaration_is_visible(
+                    alias.is_public,
+                    alias.source_path.as_ref(),
+                    current_path,
+                ) {
+                    diagnostics.push(Diagnostic::error(format!("unknown type '{name}'")));
+                }
+            }
+        }
+        Type::Array(inner)
+        | Type::Slice(inner)
+        | Type::Pointer(inner)
+        | Type::Reference { inner, .. } => {
+            check_alias_type_visibility(inner, aliases, current_path, diagnostics);
+        }
+        _ => {}
     }
 }
 
@@ -322,6 +452,7 @@ fn expand_program_type_aliases(
                 ty: expand_type_alias(&decl.ty, aliases, &mut Vec::new(), diagnostics),
                 value: expand_expr_type_aliases(&decl.value, aliases, diagnostics),
                 is_public: decl.is_public,
+                source_path: decl.source_path.clone(),
             })
             .collect(),
         structs: program
@@ -651,7 +782,7 @@ fn check_function<'a>(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let diagnostic_start = diagnostics.len();
-    let mut locals = const_locals(consts);
+    let mut locals = const_locals_for_module(consts, function.source_path.as_ref());
     locals.insert(
         MODULE_CONTEXT_LOCAL,
         Local {
@@ -731,6 +862,32 @@ fn const_locals<'a>(consts: &'a [ConstDecl]) -> HashMap<&'a str, Local> {
                 decl.name.as_str(),
                 Local {
                     ty: decl.ty.clone(),
+                    mutable: false,
+                    module_path: None,
+                },
+            )
+        })
+        .collect()
+}
+
+fn const_locals_for_module<'a>(
+    consts: &'a [ConstDecl],
+    current_path: Option<&PathBuf>,
+) -> HashMap<&'a str, Local> {
+    consts
+        .iter()
+        .filter(|constant| {
+            declaration_is_visible(
+                constant.is_public,
+                constant.source_path.as_ref(),
+                current_path,
+            )
+        })
+        .map(|constant| {
+            (
+                constant.name.as_str(),
+                Local {
+                    ty: constant.ty.clone(),
                     mutable: false,
                     module_path: None,
                 },

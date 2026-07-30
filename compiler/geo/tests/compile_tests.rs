@@ -640,6 +640,26 @@ fn rejects_private_imported_struct_fields() {
 }
 
 #[test]
+fn rejects_unqualified_private_imported_data() {
+    let config = CompileConfig {
+        target: Target::parse("x86_64-linux").unwrap(),
+        runtime_entry: false,
+    };
+    let diagnostics = compile_to_asm(
+        &workspace_path("examples/modules_private_data_unqualified"),
+        &config,
+    )
+    .expect_err("private imported data must not enter the caller scope");
+
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unknown type 'Secret'")));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unknown variable 'HIDDEN'")));
+}
+
+#[test]
 fn emits_data_for_string_literal_calls() {
     let source = r#"
         import std.io

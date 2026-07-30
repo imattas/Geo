@@ -23,6 +23,7 @@ pub struct TypeAlias {
     pub name: String,
     pub ty: Type,
     pub is_public: bool,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub struct ConstDecl {
     pub ty: Type,
     pub value: Expr,
     pub is_public: bool,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +64,7 @@ pub struct EnumDecl {
     pub name: String,
     pub variants: Vec<EnumVariant>,
     pub is_public: bool,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -121,6 +121,15 @@ fn parse_source(source: &SourceFile) -> Result<Program, Vec<Diagnostic>> {
     for structure in &mut program.structs {
         structure.source_path = Some(source.path.clone());
     }
+    for alias in &mut program.type_aliases {
+        alias.source_path = Some(source.path.clone());
+    }
+    for constant in &mut program.consts {
+        constant.source_path = Some(source.path.clone());
+    }
+    for enumeration in &mut program.enums {
+        enumeration.source_path = Some(source.path.clone());
+    }
     Ok(program)
 }
 

@@ -105,6 +105,9 @@ Struct fields now use the same explicit syntax: `pub value: T` exports a field,
 while an unmarked field is private in explicitly annotated modules. Field
 provenance is tracked through semantic checking, and legacy unannotated modules
 continue to expose their fields for compatibility.
+Semantic environments now apply that module boundary to unqualified imported
+structs, enums, constants, and type aliases as well; declarations remain
+available to their defining module without leaking into importing callers.
 
 ## Verified Commands
 

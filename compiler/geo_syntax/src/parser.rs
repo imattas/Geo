@@ -96,6 +96,7 @@ impl<'a> Parser<'a> {
             name,
             ty,
             is_public,
+            source_path: None,
         })
     }
 
@@ -112,6 +113,7 @@ impl<'a> Parser<'a> {
             ty,
             value,
             is_public,
+            source_path: None,
         })
     }
 
@@ -201,6 +203,7 @@ impl<'a> Parser<'a> {
             name,
             variants,
             is_public,
+            source_path: None,
         })
     }
 

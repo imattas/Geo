@@ -97,6 +97,10 @@ Struct fields now support explicit `pub` visibility. Private imported fields are
 rejected during type checking, while same-module access and legacy modules keep
 working. Aggregate layout remains independent of visibility.
 
+The semantic checker now builds per-function visibility environments for
+unqualified imported structs, enums, and constants, and checks aliases before
+type expansion so private aliases cannot disappear into their underlying type.
+
 The compiler driver now exposes `dump-tokens`, `dump-ast`, and `dump-ir` for
 inspecting each owned frontend and lowering stage directly from the CLI. Parsed
 functions also retain their source span, expression spans, top-level statement

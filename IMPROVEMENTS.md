@@ -30,6 +30,9 @@ enums; these declarations now have native multi-file coverage.
 Extend it to struct fields with `pub field: Type`; field visibility is now
 preserved by the AST and enforced for imported aggregate access without changing
 native layout.
+Apply the same source-aware filtering to unqualified imported data. Structs,
+enums, constants, and aliases now retain module provenance and are checked in
+the caller's semantic environment before lowering.
 
 Recommended split:
 
