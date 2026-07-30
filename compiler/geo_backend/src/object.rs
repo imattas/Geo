@@ -302,7 +302,7 @@ fn emit_function_text(
     for instruction in &function.instructions {
         match instruction {
             Instruction::Const { dst, value } => {
-                emit_mov_mem_imm32(bytes, frame.value_offset(*dst), *value as i32);
+                emit_mov_mem_imm64(bytes, frame.value_offset(*dst), *value);
             }
             Instruction::StringConst { dst, label, value } => {
                 let offset = rodata.len() as u64;
@@ -818,10 +818,10 @@ fn align_to(value: u32, alignment: u32) -> u32 {
     value.div_ceil(alignment) * alignment
 }
 
-fn emit_mov_mem_imm32(bytes: &mut Vec<u8>, offset: u32, value: i32) {
-    bytes.extend_from_slice(&[0x48, 0xc7]);
-    emit_rbp_operand(bytes, 0, offset);
+fn emit_mov_mem_imm64(bytes: &mut Vec<u8>, offset: u32, value: i64) {
+    bytes.extend_from_slice(&[0x48, 0xb8]);
     bytes.extend_from_slice(&value.to_le_bytes());
+    emit_store_rax(bytes, offset);
 }
 
 fn emit_load_rax(bytes: &mut Vec<u8>, offset: u32) {

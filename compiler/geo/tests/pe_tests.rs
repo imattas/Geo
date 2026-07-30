@@ -72,6 +72,19 @@ fn emits_direct_pe64_constant_exit_program() {
 }
 
 #[test]
+fn emits_direct_pe64_full_width_integer_constant() {
+    let pe = pe_for("fn main() -> int { return 4294967297 }");
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert_eq!(&pe[0x80..0x84], b"PE\0\0");
+    assert!(contains_bytes(
+        &pe,
+        &[0x48, 0xb8, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]
+    ));
+    assert!(contains_bytes(&pe, b"ExitProcess"));
+}
+
+#[test]
 fn emits_direct_pe64_internal_function_call_as_machine_code() {
     let pe = pe_for(
         r#"

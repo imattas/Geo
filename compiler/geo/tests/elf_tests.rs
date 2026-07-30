@@ -49,6 +49,24 @@ fn emits_direct_elf64_executable_with_exit_entry() {
     ));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_full_width_integer_constant() {
+    let executable = executable_for("fn main() -> int { return 4294967297 }");
+    let path = executable_path("full-width-integer");
+    write_executable(
+        &path,
+        executable,
+        "failed to write full-width integer fixture",
+    );
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute full-width integer fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(1));
+}
+
 #[test]
 fn emits_direct_elf64_string_length_runtime_helper() {
     let executable = executable_for(

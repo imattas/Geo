@@ -251,6 +251,9 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Use an explicit hidden return-buffer ABI for struct and fixed-array returns,
   with IR-level aggregate call/return instructions and direct native stores so
   aggregate values do not depend on an external runtime convention.
+- Preserve full-width signed integer constants in NASM, ELF64, and PE64 output;
+  native object emission now uses 64-bit immediates and direct execution covers
+  values above the signed 32-bit range.
 - Keep process argument access target-specific: Linux uses preserved
   `argc`/`argv`, while Windows uses a dedicated quoted-command-line parser
   rather than assuming a C runtime entry signature. The PE parser now also

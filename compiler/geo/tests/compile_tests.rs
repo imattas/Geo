@@ -27,8 +27,15 @@ fn emits_assembly_for_return_42() {
 
     assert!(asm.contains("global main"));
     assert!(asm.contains("main:"));
-    assert!(asm.contains("mov qword [rbp - 8], 42"));
+    assert!(asm.contains("mov rax, 42\n    mov [rbp - 8], rax"));
     assert!(asm.contains("ret"));
+}
+
+#[test]
+fn emits_assembly_for_full_width_integer_constant() {
+    let asm = asm_for("fn main() -> int { return 4294967297 }");
+
+    assert!(asm.contains("mov rax, 4294967297\n    mov [rbp - 8], rax"));
 }
 
 #[test]
@@ -103,7 +110,7 @@ fn emits_assembly_for_function_tail_expression_return() {
 
     assert!(asm.contains("global main"));
     assert!(asm.contains("main:"));
-    assert!(asm.contains("mov qword [rbp - 8], 42"));
+    assert!(asm.contains("mov rax, 42\n    mov [rbp - 8], rax"));
     assert!(asm.contains("ret"));
 }
 
@@ -111,8 +118,8 @@ fn emits_assembly_for_function_tail_expression_return() {
 fn emits_assembly_for_top_level_const_use() {
     let asm = asm_for("const LIMIT: int = 42 fn main() -> int { return LIMIT }");
 
-    assert!(asm.contains("mov qword [rbp - "));
-    assert!(asm.contains(", 42"));
+    assert!(asm.contains("mov rax, 42"));
+    assert!(asm.contains("mov [rbp - "));
 }
 
 #[test]
@@ -763,7 +770,8 @@ fn emits_assembly_for_scalar_slot_aggregates() {
 
     assert!(asm.contains("main:"));
     assert!(asm.contains("call __geo_bounds_check"));
-    assert!(asm.contains("mov qword [rbp - "));
+    assert!(asm.contains("mov rax, 1"));
+    assert!(asm.contains("mov [rbp - "));
     assert!(asm.contains("ret"));
 }
 
@@ -848,7 +856,8 @@ fn emits_assembly_for_field_and_index_assignment_places() {
     "#;
     let asm = asm_for(source);
 
-    assert!(asm.contains("    mov qword [rbp - "));
+    assert!(asm.contains("    mov rax, 2"));
+    assert!(asm.contains("    mov [rbp - "));
     assert!(asm.contains("    add rax, r10"));
     assert!(asm.contains("ret"));
 }

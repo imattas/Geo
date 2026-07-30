@@ -103,7 +103,8 @@ fn emit_function(function: &IrFunction, target: &Target, runtime_entry: bool, ou
         match instruction {
             Instruction::Const { dst, value } => {
                 let dst = slot(&layout, *dst);
-                out.push_str(&format!("    mov qword [rbp - {dst}], {value}\n"));
+                out.push_str(&format!("    mov rax, {value}\n"));
+                out.push_str(&format!("    mov [rbp - {dst}], rax\n"));
             }
             Instruction::StringConst { dst, label, .. } => {
                 let dst = slot(&layout, *dst);
