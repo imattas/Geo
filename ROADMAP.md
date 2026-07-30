@@ -290,9 +290,9 @@ The ELF64 and PE64 paths now also emit `std.io.truncate_file` natively.
 The ELF64 and PE64 paths now also emit `std.fs.create_dir` and
 `std.fs.remove_dir` through compiler-owned syscall and Win32 helper paths.
 
-The ELF64 path now also emits `std.fs.create_dir_all` through a bounded,
-compiler-owned POSIX prefix creation helper; the matching Windows recursive
-directory helper remains a backend task.
+The ELF64 and PE64 paths now emit `std.fs.create_dir_all` through bounded,
+compiler-owned recursive directory helpers. Linux uses `mkdir` and Windows uses
+`CreateDirectoryA` with directory-attribute validation for existing prefixes.
 
 The ELF64 and PE64 paths now also emit `std.fs.rename_file` through compiler-owned
 `rename` and `MoveFileA` paths.

@@ -1190,6 +1190,53 @@ fn emits_direct_pe64_file_exists_as_compiled_helper() {
 }
 
 #[test]
+fn emits_direct_pe64_recursive_directory_helper() {
+    let pe = pe_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return create_dir_all("C:\\geo-create-dir-all\\cache\\objects")
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"CreateDirectoryA"));
+    assert!(contains_bytes(&pe, b"GetFileAttributesA"));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_recursive_directory_creation() {
+    let root = std::env::temp_dir().join(format!("geo-create-dir-all-{}", std::process::id()));
+    let nested = root.join("cache").join("objects");
+    let _ = std::fs::remove_dir_all(&root);
+    let source = format!(
+        r#"
+            import std.io
+
+            fn main() -> int {{
+                return create_dir_all("{}")
+            }}
+        "#,
+        nested.to_string_lossy().replace('\\', "\\\\")
+    );
+    let executable = pe_for(&source);
+    let path = std::env::temp_dir().join(format!("geo-create-dir-all-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write recursive directory fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute recursive directory fixture");
+    let nested_exists = nested.is_dir();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(status.code(), Some(0));
+    assert!(nested_exists);
+}
+
+#[test]
 fn emits_direct_pe64_file_metadata_as_compiled_helpers() {
     let pe = pe_for(
         r#"

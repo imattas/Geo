@@ -139,6 +139,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "touch_file"
                 | "remove_file"
                 | "create_dir"
+                | "create_dir_all"
                 | "remove_dir"
                 | "rename_file"
                 | "copy_file"
@@ -149,6 +150,10 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "file_close"
         )
     });
+    let needs_create_dir_all = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "create_dir_all");
     let needs_truncate_file = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -184,7 +189,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         needs_file_read,
         needs_file_ops,
         needs_truncate_file,
-        needs_file_metadata,
+        needs_file_metadata || needs_create_dir_all,
         needs_process_args,
     );
     let mut text = build_compiled_text(&layout, &image)?;
@@ -1250,6 +1255,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "create_dir");
+    let needs_create_dir_all = image
+        .relocations
+        .iter()
+        .any(|relocation| relocation.symbol == "create_dir_all");
     let needs_remove_dir = image
         .relocations
         .iter()
@@ -1435,6 +1444,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_truncate_file
         || needs_remove_file
         || needs_create_dir
+        || needs_create_dir_all
         || needs_remove_dir
         || needs_rename_file
         || needs_file_open
@@ -2008,6 +2018,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.create_dir = Some(layout.text_rva + code.len() as u32);
         emit_create_dir_helper(&mut code, layout);
     }
+    if needs_create_dir_all {
+        helpers.create_dir_all = Some(layout.text_rva + code.len() as u32);
+        emit_create_dir_all_helper(&mut code, layout);
+    }
     if needs_remove_dir {
         helpers.remove_dir = Some(layout.text_rva + code.len() as u32);
         emit_remove_dir_helper(&mut code, layout);
@@ -2493,6 +2507,9 @@ fn compiled_symbol_rva(
     if symbol == "create_dir" {
         return helpers.create_dir;
     }
+    if symbol == "create_dir_all" {
+        return helpers.create_dir_all;
+    }
     if symbol == "remove_dir" {
         return helpers.remove_dir;
     }
@@ -2663,6 +2680,7 @@ struct PeHelperRvas {
     file_flush: Option<u32>,
     remove_file: Option<u32>,
     create_dir: Option<u32>,
+    create_dir_all: Option<u32>,
     remove_dir: Option<u32>,
     rename_file: Option<u32>,
     copy_file: Option<u32>,
@@ -2987,6 +3005,13 @@ fn emit_near_unconditional_placeholder_pe(code: &mut Vec<u8>) -> usize {
     let displacement = code.len();
     code.extend_from_slice(&[0, 0, 0, 0]);
     displacement
+}
+
+fn emit_near_jump_back_pe(code: &mut Vec<u8>, target: usize) {
+    code.push(0xe9);
+    let displacement = code.len();
+    code.extend_from_slice(&[0, 0, 0, 0]);
+    patch_near_jump(code, displacement, target);
 }
 
 #[derive(Clone, Copy)]
@@ -6045,6 +6070,106 @@ fn emit_create_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
     code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
     patch_short_jump(code, invalid_path, failure);
     patch_short_jump(code, failed, failure);
+}
+
+fn emit_create_dir_all_helper(code: &mut Vec<u8>, layout: &Layout) {
+    // Copy the path into writable storage, create each Windows path prefix,
+    // and use file attributes to accept only existing directories.
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0x38, 0x04, 0x00, 0x00]);
+    code.extend_from_slice(&[0x49, 0x89, 0xc9]);
+    code.extend_from_slice(&[0x4c, 0x8d, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[0x4c, 0x89, 0x44, 0x24, 0x20]);
+    code.extend_from_slice(&[0x48, 0x31, 0xd2]);
+
+    let copy_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x81, 0xfa, 0xff, 0x03, 0x00, 0x00]);
+    let too_long = emit_near_jump_placeholder(code, 0x87);
+    code.extend_from_slice(&[0x41, 0x8a, 0x04, 0x11, 0x41, 0x88, 0x04, 0x10]);
+    code.extend_from_slice(&[0x48, 0xff, 0xc2, 0x84, 0xc0]);
+    let copy_done = emit_near_jump_placeholder(code, 0x84);
+    emit_short_jump_back(code, copy_loop);
+
+    let scan_start = code.len();
+    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
+    let scan_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x01, 0x84, 0xc0]);
+    let final_path = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x3c, b'/']);
+    let separator = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x3c, b'\\']);
+    let next_character = emit_near_jump_placeholder(code, 0x85);
+
+    let separator_target = code.len();
+    code.extend_from_slice(&[0x4d, 0x39, 0xc1]);
+    let leading_separator = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x4d, 0x8d, 0x50, 0x02, 0x4d, 0x39, 0xd1]);
+    let drive_separator = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x41, 0x80, 0x78, 0x01, b':']);
+    let drive_root = emit_near_jump_placeholder(code, 0x84);
+    let create_prefix = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0x4c, 0x24, 0x28, 0x41, 0xc6, 0x01, 0x00]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20, 0x48, 0x31, 0xd2]);
+    emit_call_iat(code, layout, layout.create_directory_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let prefix_created = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20]);
+    emit_call_iat(code, layout, layout.get_file_attributes_iat);
+    code.extend_from_slice(&[0x83, 0xf8, 0xff]);
+    let prefix_missing = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0xa9, 0x10, 0x00, 0x00, 0x00]);
+    let prefix_not_directory = emit_near_jump_placeholder(code, 0x84);
+    let prefix_restore = code.len();
+    code.extend_from_slice(&[
+        0x4c, 0x8b, 0x44, 0x24, 0x20, 0x4c, 0x8b, 0x4c, 0x24, 0x28, 0x41, 0xc6, 0x01, b'\\',
+    ]);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back_pe(code, scan_loop);
+
+    let leading_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back_pe(code, scan_loop);
+
+    let drive_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back_pe(code, scan_loop);
+
+    let next_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back_pe(code, scan_loop);
+
+    let final_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20, 0x48, 0x31, 0xd2]);
+    emit_call_iat(code, layout, layout.create_directory_iat);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let final_created = emit_near_jump_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20]);
+    emit_call_iat(code, layout, layout.get_file_attributes_iat);
+    code.extend_from_slice(&[0x83, 0xf8, 0xff]);
+    let final_missing = emit_near_jump_placeholder(code, 0x84);
+    code.extend_from_slice(&[0xa9, 0x10, 0x00, 0x00, 0x00]);
+    let final_not_directory = emit_near_jump_placeholder(code, 0x84);
+
+    let success = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x81, 0xc4, 0x38, 0x04, 0x00, 0x00, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[
+        0xb8, 1, 0x00, 0x00, 0x00, 0x48, 0x81, 0xc4, 0x38, 0x04, 0x00, 0x00, 0xc3,
+    ]);
+
+    patch_near_jump(code, too_long, failure);
+    patch_near_jump(code, copy_done, scan_start);
+    patch_near_jump(code, final_path, final_target);
+    patch_near_jump(code, separator, separator_target);
+    patch_near_jump(code, next_character, next_target);
+    patch_near_jump(code, leading_separator, leading_target);
+    patch_near_jump(code, drive_separator, create_prefix);
+    patch_near_jump(code, drive_root, drive_target);
+    patch_near_jump(code, prefix_created, prefix_restore);
+    patch_near_jump(code, prefix_missing, failure);
+    patch_near_jump(code, prefix_not_directory, failure);
+    patch_near_jump(code, final_created, success);
+    patch_near_jump(code, final_missing, failure);
+    patch_near_jump(code, final_not_directory, failure);
 }
 
 fn emit_remove_dir_helper(code: &mut Vec<u8>, layout: &Layout) {
