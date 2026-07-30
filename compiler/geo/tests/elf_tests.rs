@@ -111,6 +111,60 @@ fn emits_direct_elf64_process_exit_runtime() {
 }
 
 #[test]
+fn emits_direct_elf64_process_argument_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                let first: string = arg(0)
+                let fallback: string = arg_or(99, "")
+                if arg_exists(0) {
+                    return arg_count()
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert!(contains_bytes(&executable, &[0x49, 0x89, 0xe4]));
+    assert!(contains_bytes(&executable, &[0x49, 0x8b, 0x04, 0x24, 0xc3]));
+    assert!(contains_bytes(
+        &executable,
+        &[0x48, 0x89, 0xf2, 0x48, 0x85, 0xff]
+    ));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_process_argument_count() {
+    let executable = executable_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                return arg_count()
+            }
+        "#,
+    );
+    let path = std::env::temp_dir().join(format!("geo-arg-count-{}", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write ELF argument fixture");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("failed to stat ELF argument fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).expect("failed to make ELF fixture executable");
+
+    let status = std::process::Command::new(&path)
+        .arg("alpha")
+        .status()
+        .expect("failed to execute ELF argument fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(2));
+}
+
+#[test]
 fn emits_direct_elf64_memory_alloc_runtime() {
     let executable = executable_for(
         r#"

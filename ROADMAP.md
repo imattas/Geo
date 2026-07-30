@@ -392,6 +392,9 @@ Acceptance criteria:
 - Fixed-size aggregate array copies now lower element-by-element, including
   arrays nested in copied structs; continue extending this representation to
   runtime-backed collection values and aggregate function arguments.
+- The Linux ELF64 writer now preserves the initial process stack and implements
+  native `std.process` argument accessors; add a Windows command-line parser
+  with correct quoting semantics next.
 
 ## Phase 10: Distribution
 

@@ -11,7 +11,7 @@ const PF_X: u32 = 1;
 const BASE: u64 = 0x400000;
 const TEXT_OFFSET: usize = 0x1000;
 const PAGE_SIZE: usize = 0x1000;
-const START_LEN: usize = 14;
+const START_LEN: usize = 17;
 
 pub fn emit_elf64_executable(program: &IrProgram) -> Option<Vec<u8>> {
     let image = build_linux_code_image(program);
@@ -38,11 +38,14 @@ pub fn emit_elf64_executable(program: &IrProgram) -> Option<Vec<u8>> {
     write_load_header(&mut output, file_size);
 
     let start = &mut output[TEXT_OFFSET..TEXT_OFFSET + START_LEN];
-    start[0] = 0xe8;
+    start.copy_from_slice(&[
+        0x49, 0x89, 0xe4, // preserve the initial process stack in r12
+        0xe8, 0, 0, 0, 0, // call main
+        0x89, 0xc7, 0xb8, 60, 0, 0, 0, 0x0f, 0x05,
+    ]);
     let main_target = START_LEN as i64 + main.offset as i64;
-    let main_next = 5_i64;
-    start[1..5].copy_from_slice(&((main_target - main_next) as i32).to_le_bytes());
-    start[5..].copy_from_slice(&[0x89, 0xc7, 0xb8, 60, 0, 0, 0, 0x0f, 0x05]);
+    let main_next = 3_i64 + 5_i64;
+    start[4..8].copy_from_slice(&((main_target - main_next) as i32).to_le_bytes());
 
     let image_text_end = TEXT_OFFSET + START_LEN + image.text.len();
     output[TEXT_OFFSET + START_LEN..image_text_end].copy_from_slice(&image.text);
@@ -194,6 +197,10 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "eprint" => emit_print_runtime(&mut code, false, 2),
             "string_concat" => emit_string_concat_runtime(&mut code),
             "exit_geo" => emit_exit_runtime(&mut code),
+            "arg_count" => emit_arg_count_runtime(&mut code),
+            "arg" => emit_arg_runtime(&mut code),
+            "arg_exists" => emit_arg_exists_runtime(&mut code),
+            "arg_or" => emit_arg_or_runtime(&mut code),
             "process_id" => emit_process_id_runtime(&mut code),
             "platform_path_separator" => emit_platform_path_separator_runtime(&mut code),
             "platform_os" => emit_owned_constant_runtime(&mut code, b"linux\0"),
@@ -2346,6 +2353,53 @@ fn emit_exit_runtime(code: &mut Vec<u8>) {
 
 fn emit_process_id_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, 39, 0x00, 0x00, 0x00, 0x0f, 0x05, 0xc3]);
+}
+
+fn emit_arg_count_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x49, 0x8b, 0x04, 0x24, 0xc3]);
+}
+
+fn emit_arg_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let negative = emit_short_jump_placeholder(code, 0x78);
+    code.extend_from_slice(&[0x49, 0x3b, 0x3c, 0x24]);
+    let out_of_range = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xf8, // rax = index
+        0x48, 0xc1, 0xe0, 0x03, // rax *= sizeof(pointer)
+        0x4c, 0x01, 0xe0, // rax += initial stack pointer
+        0x48, 0x8b, 0x40, 0x08, // rax = argv[index]
+        0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, negative, failure);
+    patch_short_jump(code, out_of_range, failure);
+}
+
+fn emit_arg_exists_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let negative = emit_short_jump_placeholder(code, 0x78);
+    code.extend_from_slice(&[
+        0x49, 0x3b, 0x3c, 0x24, 0x0f, 0x92, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3,
+    ]);
+    let false_value = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_short_jump(code, negative, false_value);
+}
+
+fn emit_arg_or_runtime(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x89, 0xf2, 0x48, 0x85, 0xff]);
+    let negative = emit_short_jump_placeholder(code, 0x78);
+    code.extend_from_slice(&[0x49, 0x3b, 0x3c, 0x24]);
+    let out_of_range = emit_short_jump_placeholder(code, 0x73);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xf8, 0x48, 0xc1, 0xe0, 0x03, 0x4c, 0x01, 0xe0, 0x48, 0x8b, 0x40, 0x08, 0xc3,
+    ]);
+    let fallback = code.len();
+    code.extend_from_slice(&[0x48, 0x89, 0xd0, 0xc3]);
+    patch_short_jump(code, negative, fallback);
+    patch_short_jump(code, out_of_range, fallback);
 }
 
 fn emit_platform_path_separator_runtime(code: &mut Vec<u8>) {

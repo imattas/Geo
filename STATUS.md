@@ -420,3 +420,6 @@ That gives the native backends the source-text operations needed for compiler-sh
 - Fixed-size array values can now be copied during lowering, including arrays
   nested inside copied structs, by expanding each element into the existing
   scalar-slot IR instead of aborting.
+- Native ELF64 entry now preserves the initial Linux process stack and exposes
+  compiler-owned `std.process.arg_count`, `arg`, `arg_exists`, and `arg_or`
+  accessors directly from `argc`/`argv` without a C runtime.
