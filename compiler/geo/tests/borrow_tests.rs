@@ -237,3 +237,35 @@ fn releases_reference_borrow_when_inner_scope_ends() {
 
     borrow_check(source).unwrap();
 }
+
+#[test]
+fn releases_old_borrow_when_reference_is_reassigned() {
+    let source = r#"
+        fn main() -> int {
+            var first: int = 1
+            var second: int = 2
+            var view: &int = &first
+            view = &second
+            first = 3
+            return first + second
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
+fn releases_shadowed_reference_at_scope_exit() {
+    let source = r#"
+        fn main() -> int {
+            var value: int = 1
+            if true {
+                let value: &int = &value
+            }
+            value = 2
+            return value
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}

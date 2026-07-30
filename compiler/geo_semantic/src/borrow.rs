@@ -98,19 +98,41 @@ impl BorrowCtx<'_> {
 
     fn check_scoped_stmts(&mut self, stmts: &[Stmt]) {
         let saved_locals = self.locals.clone();
+        let saved_origins = self.reference_origins.clone();
         self.check_stmts(stmts);
-        self.restore_scope(saved_locals);
+        self.restore_scope(saved_locals, saved_origins);
     }
 
-    fn restore_scope(&mut self, saved_locals: HashMap<String, Type>) {
+    fn restore_scope(
+        &mut self,
+        saved_locals: HashMap<String, Type>,
+        saved_origins: HashMap<String, ReferenceOrigin>,
+    ) {
+        let current_locals = self.locals.clone();
         let inner_references = self
             .reference_origins
             .iter()
-            .filter(|(name, _)| !saved_locals.contains_key(name.as_str()))
+            .filter(|(name, origin)| {
+                !saved_locals.contains_key(name.as_str())
+                    || (saved_origins.get(name.as_str()) != Some(*origin)
+                        && current_locals
+                            .get(name.as_str())
+                            .zip(saved_locals.get(name.as_str()))
+                            .is_some_and(|(current, saved)| local_changed(current, saved)))
+            })
             .map(|(_, origin)| origin.clone())
             .collect::<Vec<_>>();
         for origin in inner_references {
             self.release_retained_borrow(&origin.source, origin.mutable);
+        }
+        for (name, origin) in &saved_origins {
+            if current_locals
+                .get(name)
+                .zip(saved_locals.get(name))
+                .is_some_and(|(current, saved)| local_changed(current, saved))
+            {
+                self.reference_origins.insert(name.clone(), origin.clone());
+            }
         }
         self.locals = saved_locals;
         self.reference_origins
@@ -159,9 +181,20 @@ impl BorrowCtx<'_> {
                 if op.is_some() {
                     self.ensure_not_moved(name);
                 }
+                let old_origin = self.reference_origins.get(name).cloned();
                 self.consume_expr(value);
+                if let Some(origin) = old_origin {
+                    self.release_retained_borrow(&origin.source, origin.mutable);
+                }
                 self.moved.remove(name);
                 self.reference_origins.remove(name);
+                if let Some(Type::Reference { mutable, .. }) = self.locals.get(name).cloned() {
+                    self.promote_temporary_borrows();
+                    if let Some(source) = borrowed_source(value) {
+                        self.reference_origins
+                            .insert(name.clone(), ReferenceOrigin { source, mutable });
+                    }
+                }
             }
             Stmt::PointerAssign { pointer, value, .. } => {
                 self.read_expr(pointer);
@@ -466,13 +499,14 @@ impl BorrowCtx<'_> {
 
     fn check_expr_block(&mut self, statements: &[Stmt], value: &Expr, consume: bool) {
         let saved_locals = self.locals.clone();
+        let saved_origins = self.reference_origins.clone();
         self.check_stmts(statements);
         if consume {
             self.consume_expr(value);
         } else {
             self.read_expr(value);
         }
-        self.restore_scope(saved_locals);
+        self.restore_scope(saved_locals, saved_origins);
     }
 
     fn expire_temporary_borrows(&mut self) {
@@ -559,6 +593,10 @@ impl BorrowCtx<'_> {
             Expr::Field { .. } | Expr::Index { .. } | Expr::Call { .. } => None,
         }
     }
+}
+
+fn local_changed(current: &Type, saved: &Type) -> bool {
+    current != saved
 }
 
 fn definitely_moved_after_branches(

@@ -391,6 +391,7 @@ struct Local {
     ty: Type,
     mutable: bool,
     module_path: Option<PathBuf>,
+    scope_depth: usize,
 }
 
 const MODULE_CONTEXT_LOCAL: &str = "__geo_current_module";
@@ -789,6 +790,7 @@ fn check_function<'a>(
             ty: Type::Unit,
             mutable: false,
             module_path: function.source_path.clone(),
+            scope_depth: 0,
         },
     );
     for param in &function.params {
@@ -799,6 +801,7 @@ fn check_function<'a>(
                     ty: param.ty.clone(),
                     mutable: true,
                     module_path: None,
+                    scope_depth: 0,
                 },
             )
             .is_some()
@@ -822,6 +825,7 @@ fn check_function<'a>(
             0,
             0,
             index + 1 == function.body.len(),
+            0,
         );
         let expression_span = function
             .statement_expression_ranges
@@ -864,6 +868,7 @@ fn const_locals<'a>(consts: &'a [ConstDecl]) -> HashMap<&'a str, Local> {
                     ty: decl.ty.clone(),
                     mutable: false,
                     module_path: None,
+                    scope_depth: 0,
                 },
             )
         })
@@ -890,6 +895,7 @@ fn const_locals_for_module<'a>(
                     ty: constant.ty.clone(),
                     mutable: false,
                     module_path: None,
+                    scope_depth: 0,
                 },
             )
         })
@@ -1093,6 +1099,7 @@ fn check_stmts<'a>(
     loop_depth: usize,
     unsafe_depth: usize,
     allow_tail_return: bool,
+    scope_depth: usize,
 ) {
     for (index, stmt) in stmts.iter().enumerate() {
         let is_tail_stmt = allow_tail_return && index + 1 == stmts.len();
@@ -1148,17 +1155,19 @@ fn check_stmts<'a>(
                         diagnostics.push(Diagnostic::error("let initializer type mismatch"));
                     }
                 }
-                if locals
-                    .insert(
-                        name.as_str(),
-                        Local {
-                            ty: local_ty,
-                            mutable: *mutable,
-                            module_path: None,
-                        },
-                    )
-                    .is_some()
-                {
+                let duplicate = locals
+                    .get(name.as_str())
+                    .is_some_and(|local| local.scope_depth == scope_depth);
+                locals.insert(
+                    name.as_str(),
+                    Local {
+                        ty: local_ty,
+                        mutable: *mutable,
+                        module_path: None,
+                        scope_depth,
+                    },
+                );
+                if duplicate {
                     diagnostics.push(Diagnostic::error(format!("duplicate local '{name}'")));
                 }
             }
@@ -1346,6 +1355,7 @@ fn check_stmts<'a>(
                     loop_depth,
                     unsafe_depth,
                     false,
+                    scope_depth + 1,
                 );
                 *locals = before_locals.clone();
                 check_stmts(
@@ -1359,6 +1369,7 @@ fn check_stmts<'a>(
                     loop_depth,
                     unsafe_depth,
                     false,
+                    scope_depth + 1,
                 );
                 *locals = before_locals;
             }
@@ -1388,6 +1399,7 @@ fn check_stmts<'a>(
                     loop_depth + 1,
                     unsafe_depth,
                     false,
+                    scope_depth + 1,
                 );
                 *locals = before_locals;
             }
@@ -1431,6 +1443,7 @@ fn check_stmts<'a>(
                         ty: loop_ty,
                         mutable: false,
                         module_path: None,
+                        scope_depth: scope_depth + 1,
                     },
                 );
                 check_stmts(
@@ -1444,6 +1457,7 @@ fn check_stmts<'a>(
                     loop_depth + 1,
                     unsafe_depth,
                     false,
+                    scope_depth + 1,
                 );
                 *locals = before_locals;
             }
@@ -1460,6 +1474,7 @@ fn check_stmts<'a>(
                     loop_depth + 1,
                     unsafe_depth,
                     false,
+                    scope_depth + 1,
                 );
                 *locals = before_locals;
             }
@@ -1486,6 +1501,7 @@ fn check_stmts<'a>(
                     loop_depth,
                     unsafe_depth + 1,
                     false,
+                    scope_depth + 1,
                 );
                 *locals = before_locals;
             }
@@ -2144,6 +2160,7 @@ fn check_block_expr_stmt<'a>(
                         ty: local_ty,
                         mutable: *mutable,
                         module_path: None,
+                        scope_depth: 0,
                     },
                 )
                 .is_some()

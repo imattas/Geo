@@ -166,6 +166,8 @@ fn main() {
   state.
 - Restore lexical locals after nested blocks and release retained inner
   reference borrows when their owners leave scope.
+- Support nested shadowing and release old retained borrows on reference
+  reassignment.
 - Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
 - Keep runtime/platform internals as the primary place for unsafe code.
 

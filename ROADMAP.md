@@ -238,6 +238,9 @@ moves are likewise not assumed definite after a possibly empty loop.
 Semantic and borrow scopes now agree for nested blocks. Locals declared inside
 conditionals, loops, `unsafe` blocks, and expression blocks do not leak, and
 reference borrows owned by those locals are released at scope exit.
+Nested lexical scopes may shadow outer locals, while same-scope duplicates are
+still rejected. Reference reassignment updates ownership by releasing the old
+origin and retaining the new one.
 
 Acceptance criteria:
 

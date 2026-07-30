@@ -227,6 +227,9 @@ conservatively across conditional branches.
 Type and borrow analysis now restore lexical locals after `if`, loop, `unsafe`,
 and expression-block scopes. Retained borrows owned by inner reference locals
 are released at scope exit, while moves of outer values still propagate.
+Nested scopes now support intentional shadowing while same-scope duplicate
+locals remain errors. Reassigning a reference releases its previous source
+borrow before retaining the new one.
 
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,
