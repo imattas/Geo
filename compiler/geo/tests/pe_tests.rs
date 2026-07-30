@@ -1666,6 +1666,20 @@ fn emits_direct_pe64_owned_process_argument_helpers() {
     assert!(contains_bytes(&pe, &[0xf3, 0xa4, 0xc6, 0x07, 0x00]));
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_self_hosting_mini_parser() {
+    let executable = pe_for(include_str!("../../../examples/v1/mini_parser.geo"));
+    let path = std::env::temp_dir().join(format!("geo-mini-parser-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write PE parser fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute PE parser fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(0));
+}
+
 #[test]
 fn emits_direct_pe64_platform_path_separator() {
     let pe = pe_for(

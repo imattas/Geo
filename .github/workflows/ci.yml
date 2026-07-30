@@ -152,6 +152,15 @@ jobs:
           target/ci-path-file-name-linux
           status=$?
           test "$status" -eq 0
+      - name: Execute compiler-owned Linux self-hosting parser
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          chmod +x target/ci-v1-mini-parser-linux
+          target/ci-v1-mini-parser-linux
+          status=$?
+          test "$status" -eq 0
       - name: Execute compiler-owned Linux seek executable
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -588,6 +597,7 @@ jobs:
           cargo run --locked --quiet -- build examples/path_absolute_exit.geo --target x86_64-windows -o target/ci-smoke-path-absolute.exe
           cargo run --locked --quiet -- build examples/path_file_name_exit.geo --target x86_64-windows -o target/ci-smoke-path-file-name.exe
           cargo run --locked --quiet -- build examples/process_args_exit.geo --target x86_64-windows -o target/ci-smoke-process-args.exe
+          cargo run --locked --quiet -- build examples/v1/mini_parser.geo --target x86_64-windows -o target/ci-smoke-mini-parser.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -713,4 +723,8 @@ jobs:
           $processArgsStatus = $LASTEXITCODE
           Write-Host "process-args status=$processArgsStatus"
           if ($processArgsStatus -ne 0) { exit 1 }
+          & target/ci-smoke-mini-parser.exe
+          $miniParserStatus = $LASTEXITCODE
+          Write-Host "mini-parser status=$miniParserStatus"
+          if ($miniParserStatus -ne 0) { exit 1 }
           exit 0

@@ -260,10 +260,12 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 
 The next self-hosting target should be meaningful but narrow:
 
-1. A Geo lexer that tokenizes a subset of Geo source.
+1. A Geo lexer that tokenizes a subset of Geo source. `examples/v1/lexer.geo`
+   now performs a real source scan.
 2. A Geo diagnostic formatter that renders file, line, column, and caret.
 3. A Geo AST builder for a small expression grammar.
-4. A Geo mini parser that uses the lexer and AST structs.
+4. A Geo mini parser that uses source-driven cursor parsing. `examples/v1/mini_parser.geo`
+   now parses a canonical function grammar.
 5. A Geo file echo tool that proves file IO and buffers.
 
 Do not start with the full compiler rewrite. First make Geo capable of writing compiler-shaped components cleanly.

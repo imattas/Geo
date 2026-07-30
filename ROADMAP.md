@@ -379,7 +379,9 @@ Acceptance criteria:
 - Native boundary-aware UTF-8 slicing is covered by direct ELF64 and PE64 builds, including end clamping, empty ranges, and malformed-input failure handling.
 - Native UTF-8 character extraction and first-codepoint search are covered by direct ELF64 and PE64 builds, including multi-byte characters, misses, and out-of-range access.
 - The v1 lexer example performs a real source scan and executes through both compiler-owned writers.
-- The v1 parser example validates a token sequence with explicit cursor and error state through both compiler-owned writers.
+- The v1 parser example now scans and parses source text for a canonical
+  function grammar with explicit cursor and error state through both
+  compiler-owned writers.
 - A compiler-owned byte-array runtime path is covered by a direct executable fixture on ELF64 and PE64.
 - A compiler-owned array lifecycle path is covered by direct ELF64 and PE64 builds, including reserve, clone, clear, and release.
 - A compiler-owned array mutation path is covered by direct ELF64 and PE64 builds, including truncation, last/first pop, byte shifting, and invalid-input behavior.

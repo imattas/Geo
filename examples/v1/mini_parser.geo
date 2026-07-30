@@ -1,43 +1,109 @@
-struct Token {
-    kind: int
-    start: usize
-    len: usize
+import std.string
+
+fn is_space(byte: int) -> bool {
+    return byte == 32 || byte == 9 || byte == 10 || byte == 13
 }
 
-fn parse_function() -> int {
-    let first: Token = Token { kind: 1 start: 0usize len: 2usize }
-    let second: Token = Token { kind: 2 start: 3usize len: 4usize }
-    let third: Token = Token { kind: 3 start: 7usize len: 1usize }
-    let tokens: [Token] = [first, second, third]
-    var pos: usize = 0usize
-    var error: int = 0
-    if tokens[0].kind != 1 {
-        error = 1
-    } else {
-        pos += 1usize
+fn skip_space(source: &string, start: usize) -> usize {
+    var cursor: usize = start
+    while cursor < string_len(*source) && is_space(string_byte_at(*source, cursor)) {
+        cursor += 1usize
     }
-    if error != 0 {
-        return 1
+    return cursor
+}
+
+fn parse_word(source: &string, start: usize, word: string) -> int {
+    var cursor: usize = start
+    var offset: usize = 0usize
+    while offset < string_len(word) {
+        if cursor >= string_len(*source) {
+            return -1
+        }
+        if string_byte_at(*source, cursor) != string_byte_at(word, offset) {
+            return -1
+        }
+        cursor += 1usize
+        offset += 1usize
     }
-    if tokens[1].kind != 2 {
-        error = 1
-    } else {
-        pos += 1usize
+    return cursor as int
+}
+
+fn parse_byte(source: &string, start: usize, expected: int) -> int {
+    if start >= string_len(*source) || string_byte_at(*source, start) != expected {
+        return -1
     }
-    if error != 0 {
-        return 2
+    return (start + 1usize) as int
+}
+
+fn parse_number(source: &string, start: usize, expected: int) -> int {
+    var cursor: usize = start
+    var value: int = 0
+    var digits: usize = 0usize
+    while cursor < string_len(*source) {
+        let byte: int = string_byte_at(*source, cursor)
+        if byte < 48 || byte > 57 {
+            break
+        }
+        value = value * 10 + byte - 48
+        digits += 1usize
+        cursor += 1usize
     }
-    if tokens[2].kind != 3 {
-        error = 1
-    } else {
-        pos += 1usize
+    if digits == 0usize || value != expected {
+        return -1
     }
-    if error != 0 {
-        return 3
+    return cursor as int
+}
+
+fn parse_function(source: &string) -> bool {
+    var cursor: int = 0
+
+    cursor = parse_word(source, skip_space(source, cursor as usize), "fn")
+    if cursor < 0 {
+        return false
     }
-    return pos as int
+    cursor = parse_word(source, skip_space(source, cursor as usize), "main")
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_byte(source, skip_space(source, cursor as usize), 40)
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_byte(source, cursor as usize, 41)
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_word(source, skip_space(source, cursor as usize), "->")
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_word(source, skip_space(source, cursor as usize), "int")
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_byte(source, skip_space(source, cursor as usize), 123)
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_word(source, skip_space(source, cursor as usize), "return")
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_number(source, skip_space(source, cursor as usize), 42)
+    if cursor < 0 {
+        return false
+    }
+    cursor = parse_byte(source, skip_space(source, cursor as usize), 125)
+    if cursor < 0 {
+        return false
+    }
+    return skip_space(source, cursor as usize) == string_len(*source)
 }
 
 fn main() -> int {
-    return parse_function() - 3
+    let source: string = "fn main() -> int { return 42 }"
+    if !parse_function(&source) {
+        return 1
+    }
+    return 0
 }

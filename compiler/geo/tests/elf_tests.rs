@@ -164,6 +164,26 @@ fn executes_direct_elf64_process_argument_count() {
     assert_eq!(status.code(), Some(2));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_self_hosting_mini_parser() {
+    let executable = executable_for(include_str!("../../../examples/v1/mini_parser.geo"));
+    let path = std::env::temp_dir().join(format!("geo-mini-parser-{}", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write ELF parser fixture");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("failed to stat ELF parser fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).expect("failed to make ELF parser executable");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute ELF parser fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(0));
+}
+
 #[test]
 fn emits_direct_elf64_memory_alloc_runtime() {
     let executable = executable_for(
