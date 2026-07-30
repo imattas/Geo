@@ -157,6 +157,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          cargo run --locked --quiet -- build examples/v1/mini_parser.geo --target x86_64-linux -o target/ci-v1-mini-parser-linux
           chmod +x target/ci-v1-mini-parser-linux
           target/ci-v1-mini-parser-linux
           status=$?
