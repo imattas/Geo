@@ -81,7 +81,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
     let needs_string_concat = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_concat" | "dir_entry_path"
+            "string_concat" | "dir_entry_path" | "path_with_extension"
         )
     });
     let needs_virtual_alloc = needs_string_concat
@@ -113,6 +113,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "path_extension"
                     | "path_stem"
                     | "path_without_extension"
+                    | "path_with_extension"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -776,7 +777,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_string_concat = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "string_concat" | "dir_entry_path"
+            "string_concat" | "dir_entry_path" | "path_with_extension"
         )
     });
     let needs_platform_os = image
@@ -811,10 +812,16 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "path_stem");
-    let needs_path_without_extension = image
+    let needs_path_without_extension = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "path_without_extension" | "path_with_extension"
+        )
+    });
+    let needs_path_with_extension = image
         .relocations
         .iter()
-        .any(|relocation| relocation.symbol == "path_without_extension");
+        .any(|relocation| relocation.symbol == "path_with_extension");
     let needs_string_utf8_slice = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
@@ -1118,7 +1125,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     let needs_free = image.relocations.iter().any(|relocation| {
         matches!(
             relocation.symbol.as_str(),
-            "free_geo" | "string_free" | "dir_entry_path"
+            "free_geo" | "string_free" | "dir_entry_path" | "path_with_extension"
         )
     });
     let needs_realloc = image
@@ -1161,10 +1168,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "mem_reverse");
-    let needs_string_from_byte = image
-        .relocations
-        .iter()
-        .any(|relocation| relocation.symbol == "string_from_byte");
+    let needs_string_from_byte = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "string_from_byte" | "path_with_extension"
+        )
+    });
     let needs_string_from_utf8_codepoint = image
         .relocations
         .iter()
@@ -1184,6 +1193,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
                 | "path_extension"
                 | "path_stem"
                 | "path_without_extension"
+                | "path_with_extension"
         )
     });
     let needs_alloc_copy = image
@@ -1817,6 +1827,25 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         helpers.path_without_extension = Some(layout.text_rva + code.len() as u32);
         emit_path_without_extension_helper(&mut code, layout, string_slice);
     }
+    if needs_path_with_extension {
+        let without_extension = helpers.path_without_extension?;
+        let string_len = helpers.string_len?;
+        let string_from_byte = helpers.string_from_byte?;
+        let string_slice = helpers.string_slice?;
+        let string_concat = helpers.string_concat?;
+        let free = helpers.free_geo?;
+        helpers.path_with_extension = Some(layout.text_rva + code.len() as u32);
+        emit_path_with_extension_helper(
+            &mut code,
+            layout,
+            without_extension,
+            string_len,
+            string_from_byte,
+            string_slice,
+            string_concat,
+            free,
+        );
+    }
     if needs_string_utf8_slice {
         let byte_offset = helpers
             .string_utf8_byte_offset
@@ -2359,6 +2388,9 @@ fn compiled_symbol_rva(
     if symbol == "path_without_extension" {
         return helpers.path_without_extension;
     }
+    if symbol == "path_with_extension" {
+        return helpers.path_with_extension;
+    }
     if symbol == "read_file" {
         return helpers.read_file;
     }
@@ -2543,6 +2575,7 @@ struct PeHelperRvas {
     path_extension: Option<u32>,
     path_stem: Option<u32>,
     path_without_extension: Option<u32>,
+    path_with_extension: Option<u32>,
     alloc: Option<u32>,
     read_file: Option<u32>,
     read_file_or: Option<u32>,
@@ -4799,6 +4832,63 @@ fn emit_path_without_extension_helper(code: &mut Vec<u8>, layout: &Layout, slice
     patch_short_jump(code, not_dot, advance);
     patch_short_jump(code, dot_at_start, advance);
     patch_short_jump(code, has_dot, slice_args);
+}
+
+fn emit_path_with_extension_helper(
+    code: &mut Vec<u8>,
+    layout: &Layout,
+    without_extension_target: u32,
+    string_len_target: u32,
+    string_from_byte_target: u32,
+    string_slice_target: u32,
+    string_concat_target: u32,
+    free_target: u32,
+) {
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0xb8, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0x89, 0x4c, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x28]);
+    code.extend_from_slice(&[0x48, 0x31, 0xd2]);
+    emit_direct_call(code, layout.text_rva, without_extension_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x28]);
+    emit_direct_call(code, layout.text_rva, string_len_target);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let empty_extension = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x28, 0x0f, 0xb6, 0x01, 0x3c, b'.']);
+    let no_leading_dot = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x40, 0x01, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xff, 0x4c, 0x24, 0x38]);
+    let common_start = emit_short_jump_placeholder(code, 0xeb);
+    let no_dot_target = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x40, 0x00, 0x00, 0x00, 0x00]);
+    let common_target = code.len();
+    code.extend_from_slice(&[0xb9, b'.', 0x00, 0x00, 0x00]);
+    emit_direct_call(code, layout.text_rva, string_from_byte_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x30, 0x48, 0x8b, 0x54, 0x24, 0x48]);
+    emit_direct_call(code, layout.text_rva, string_concat_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x28, 0x48, 0x8b, 0x54, 0x24, 0x40]);
+    code.extend_from_slice(&[0x4c, 0x8b, 0x44, 0x24, 0x38]);
+    emit_direct_call(code, layout.text_rva, string_slice_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x58]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x50, 0x48, 0x8b, 0x54, 0x24, 0x58]);
+    emit_direct_call(code, layout.text_rva, string_concat_target);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x60]);
+    for offset in [0x30, 0x48, 0x50, 0x58] {
+        code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, offset]);
+        emit_direct_call(code, layout.text_rva, free_target);
+    }
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x44, 0x24, 0x60, 0x48, 0x81, 0xc4, 0xb8, 0x00, 0x00, 0x00, 0xc3,
+    ]);
+    let empty_target = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x44, 0x24, 0x30, 0x48, 0x81, 0xc4, 0xb8, 0x00, 0x00, 0x00, 0xc3,
+    ]);
+    patch_near_conditional(code, empty_extension, empty_target);
+    patch_short_jump(code, no_leading_dot, no_dot_target);
+    patch_short_jump(code, common_start, common_target);
 }
 
 fn emit_process_exit_helper(code: &mut Vec<u8>, layout: &Layout) {

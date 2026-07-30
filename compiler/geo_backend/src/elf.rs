@@ -282,6 +282,84 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
                 );
                 continue;
             }
+            "path_with_extension" => {
+                let without_extension_offset = if let Some(symbol) =
+                    symbols.get("path_without_extension")
+                {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let slice_offset = if let Some(symbol) = symbols.get("string_slice") {
+                        (*symbol - runtime_base) as usize
+                    } else {
+                        let offset = code.len();
+                        emit_string_slice_runtime(&mut code);
+                        symbols.insert("string_slice".to_string(), runtime_base + offset as u64);
+                        offset
+                    };
+                    let offset = code.len();
+                    emit_path_without_extension_runtime(&mut code, slice_offset);
+                    symbols.insert(
+                        "path_without_extension".to_string(),
+                        runtime_base + offset as u64,
+                    );
+                    offset
+                };
+                let length_offset = if let Some(symbol) = symbols.get("string_len") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_len_runtime(&mut code);
+                    symbols.insert("string_len".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let from_byte_offset = if let Some(symbol) = symbols.get("string_from_byte") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_from_byte_runtime(&mut code);
+                    symbols.insert("string_from_byte".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let slice_offset = if let Some(symbol) = symbols.get("string_slice") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_slice_runtime(&mut code);
+                    symbols.insert("string_slice".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let concat_offset = if let Some(symbol) = symbols.get("string_concat") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_concat_runtime(&mut code);
+                    symbols.insert("string_concat".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let free_offset = if let Some(symbol) = symbols.get("string_free") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_free_runtime(&mut code);
+                    symbols.insert("string_free".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let with_extension_offset = code.len();
+                emit_path_with_extension_runtime(
+                    &mut code,
+                    without_extension_offset,
+                    length_offset,
+                    from_byte_offset,
+                    slice_offset,
+                    concat_offset,
+                    free_offset,
+                );
+                symbols.insert(
+                    "path_with_extension".to_string(),
+                    runtime_base + with_extension_offset as u64,
+                );
+                continue;
+            }
             "alloc" | "alloc_zeroed" => emit_alloc_runtime(&mut code, false),
             "alloc_array" => emit_alloc_runtime(&mut code, true),
             "free_geo" => emit_free_runtime(&mut code),
@@ -2524,6 +2602,59 @@ fn emit_path_without_extension_runtime(code: &mut Vec<u8>, slice_offset: usize) 
     patch_short_jump(code, not_dot, advance);
     patch_short_jump(code, dot_at_start, advance);
     patch_short_jump(code, has_dot, slice_args);
+}
+
+fn emit_path_with_extension_runtime(
+    code: &mut Vec<u8>,
+    without_extension_offset: usize,
+    length_offset: usize,
+    from_byte_offset: usize,
+    slice_offset: usize,
+    concat_offset: usize,
+    free_offset: usize,
+) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x68]);
+    code.extend_from_slice(&[0x48, 0x89, 0x7c, 0x24, 0x20, 0x48, 0x89, 0x74, 0x24, 0x28]);
+    code.extend_from_slice(&[0x31, 0xf6]);
+    emit_internal_call(code, without_extension_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x30]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x28]);
+    emit_internal_call(code, length_offset);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let empty_extension = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x38]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x28, 0x8a, 0x07, 0x3c, b'.']);
+    let no_leading_dot = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x40, 0x01, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0x48, 0xff, 0x4c, 0x24, 0x38]);
+    let common_start = emit_short_jump_placeholder(code, 0xeb);
+    let no_dot_target = code.len();
+    code.extend_from_slice(&[0x48, 0xc7, 0x44, 0x24, 0x40, 0x00, 0x00, 0x00, 0x00]);
+    let common_target = code.len();
+    code.extend_from_slice(&[0xbf, b'.', 0x00, 0x00, 0x00]);
+    emit_internal_call(code, from_byte_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x48]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x30, 0x48, 0x8b, 0x74, 0x24, 0x48]);
+    emit_internal_call(code, concat_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x50]);
+    code.extend_from_slice(&[
+        0x48, 0x8b, 0x7c, 0x24, 0x28, 0x48, 0x8b, 0x74, 0x24, 0x40, 0x48, 0x8b, 0x54, 0x24, 0x38,
+    ]);
+    emit_internal_call(code, slice_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x58]);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x50, 0x48, 0x8b, 0x74, 0x24, 0x58]);
+    emit_internal_call(code, concat_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x60]);
+    for offset in [0x30, 0x48, 0x50, 0x58] {
+        code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, offset]);
+        emit_internal_call(code, free_offset);
+    }
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x60, 0x48, 0x83, 0xc4, 0x68, 0xc3]);
+    let empty_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x30, 0x48, 0x83, 0xc4, 0x68, 0xc3]);
+    patch_near_jump(code, empty_extension, empty_target);
+    patch_short_jump(code, no_leading_dot, no_dot_target);
+    patch_short_jump(code, common_start, common_target);
 }
 
 fn emit_alloc_runtime(code: &mut Vec<u8>, array: bool) {
