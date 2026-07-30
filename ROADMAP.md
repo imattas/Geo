@@ -381,7 +381,8 @@ Acceptance criteria:
 - The v1 lexer example performs a real source scan and executes through both compiler-owned writers.
 - The v1 parser example now scans and parses source text for a canonical
   function grammar with explicit cursor and error state through both
-  compiler-owned writers, and materializes a small AST aggregate.
+  compiler-owned writers, stores token spans in a dynamic buffer, and
+  materializes a small AST aggregate.
 - A compiler-owned byte-array runtime path is covered by a direct executable fixture on ELF64 and PE64.
 - A compiler-owned array lifecycle path is covered by direct ELF64 and PE64 builds, including reserve, clone, clear, and release.
 - A compiler-owned array mutation path is covered by direct ELF64 and PE64 builds, including truncation, last/first pop, byte shifting, and invalid-input behavior.
