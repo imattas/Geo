@@ -184,6 +184,26 @@ fn executes_direct_elf64_self_hosting_mini_parser() {
     assert_eq!(status.code(), Some(0));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_dynamic_fixed_array_places() {
+    let executable = executable_for(include_str!("../../../examples/v1/dynamic_array.geo"));
+    let path = std::env::temp_dir().join(format!("geo-dynamic-array-{}", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write dynamic array fixture");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("failed to stat dynamic array fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).expect("failed to make dynamic array executable");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute dynamic array fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(5));
+}
+
 #[test]
 fn emits_direct_elf64_memory_alloc_runtime() {
     let executable = executable_for(

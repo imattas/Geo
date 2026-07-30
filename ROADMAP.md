@@ -395,6 +395,9 @@ Acceptance criteria:
 - Fixed-size aggregate array copies now lower element-by-element, including
   arrays nested in copied structs; continue extending this representation to
   runtime-backed collection values and aggregate function arguments.
+- Dynamic indexes into fixed-size aggregate locals now use compiler-emitted
+  bounds checks and branch-selected scalar slots, including nested struct-field
+  places and compound assignment on both native executable writers.
 - The Linux ELF64 writer now preserves the initial process stack and implements
   native `std.process` argument accessors. The PE64 writer now provides
   quote-aware `arg_count`, `arg_exists`, owned `arg` token extraction, and

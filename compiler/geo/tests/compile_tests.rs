@@ -32,6 +32,36 @@ fn emits_assembly_for_return_42() {
 }
 
 #[test]
+fn lowers_dynamic_fixed_array_struct_places() {
+    let asm = asm_for(
+        r#"
+            struct Token {
+                kind: int
+                value: int
+            }
+
+            fn main() -> int {
+                var index: usize = 1usize
+                var tokens: [Token] = [
+                    Token { kind: 1 value: 10 },
+                    Token { kind: 2 value: 20 },
+                ]
+                tokens[index].value = 42
+                tokens[index].kind += 3
+                if tokens[index].value != 42 {
+                    return 1
+                }
+                return tokens[index].kind
+            }
+        "#,
+    );
+
+    assert!(asm.matches("call __geo_bounds_check").count() >= 4);
+    assert!(asm.contains(".Ldynamic_store_next_"));
+    assert!(asm.contains(".Ldynamic_load_next_"));
+}
+
+#[test]
 fn emits_assembly_for_function_tail_expression_return() {
     let asm = asm_for("fn main() -> int { 42 }");
 

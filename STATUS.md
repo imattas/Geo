@@ -403,6 +403,10 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
   explicit error paths, materializes a `FunctionNode` AST aggregate, stores
   token spans in a compiler-owned dynamic buffer, and executes through both
   native writers.
+- Dynamic indexing into fixed-size aggregate locals now lowers through
+  compiler-emitted bounds checks and branch-selected scalar slots, including
+  `tokens[index].field` reads, writes, and compound assignments on ELF64 and
+  PE64. `examples/v1/dynamic_array.geo` is the direct execution fixture.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, flush, read-to-string, seek, and close; richer truncation controls and metadata remain open.
 - Direct allocation lifetime coverage now includes compiler-owned `alloc`/`alloc_copy` headers, Linux `munmap`, Windows `VirtualFree`, payload-preserving `realloc`, and two-platform `alloc`/`free`/`realloc`/`alloc_copy` fixtures. `string_clone`, `string_from_byte`, `string_concat`, non-null `string_slice` results, path-based `read_file` results, handle-based `file_read_to_string` results, and `read_line` results now use the same header and have direct free fixtures.
 - Windows-host PE64 execution validation now covers hello, allocation-backed strings, file reads, UTF-8 conversion, and byte/typed array runtime and mutation fixtures, including push, set, extend, copy, and resize. Broader PE64 runtime coverage and richer failure-path validation remain open.

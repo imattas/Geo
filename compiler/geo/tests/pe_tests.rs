@@ -1680,6 +1680,20 @@ fn executes_direct_pe64_self_hosting_mini_parser() {
     assert_eq!(status.code(), Some(0));
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_dynamic_fixed_array_places() {
+    let executable = pe_for(include_str!("../../../examples/v1/dynamic_array.geo"));
+    let path = std::env::temp_dir().join(format!("geo-dynamic-array-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write dynamic array fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute dynamic array fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(5));
+}
+
 #[test]
 fn emits_direct_pe64_platform_path_separator() {
     let pe = pe_for(

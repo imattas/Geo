@@ -103,6 +103,12 @@ struct LowerCtx {
     instructions: Vec<Instruction>,
 }
 
+struct DynamicPlace {
+    index: ValueId,
+    slots: Vec<String>,
+    ty: Type,
+}
+
 impl LowerCtx {
     fn fresh(&mut self) -> ValueId {
         let value = ValueId(self.next_value);
@@ -320,24 +326,38 @@ impl LowerCtx {
                 });
             }
             Stmt::PlaceAssign { target, op, value } => {
-                let local = self
-                    .aggregate_place(target)
-                    .unwrap_or_else(|| panic!("unsupported assignment place"));
-                let value = if let Some(op) = op {
-                    let left = self.fresh();
-                    self.instructions.push(Instruction::Load {
-                        dst: left,
-                        local: local.clone(),
-                    });
-                    let right = self.lower_expr(value);
-                    let dst = self.fresh();
-                    let instruction = self.binary_instruction(*op, dst, left, right);
-                    self.instructions.push(instruction);
-                    dst
+                if let Some(local) = self.aggregate_place(target) {
+                    let value = if let Some(op) = op {
+                        let left = self.fresh();
+                        self.instructions.push(Instruction::Load {
+                            dst: left,
+                            local: local.clone(),
+                        });
+                        let right = self.lower_expr(value);
+                        let dst = self.fresh();
+                        let instruction = self.binary_instruction(*op, dst, left, right);
+                        self.instructions.push(instruction);
+                        dst
+                    } else {
+                        self.lower_expr(value)
+                    };
+                    self.instructions.push(Instruction::Store { local, value });
                 } else {
-                    self.lower_expr(value)
-                };
-                self.instructions.push(Instruction::Store { local, value });
+                    let place = self
+                        .dynamic_place(target)
+                        .unwrap_or_else(|| panic!("unsupported assignment place"));
+                    let value = if let Some(op) = op {
+                        let left = self.lower_dynamic_load(&place);
+                        let right = self.lower_expr(value);
+                        let dst = self.fresh();
+                        let instruction = self.binary_instruction(*op, dst, left, right);
+                        self.instructions.push(instruction);
+                        dst
+                    } else {
+                        self.lower_expr(value)
+                    };
+                    self.lower_dynamic_store(&place, value);
+                }
             }
             Stmt::If {
                 condition,
@@ -824,20 +844,28 @@ impl LowerCtx {
                         return dst;
                     }
                 }
-                let local = self
-                    .aggregate_place(expr)
-                    .unwrap_or_else(|| panic!("unsupported aggregate place expression"));
-                let dst = self.fresh();
-                self.instructions.push(Instruction::Load { dst, local });
-                dst
+                if let Some(local) = self.aggregate_place(expr) {
+                    let dst = self.fresh();
+                    self.instructions.push(Instruction::Load { dst, local });
+                    dst
+                } else {
+                    let place = self
+                        .dynamic_place(expr)
+                        .unwrap_or_else(|| panic!("unsupported aggregate place expression"));
+                    self.lower_dynamic_load(&place)
+                }
             }
             Expr::Index { .. } => {
-                let local = self
-                    .aggregate_place(expr)
-                    .unwrap_or_else(|| panic!("unsupported aggregate place expression"));
-                let dst = self.fresh();
-                self.instructions.push(Instruction::Load { dst, local });
-                dst
+                if let Some(local) = self.aggregate_place(expr) {
+                    let dst = self.fresh();
+                    self.instructions.push(Instruction::Load { dst, local });
+                    dst
+                } else {
+                    let place = self
+                        .dynamic_place(expr)
+                        .unwrap_or_else(|| panic!("unsupported aggregate place expression"));
+                    self.lower_dynamic_load(&place)
+                }
             }
             Expr::Struct { .. } | Expr::Array(_) => {
                 panic!("aggregate literals must be assigned to a local before use")
@@ -1149,6 +1177,118 @@ impl LowerCtx {
             }
             _ => None,
         }
+    }
+
+    fn dynamic_place(&mut self, expr: &Expr) -> Option<DynamicPlace> {
+        match expr {
+            Expr::Index { base, index } => {
+                if matches!(index.as_ref(), Expr::Int(_)) {
+                    return None;
+                }
+                let base_name = self.aggregate_place(base)?;
+                let Type::Array(inner) = self.expr_type(base)? else {
+                    return None;
+                };
+                let len = self.array_lengths.get(&base_name).copied()?;
+                let index_value = self.lower_expr(index);
+                self.instructions.push(Instruction::BoundsCheck {
+                    index: index_value,
+                    len,
+                });
+                let slots = (0..len)
+                    .map(|index| format!("{base_name}[{index}]"))
+                    .collect();
+                Some(DynamicPlace {
+                    index: index_value,
+                    slots,
+                    ty: *inner,
+                })
+            }
+            Expr::Field { base, name } => {
+                let mut place = self.dynamic_place(base)?;
+                let Type::Named(struct_name) = &place.ty else {
+                    return None;
+                };
+                let field = self
+                    .structs
+                    .get(struct_name)?
+                    .fields
+                    .iter()
+                    .find(|field| field.name == *name)?;
+                place.slots = place
+                    .slots
+                    .into_iter()
+                    .map(|slot| format!("{slot}.{}", field.name))
+                    .collect();
+                place.ty = field.ty.clone();
+                Some(place)
+            }
+            _ => None,
+        }
+    }
+
+    fn lower_dynamic_load(&mut self, place: &DynamicPlace) -> ValueId {
+        let result = self.fresh();
+        let end = self.fresh_label("dynamic_load_end");
+        for (slot_index, slot) in place.slots.iter().enumerate() {
+            let expected = self.fresh();
+            self.instructions.push(Instruction::Const {
+                dst: expected,
+                value: slot_index as i64,
+            });
+            let matches = self.fresh();
+            self.instructions.push(Instruction::Cmp {
+                dst: matches,
+                op: CmpOp::Equal,
+                left: place.index,
+                right: expected,
+            });
+            let next = self.fresh_label("dynamic_load_next");
+            self.instructions.push(Instruction::JumpIfZero {
+                value: matches,
+                label: next.clone(),
+            });
+            self.instructions.push(Instruction::Load {
+                dst: result,
+                local: slot.clone(),
+            });
+            self.instructions
+                .push(Instruction::Jump { label: end.clone() });
+            self.instructions.push(Instruction::Label { name: next });
+        }
+        self.instructions.push(Instruction::Label { name: end });
+        result
+    }
+
+    fn lower_dynamic_store(&mut self, place: &DynamicPlace, value: ValueId) {
+        let end = self.fresh_label("dynamic_store_end");
+        for (slot_index, slot) in place.slots.iter().enumerate() {
+            let expected = self.fresh();
+            self.instructions.push(Instruction::Const {
+                dst: expected,
+                value: slot_index as i64,
+            });
+            let matches = self.fresh();
+            self.instructions.push(Instruction::Cmp {
+                dst: matches,
+                op: CmpOp::Equal,
+                left: place.index,
+                right: expected,
+            });
+            let next = self.fresh_label("dynamic_store_next");
+            self.instructions.push(Instruction::JumpIfZero {
+                value: matches,
+                label: next.clone(),
+            });
+            self.instructions.push(Instruction::Store {
+                local: slot.clone(),
+                value,
+            });
+            self.instructions
+                .push(Instruction::Jump { label: end.clone() });
+            self.instructions.push(Instruction::Label { name: next });
+        }
+        self.instructions.push(Instruction::Label { name: end });
     }
 
     fn struct_fields(&self, name: &str) -> Vec<Field> {

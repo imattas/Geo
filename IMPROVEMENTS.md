@@ -239,6 +239,9 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Preserve pointee width through IR dereference/store lowering so `u8` buffers do not accidentally read or overwrite adjacent bytes.
 - Lower fixed-size array copies recursively through scalar slots, including
   arrays nested in structs, before adding runtime-backed aggregate passing.
+- Dynamic fixed-size array places now lower through compiler-emitted bounds
+  checks and branch selection, including struct-field reads, writes, and
+  compound assignments on ELF64 and PE64.
 - Keep process argument access target-specific: Linux uses preserved
   `argc`/`argv`, while Windows uses a dedicated quoted-command-line parser
   rather than assuming a C runtime entry signature. The PE parser now also
