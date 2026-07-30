@@ -233,6 +233,9 @@ borrow before retaining the new one.
 Reference-chain diagnostics now trace through intermediate references to the
 root source value, and dereference reborrows target the pointee rather than the
 reference variable itself.
+Branch merges now preserve all possible reference origins. Reassigning a
+reference after path-dependent assignments releases every source borrow rather
+than leaving one branch's origin live.
 
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,

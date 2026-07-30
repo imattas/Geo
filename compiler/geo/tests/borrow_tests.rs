@@ -300,3 +300,24 @@ fn reports_root_source_for_dereference_borrow_escape() {
     let err = borrow_check(source).unwrap_err();
     assert!(err[0].message.contains("borrow of 'value' escapes"));
 }
+
+#[test]
+fn releases_all_possible_branch_origins_on_reassignment() {
+    let source = r#"
+        fn main() -> int {
+            var first: int = 1
+            var second: int = 2
+            var replacement: int = 3
+            var view: &int = &first
+            if true {
+                view = &second
+            }
+            view = &replacement
+            first = 4
+            second = 5
+            return replacement
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}

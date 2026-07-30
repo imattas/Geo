@@ -84,7 +84,7 @@ struct BorrowState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ReferenceOrigin {
-    source: String,
+    sources: Vec<String>,
     mutable: bool,
 }
 
@@ -123,7 +123,7 @@ impl BorrowCtx<'_> {
             .map(|(_, origin)| origin.clone())
             .collect::<Vec<_>>();
         for origin in inner_references {
-            self.release_retained_borrow(&origin.source, origin.mutable);
+            self.release_reference_origin(&origin);
         }
         for (name, origin) in &saved_origins {
             if current_locals
@@ -165,7 +165,7 @@ impl BorrowCtx<'_> {
                         self.reference_origins.insert(
                             name.clone(),
                             ReferenceOrigin {
-                                source,
+                                sources: vec![source],
                                 mutable: matches!(ty, Type::Reference { mutable: true, .. }),
                             },
                         );
@@ -184,15 +184,20 @@ impl BorrowCtx<'_> {
                 let old_origin = self.reference_origins.get(name).cloned();
                 self.consume_expr(value);
                 if let Some(origin) = old_origin {
-                    self.release_retained_borrow(&origin.source, origin.mutable);
+                    self.release_reference_origin(&origin);
                 }
                 self.moved.remove(name);
                 self.reference_origins.remove(name);
                 if let Some(Type::Reference { mutable, .. }) = self.locals.get(name).cloned() {
                     self.promote_temporary_borrows();
                     if let Some(source) = self.borrow_source(value) {
-                        self.reference_origins
-                            .insert(name.clone(), ReferenceOrigin { source, mutable });
+                        self.reference_origins.insert(
+                            name.clone(),
+                            ReferenceOrigin {
+                                sources: vec![source],
+                                mutable,
+                            },
+                        );
                     }
                 }
             }
@@ -491,7 +496,7 @@ impl BorrowCtx<'_> {
             if let Some(source) = self.reference_origins.get(name) {
                 self.diagnostics.push(Diagnostic::error(format!(
                     "borrow of '{}' escapes through reference '{name}'",
-                    self.root_reference_source(&source.source)
+                    self.root_reference_source(&source.sources[0])
                 )));
             }
         }
@@ -526,6 +531,12 @@ impl BorrowCtx<'_> {
             state.temporary_shared = 0;
             state.temporary_mutable = false;
             state.mutable = state.retained_mutable;
+        }
+    }
+
+    fn release_reference_origin(&mut self, origin: &ReferenceOrigin) {
+        for source in &origin.sources {
+            self.release_retained_borrow(source, origin.mutable);
         }
     }
 
@@ -572,7 +583,7 @@ impl BorrowCtx<'_> {
             let Some(origin) = self.reference_origins.get(&current) else {
                 break;
             };
-            current = origin.source.clone();
+            current = origin.sources[0].clone();
         }
         current
     }
@@ -660,8 +671,17 @@ fn merge_reference_origins(
     else_origins: &HashMap<String, ReferenceOrigin>,
 ) -> HashMap<String, ReferenceOrigin> {
     let mut merged = then_origins.clone();
-    for (name, source) in else_origins {
-        merged.entry(name.clone()).or_insert_with(|| source.clone());
+    for (name, else_origin) in else_origins {
+        let Some(origin) = merged.get_mut(name) else {
+            merged.insert(name.clone(), else_origin.clone());
+            continue;
+        };
+        origin.mutable |= else_origin.mutable;
+        for source in &else_origin.sources {
+            if !origin.sources.contains(source) {
+                origin.sources.push(source.clone());
+            }
+        }
     }
     merged
 }

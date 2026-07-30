@@ -170,6 +170,8 @@ fn main() {
   reassignment.
 - Trace chained reference escapes to their root source and model `&*reference`
   as a borrow of the referenced pointee.
+- Preserve origin unions across branch-dependent reference assignments and
+  release every possible source on replacement.
 - Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
 - Keep runtime/platform internals as the primary place for unsafe code.
 

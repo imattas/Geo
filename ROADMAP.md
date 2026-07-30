@@ -243,6 +243,8 @@ still rejected. Reference reassignment updates ownership by releasing the old
 origin and retaining the new one.
 Reference origins now support chained escape diagnostics and dereference
 reborrow targeting, keeping lifetime accounting attached to the actual pointee.
+Path-dependent reference assignments retain an origin union across branches,
+so later replacement releases every possible source borrow.
 
 Acceptance criteria:
 
