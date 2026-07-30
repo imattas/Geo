@@ -189,13 +189,7 @@ fn executes_direct_elf64_process_argument_count() {
         "#,
     );
     let path = executable_path("arg-count");
-    std::fs::write(&path, executable).expect("failed to write ELF argument fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat ELF argument fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).expect("failed to make ELF fixture executable");
+    write_executable(&path, executable, "failed to write ELF argument fixture");
 
     let status = std::process::Command::new(&path)
         .arg("alpha")
@@ -210,13 +204,7 @@ fn executes_direct_elf64_process_argument_count() {
 fn executes_direct_elf64_self_hosting_mini_parser() {
     let executable = executable_for(include_str!("../../../examples/v1/mini_parser.geo"));
     let path = executable_path("mini-parser");
-    std::fs::write(&path, executable).expect("failed to write ELF parser fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat ELF parser fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).expect("failed to make ELF parser executable");
+    write_executable(&path, executable, "failed to write ELF parser fixture");
 
     let status = std::process::Command::new(&path)
         .status()
@@ -230,13 +218,7 @@ fn executes_direct_elf64_self_hosting_mini_parser() {
 fn executes_direct_elf64_dynamic_fixed_array_places() {
     let executable = executable_for(include_str!("../../../examples/v1/dynamic_array.geo"));
     let path = executable_path("dynamic-array");
-    std::fs::write(&path, executable).expect("failed to write dynamic array fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat dynamic array fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).expect("failed to make dynamic array executable");
+    write_executable(&path, executable, "failed to write dynamic array fixture");
 
     let status = std::process::Command::new(&path)
         .status()
@@ -250,14 +232,11 @@ fn executes_direct_elf64_dynamic_fixed_array_places() {
 fn executes_direct_elf64_struct_argument() {
     let executable = executable_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
     let path = executable_path("aggregate-argument");
-    std::fs::write(&path, executable).expect("failed to write aggregate argument fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat aggregate argument fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions)
-        .expect("failed to make aggregate argument executable");
+    write_executable(
+        &path,
+        executable,
+        "failed to write aggregate argument fixture",
+    );
 
     let status = std::process::Command::new(&path)
         .status()
@@ -285,14 +264,11 @@ fn executes_direct_elf64_fixed_array_argument() {
 fn executes_direct_elf64_struct_return() {
     let executable = executable_for(include_str!("../../../examples/v1/aggregate_return.geo"));
     let path = executable_path("aggregate-return");
-    std::fs::write(&path, executable).expect("failed to write aggregate return fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat aggregate return fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions)
-        .expect("failed to make aggregate return executable");
+    write_executable(
+        &path,
+        executable,
+        "failed to write aggregate return fixture",
+    );
 
     let status = std::process::Command::new(&path)
         .status()
@@ -306,13 +282,7 @@ fn executes_direct_elf64_struct_return() {
 fn executes_direct_elf64_fixed_array_return() {
     let executable = executable_for(include_str!("../../../examples/v1/array_return.geo"));
     let path = executable_path("array-return");
-    std::fs::write(&path, executable).expect("failed to write array return fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat array return fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).expect("failed to make array return executable");
+    write_executable(&path, executable, "failed to write array return fixture");
 
     let status = std::process::Command::new(&path)
         .status()
