@@ -2557,6 +2557,9 @@ fn compiled_symbol_rva(
     if symbol == "remove_dir_all" {
         return helpers.remove_dir_all;
     }
+    if symbol == "remove_dir_all" {
+        return helpers.remove_dir_all;
+    }
     if symbol == "rename_file" {
         return helpers.rename_file;
     }
