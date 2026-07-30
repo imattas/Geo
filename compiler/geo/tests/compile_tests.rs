@@ -581,6 +581,37 @@ fn compiles_a_package_directory_through_its_main_entry() {
 }
 
 #[test]
+fn rejects_calls_to_private_imported_functions() {
+    let config = CompileConfig {
+        target: Target::parse("x86_64-linux").unwrap(),
+        runtime_entry: false,
+    };
+    let diagnostics = compile_to_asm(&workspace_path("examples/modules_private"), &config)
+        .expect_err("private imported functions must not be callable");
+
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("unknown function 'math.hidden'")));
+}
+
+#[test]
+fn rejects_unqualified_calls_to_private_imported_functions() {
+    let config = CompileConfig {
+        target: Target::parse("x86_64-linux").unwrap(),
+        runtime_entry: false,
+    };
+    let diagnostics = compile_to_asm(
+        &workspace_path("examples/modules_private_unqualified"),
+        &config,
+    )
+    .expect_err("private imported functions must not enter the caller scope");
+
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("unknown function 'hidden'")));
+}
+
+#[test]
 fn emits_data_for_string_literal_calls() {
     let source = r#"
         import std.io

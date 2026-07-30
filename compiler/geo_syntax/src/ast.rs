@@ -36,6 +36,8 @@ pub struct ExternFunction {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Type,
+    pub is_public: bool,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +69,7 @@ pub struct Function {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Type,
+    pub is_public: bool,
     pub body: Vec<Stmt>,
     pub span: Span,
     pub statement_spans: Vec<Span>,

@@ -93,6 +93,12 @@ Package directories are now valid compiler inputs: `main.geo` is discovered as
 the package entry, relative imports are resolved from that directory, and the
 directory can be checked, assembled, or built directly.
 
+Imported callable declarations now have an explicit visibility boundary:
+`pub fn` and `pub extern fn` are exported, while private functions remain
+usable by their own module and are rejected from importing callers.
+Modules without any visibility annotations retain legacy implicit exports for
+source compatibility.
+
 ## Verified Commands
 
 These commands were run successfully after the repository restructure:

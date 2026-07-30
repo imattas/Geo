@@ -22,6 +22,21 @@ fn parses_return_42() {
 }
 
 #[test]
+fn parses_public_functions_and_externs() {
+    let program = parse_source(
+        r#"
+            pub fn add(left: int, right: int) -> int { return left + right }
+            pub extern fn host(value: int) -> int
+            fn main() -> int { return 0 }
+        "#,
+    );
+
+    assert!(program.functions[0].is_public);
+    assert!(!program.functions[1].is_public);
+    assert!(program.externs[0].is_public);
+}
+
+#[test]
 fn parses_top_level_const_declaration() {
     let program = parse_source("const LIMIT: int = 42 fn main() -> int { return LIMIT }");
 

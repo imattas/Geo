@@ -356,6 +356,7 @@ impl<'a> Lexer<'a> {
         let text = &self.source[start..self.offset];
         let kind = match text {
             "fn" => TokenKind::Fn,
+            "pub" => TokenKind::Pub,
             "import" => TokenKind::Import,
             "extern" => TokenKind::Extern,
             "return" => TokenKind::Return,

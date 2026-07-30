@@ -20,6 +20,12 @@ Package inputs now behave like real compiler packages: passing a directory
 selects `main.geo`, resolves sibling modules, and produces a deterministic
 `<package>-out` default executable name when no output path is supplied.
 
+Use explicit callable exports in package modules. `pub fn` and `pub extern fn`
+make the import boundary visible in source and give the semantic checker enough
+ownership information to reject private cross-module calls.
+Legacy modules with no visibility annotations continue to export their callable
+declarations implicitly so existing packages remain source-compatible.
+
 Recommended split:
 
 - `compiler/geo_cli`: command-line entry point and user-facing commands.

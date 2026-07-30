@@ -36,22 +36,48 @@ impl<'a> Parser<'a> {
         let mut functions = Vec::new();
         while !self.at(&TokenKind::Eof) {
             self.consume_semicolons();
+            let is_public = self.matches(&TokenKind::Pub);
             if self.at(&TokenKind::Import) {
+                if is_public {
+                    return Err(vec![
+                        self.error_at_current("'pub' can only prefix a declaration")
+                    ]);
+                }
                 imports.push(self.parse_import()?);
             } else if self.at(&TokenKind::Type) {
+                if is_public {
+                    return Err(vec![
+                        self.error_at_current("'pub' currently supports functions only")
+                    ]);
+                }
                 type_aliases.push(self.parse_type_alias()?);
             } else if self.at(&TokenKind::Const) {
+                if is_public {
+                    return Err(vec![
+                        self.error_at_current("'pub' currently supports functions only")
+                    ]);
+                }
                 consts.push(self.parse_const()?);
             } else if self.at(&TokenKind::Extern) {
-                externs.push(self.parse_extern_function()?);
+                externs.push(self.parse_extern_function(is_public)?);
             } else if self.at(&TokenKind::Struct) {
+                if is_public {
+                    return Err(vec![
+                        self.error_at_current("'pub' currently supports functions only")
+                    ]);
+                }
                 structs.push(self.parse_struct()?);
             } else if self.at(&TokenKind::Enum) {
+                if is_public {
+                    return Err(vec![
+                        self.error_at_current("'pub' currently supports functions only")
+                    ]);
+                }
                 enums.push(self.parse_enum()?);
             } else if self.at(&TokenKind::Eof) {
                 break;
             } else {
-                functions.push(self.parse_function()?);
+                functions.push(self.parse_function(is_public)?);
             }
         }
         Ok(Program {
@@ -100,7 +126,10 @@ impl<'a> Parser<'a> {
         Ok(crate::ast::ConstDecl { name, ty, value })
     }
 
-    fn parse_extern_function(&mut self) -> Result<ExternFunction, Vec<Diagnostic>> {
+    fn parse_extern_function(
+        &mut self,
+        is_public: bool,
+    ) -> Result<ExternFunction, Vec<Diagnostic>> {
         self.expect(&TokenKind::Extern, "expected 'extern'")?;
         self.expect(&TokenKind::Fn, "expected 'fn'")?;
         let name = self.expect_ident()?;
@@ -111,6 +140,8 @@ impl<'a> Parser<'a> {
             name,
             params,
             return_type,
+            is_public,
+            source_path: None,
         })
     }
 
@@ -170,7 +201,7 @@ impl<'a> Parser<'a> {
         Ok(EnumDecl { name, variants })
     }
 
-    fn parse_function(&mut self) -> Result<Function, Vec<Diagnostic>> {
+    fn parse_function(&mut self, is_public: bool) -> Result<Function, Vec<Diagnostic>> {
         let start = self.peek().span;
         self.expect(&TokenKind::Fn, "expected 'fn'")?;
         let name = self.expect_ident()?;
@@ -187,6 +218,7 @@ impl<'a> Parser<'a> {
             name,
             params,
             return_type,
+            is_public,
             body,
             span: Span {
                 line: start.line,

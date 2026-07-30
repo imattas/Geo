@@ -5,6 +5,7 @@ use crate::ast::{
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
     let mut diagnostics = Vec::new();
@@ -89,6 +90,8 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
                             Callable {
                                 params: runtime_function.params,
                                 return_type: runtime_function.return_type,
+                                is_public: true,
+                                source_path: None,
                             },
                         )
                         .is_some()
@@ -136,6 +139,8 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
                 Callable {
                     params: extern_function.params.clone(),
                     return_type: extern_function.return_type.clone(),
+                    is_public: extern_function.is_public,
+                    source_path: extern_function.source_path.clone(),
                 },
             )
             .is_some()
@@ -169,6 +174,8 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
                 Callable {
                     params: function.params.clone(),
                     return_type: function.return_type.clone(),
+                    is_public: function.is_public,
+                    source_path: function.source_path.clone(),
                 },
             )
             .is_some()
@@ -207,10 +214,19 @@ pub fn check(program: &Program) -> Result<(), Vec<Diagnostic>> {
     detect_const_cycles(&program.consts, &mut diagnostics);
 
     for function in &program.functions {
+        let visible_functions = functions
+            .iter()
+            .filter(|(_, callable)| {
+                callable.is_public
+                    || callable.source_path.is_none()
+                    || callable.source_path == function.source_path
+            })
+            .map(|(name, callable)| (name.clone(), callable.clone()))
+            .collect::<HashMap<_, _>>();
         check_function(
             function,
             &program.consts,
-            &functions,
+            &visible_functions,
             &structs,
             &enums,
             &mut diagnostics,
@@ -236,6 +252,8 @@ pub fn expand_type_aliases_for_codegen(program: &Program) -> Program {
 struct Callable {
     params: Vec<Param>,
     return_type: Type,
+    is_public: bool,
+    source_path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -324,6 +342,8 @@ fn expand_program_type_aliases(
             .map(|function| crate::ast::ExternFunction {
                 name: function.name.clone(),
                 params: expand_params_type_aliases(&function.params, aliases, diagnostics),
+                is_public: function.is_public,
+                source_path: function.source_path.clone(),
                 return_type: expand_type_alias(
                     &function.return_type,
                     aliases,
@@ -338,6 +358,7 @@ fn expand_program_type_aliases(
             .map(|function| crate::ast::Function {
                 name: function.name.clone(),
                 params: expand_params_type_aliases(&function.params, aliases, diagnostics),
+                is_public: function.is_public,
                 return_type: expand_type_alias(
                     &function.return_type,
                     aliases,

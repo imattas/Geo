@@ -83,6 +83,12 @@ Package directories are now accepted by the driver. The resolver discovers
 cycles, and native builds can consume the merged multi-file program on Linux
 and Windows.
 
+Callable module visibility is now explicit. `pub fn` and `pub extern fn` are
+exported across imports; private functions remain available to code in their
+defining module but are excluded from importing scopes during type checking.
+Modules that contain no visibility annotations retain implicit exports for
+backward compatibility.
+
 The compiler driver now exposes `dump-tokens`, `dump-ast`, and `dump-ir` for
 inspecting each owned frontend and lowering stage directly from the CLI. Parsed
 functions also retain their source span, expression spans, top-level statement

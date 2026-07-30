@@ -17,6 +17,7 @@ fn semantic_crate_checks_a_minimal_program() {
             name: "main".to_string(),
             params: Vec::<Param>::new(),
             return_type: Type::Unit,
+            is_public: false,
             body: vec![Stmt::Return(None)],
             span: Default::default(),
             statement_spans: Vec::new(),

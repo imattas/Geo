@@ -54,6 +54,14 @@ impl ResolveCtx {
         self.visiting.insert(key.clone());
         let source = SourceFile::load(path)?;
         let mut program = parse_source(&source)?;
+        if !has_explicit_visibility(&program) {
+            for function in &mut program.functions {
+                function.is_public = true;
+            }
+            for function in &mut program.externs {
+                function.is_public = true;
+            }
+        }
         let mut merged = empty_program();
 
         for import in program.imports.clone() {
@@ -73,11 +81,19 @@ impl ResolveCtx {
     }
 }
 
+fn has_explicit_visibility(program: &Program) -> bool {
+    program.functions.iter().any(|function| function.is_public)
+        || program.externs.iter().any(|function| function.is_public)
+}
+
 fn parse_source(source: &SourceFile) -> Result<Program, Vec<Diagnostic>> {
     let tokens = lex(&source.text).map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
     let mut program =
         parse(&tokens).map_err(|diagnostics| source.attach_diagnostics(diagnostics))?;
     for function in &mut program.functions {
+        function.source_path = Some(source.path.clone());
+    }
+    for function in &mut program.externs {
         function.source_path = Some(source.path.clone());
     }
     Ok(program)
@@ -101,10 +117,14 @@ fn rewrite_qualified_imports(program: &mut Program, import: &Import, imported: &
     let mut const_names = HashSet::new();
     let mut enum_variant_names = HashSet::new();
     for function in &imported.functions {
-        call_names.insert(format!("{prefix}.{}", function.name));
+        if function.is_public {
+            call_names.insert(format!("{prefix}.{}", function.name));
+        }
     }
     for extern_function in &imported.externs {
-        call_names.insert(format!("{prefix}.{}", extern_function.name));
+        if extern_function.is_public {
+            call_names.insert(format!("{prefix}.{}", extern_function.name));
+        }
     }
     for struct_decl in &imported.structs {
         type_names.insert(format!("{prefix}.{}", struct_decl.name));
