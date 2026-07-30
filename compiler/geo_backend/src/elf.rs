@@ -3126,6 +3126,10 @@ fn emit_create_dir_all_runtime(code: &mut Vec<u8>) {
     let final_exists = emit_near_jump_placeholder(code, 0x0f, 0x84);
     let success = code.len();
     code.extend_from_slice(&[0x48, 0x81, 0xc4, 0x10, 0x10, 0x00, 0x00, 0x31, 0xc0, 0xc3]);
+    let syscall_failure = code.len();
+    code.extend_from_slice(&[
+        0x48, 0xf7, 0xd8, 0x48, 0x81, 0xc4, 0x10, 0x10, 0x00, 0x00, 0xc3,
+    ]);
     let failure = code.len();
     code.extend_from_slice(&[
         0x48, 0x81, 0xc4, 0x10, 0x10, 0x00, 0x00, 0xb8, 1, 0x00, 0x00, 0x00, 0xc3,
@@ -3136,9 +3140,9 @@ fn emit_create_dir_all_runtime(code: &mut Vec<u8>) {
     patch_near_jump(code, final_path, final_target);
     patch_near_jump(code, not_separator, not_separator_target);
     patch_near_jump(code, leading_separator, leading_target);
-    patch_near_jump(code, prefix_failed, failure);
+    patch_near_jump(code, prefix_failed, syscall_failure);
     patch_near_jump(code, prefix_exists, prefix_restore);
-    patch_near_jump(code, final_failed, failure);
+    patch_near_jump(code, final_failed, syscall_failure);
     patch_near_jump(code, final_exists, success);
 }
 
