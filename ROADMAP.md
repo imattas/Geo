@@ -29,6 +29,10 @@ fn main() -> int {
 
 The compiler remains written in Rust for v1. The self-hosting goal is that Geo can compile meaningful subsets of compiler-shaped Geo programs: lexer, parser, diagnostics, AST, buffers, file IO, and small CLI tools.
 
+The from-scratch verification gate now checks both dependency policy and the
+presence of the owned lexer, parser, semantic, lowering, ELF64, PE64, and
+object-writer stages.
+
 ## Phase 0: Repository Foundation
 
 Status: complete.

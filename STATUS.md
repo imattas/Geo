@@ -1,6 +1,6 @@
 # Geo Status
 
-Last updated: 2026-07-29.
+Last updated: 2026-07-30.
 
 ## Repository Layout
 
@@ -338,6 +338,8 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows `create_dir_all` now use compiler-emitted bounded recursive helpers. Linux creates POSIX prefixes with `mkdir`; Windows calls `CreateDirectoryA` and validates existing prefixes with `GetFileAttributesA`.
 - Direct Linux `remove_dir_all` now recursively enumerates compiler-owned directory entries, removes files and child directories, releases child paths, and removes the root directory; Linux execution coverage is in CI.
 - Direct Linux and Windows `remove_dir_all` now recursively enumerate and remove files and child directories through compiler-emitted native helpers; both target execution paths are covered by CI and Windows-host tests.
+- The from-scratch xtask gate now verifies the required lexer, parser, semantic, lowering, and native ELF/PE/object-writer sources exist in addition to rejecting external compiler-backend dependencies.
+- The full workspace gate and hosted Ubuntu/Windows CI pass after the PE64 recursive-removal relocation fix.
 - Direct native `rename_file` support now uses Linux `rename` and Win32 `MoveFileA`, with cross-platform source/destination cleanup fixtures.
 - Direct native `copy_file` support now uses a compiler-emitted chunked Linux
   `open`/`read`/`write` path and Win32 `CopyFileA`, with ELF64, PE64, and CI

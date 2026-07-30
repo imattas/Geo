@@ -238,6 +238,23 @@ pub fn check_from_scratch_policy(root: &Path) -> Result<(), String> {
         }
     }
 
+    let required_native_sources = [
+        "compiler/geo_syntax/src/lexer.rs",
+        "compiler/geo_syntax/src/parser.rs",
+        "compiler/geo_semantic/src/typecheck.rs",
+        "compiler/geo_codegen/src/lower.rs",
+        "compiler/geo_backend/src/elf.rs",
+        "compiler/geo_backend/src/pe.rs",
+        "compiler/geo_backend/src/object.rs",
+    ];
+    for file in required_native_sources {
+        if !root.join(file).is_file() {
+            return Err(format!(
+                "from-scratch compiler source is missing required stage: {file}"
+            ));
+        }
+    }
+
     Ok(())
 }
 

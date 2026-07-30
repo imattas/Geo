@@ -286,3 +286,9 @@ The next self-hosting target should be meaningful but narrow:
 5. A Geo file echo tool that proves file IO and buffers.
 
 Do not start with the full compiler rewrite. First make Geo capable of writing compiler-shaped components cleanly.
+# Verification And Compiler Ownership
+
+- Keep the from-scratch gate aligned with every compiler stage so a future
+  refactor cannot silently replace native compilation with a host tool shim.
+- Continue adding executable self-hosting fixtures for lexer, parser,
+  diagnostics, and file-system workflows on both native targets.
