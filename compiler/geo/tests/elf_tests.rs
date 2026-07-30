@@ -293,16 +293,6 @@ fn executes_direct_elf64_recursive_directory_removal() {
         .status()
         .expect("failed to execute recursive removal fixture");
     let root_exists = root.exists();
-    if status.code() != Some(0) {
-        eprintln!(
-            "recursive removal status={:?}, remaining={:?}",
-            status.code(),
-            std::fs::read_dir(&root).ok().map(|entries| entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .collect::<Vec<_>>())
-        );
-    }
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir_all(&root);
     assert_eq!(status.code(), Some(0));

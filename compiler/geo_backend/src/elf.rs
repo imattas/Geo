@@ -3279,29 +3279,17 @@ fn emit_remove_dir_all_runtime(
     let root_target = code.len();
     code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24]);
     emit_internal_call(code, remove_dir_offset);
-    code.extend_from_slice(&[0x85, 0xc0]);
-    let root_failed = emit_near_jump_placeholder(code, 0x0f, 0x85);
     code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
-
-    let root_failure = code.len();
-    code.extend_from_slice(&[0xb8, 5, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
-
-    let child_failure = code.len();
-    code.extend_from_slice(&[0xb8, 3, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
-
-    let child_path_failure = code.len();
-    code.extend_from_slice(&[0xb8, 2, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
 
     let failure = code.len();
     code.extend_from_slice(&[0xb8, 1, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
 
     patch_near_jump(code, invalid_path, failure);
     patch_near_jump(code, children_done, root_target);
-    patch_near_jump(code, child_path_failed, child_path_failure);
+    patch_near_jump(code, child_path_failed, failure);
     patch_near_jump(code, child_is_dir, directory_target);
     patch_near_jump(code, file_to_release, release_child);
-    patch_near_jump(code, child_failed, child_failure);
-    patch_near_jump(code, root_failed, root_failure);
+    patch_near_jump(code, child_failed, failure);
 }
 
 fn emit_directory_runtime(code: &mut Vec<u8>, syscall: u32, create: bool) {
