@@ -393,8 +393,9 @@ Acceptance criteria:
   arrays nested in copied structs; continue extending this representation to
   runtime-backed collection values and aggregate function arguments.
 - The Linux ELF64 writer now preserves the initial process stack and implements
-  native `std.process` argument accessors; add a Windows command-line parser
-  with correct quoting semantics next.
+  native `std.process` argument accessors. The PE64 writer now provides
+  quote-aware `arg_count` and `arg_exists` through `GetCommandLineA`; add
+  owned Windows token extraction for `arg` and `arg_or` next.
 
 ## Phase 10: Distribution
 

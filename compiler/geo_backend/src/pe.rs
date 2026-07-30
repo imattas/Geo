@@ -22,6 +22,7 @@ pub fn emit_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         false,
         false,
         false,
+        false,
     );
     let text = build_text(&layout, &plan);
     let rdata = build_rdata(plan.output.as_deref().unwrap_or(""));
@@ -35,14 +36,14 @@ mod tests {
 
     #[test]
     fn layout_places_write_file_count_after_compiled_rodata() {
-        let layout = Layout::new(9, true, false, false, false, false, false);
+        let layout = Layout::new(9, true, false, false, false, false, false, false);
 
         assert_eq!(layout.written_rva, 0x2010);
     }
 
     #[test]
     fn layout_relocates_all_data_rvas_together() {
-        let mut layout = Layout::new(9, true, true, true, true, true, true);
+        let mut layout = Layout::new(9, true, true, true, true, true, true, false);
         let original_idata = layout.idata_rva;
         let original_written = layout.written_rva;
         let original_imports = layout.import_descriptor_rva;
@@ -168,6 +169,10 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "dir_entry_path"
         )
     });
+    let needs_process_args = image
+        .relocations
+        .iter()
+        .any(|relocation| matches!(relocation.symbol.as_str(), "arg_count" | "arg_exists"));
     let mut layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
@@ -176,6 +181,7 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
         needs_file_ops,
         needs_truncate_file,
         needs_file_metadata,
+        needs_process_args,
     );
     let mut text = build_compiled_text(&layout, &image)?;
     let text_end = layout.text_rva + text.len() as u32;
@@ -469,9 +475,11 @@ struct Layout {
     get_std_handle_iat: u32,
     write_file_iat: u32,
     exit_process_iat: u32,
+    get_command_line_iat: u32,
     virtual_alloc_iat: u32,
     virtual_free_iat: u32,
     has_console_io: bool,
+    has_process_args: bool,
     has_virtual_alloc: bool,
     has_file_read: bool,
     has_file_truncate: bool,
@@ -505,6 +513,7 @@ impl Layout {
         has_file_ops: bool,
         has_file_truncate: bool,
         has_file_metadata: bool,
+        has_process_args: bool,
     ) -> Self {
         let headers_raw = 0x200;
         let text_rva = 0x1000;
@@ -527,6 +536,7 @@ impl Layout {
         };
         let import_count = u32::from(has_console_io) * 2
             + 1
+            + u32::from(has_process_args)
             + u32::from(has_virtual_alloc) * 2
             + file_import_count
             + u32::from(has_file_ops)
@@ -555,6 +565,13 @@ impl Layout {
             let value = next_iat;
             next_iat += 8;
             value
+        };
+        let get_command_line_iat = if has_process_args {
+            let value = next_iat;
+            next_iat += 8;
+            value
+        } else {
+            ft_rva
         };
         let virtual_alloc_iat = if has_virtual_alloc {
             let value = next_iat;
@@ -669,9 +686,11 @@ impl Layout {
             get_std_handle_iat,
             write_file_iat,
             exit_process_iat,
+            get_command_line_iat,
             virtual_alloc_iat,
             virtual_free_iat,
             has_console_io,
+            has_process_args,
             has_virtual_alloc,
             has_file_read,
             has_file_truncate,
@@ -707,6 +726,7 @@ impl Layout {
         self.get_std_handle_iat += delta;
         self.write_file_iat += delta;
         self.exit_process_iat += delta;
+        self.get_command_line_iat += delta;
         self.virtual_alloc_iat += delta;
         self.virtual_free_iat += delta;
         self.create_file_iat += delta;
@@ -1283,6 +1303,10 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "process_id");
+    let needs_process_args = image
+        .relocations
+        .iter()
+        .any(|relocation| matches!(relocation.symbol.as_str(), "arg_count" | "arg_exists"));
     let needs_path_separator = image
         .relocations
         .iter()
@@ -1413,6 +1437,7 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         || needs_file_read_to_string
         || needs_file_metadata
         || needs_read_line
+        || needs_process_args
         || needs_process_exit
         || needs_process_id
         || needs_path_separator
@@ -1884,6 +1909,18 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
     if needs_process_id {
         helpers.process_id = Some(layout.text_rva + code.len() as u32);
         emit_process_id_helper(&mut code);
+    }
+    if needs_process_args {
+        helpers.arg_count = Some(layout.text_rva + code.len() as u32);
+        emit_arg_count_helper(&mut code, layout);
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "arg_exists")
+        {
+            helpers.arg_exists = Some(layout.text_rva + code.len() as u32);
+            emit_arg_exists_helper(&mut code, layout, helpers.arg_count.unwrap());
+        }
     }
     if needs_path_separator {
         helpers.path_separator = Some(layout.text_rva + code.len() as u32);
@@ -2358,6 +2395,12 @@ fn compiled_symbol_rva(
     if symbol == "process_id" {
         return helpers.process_id;
     }
+    if symbol == "arg_count" {
+        return helpers.arg_count;
+    }
+    if symbol == "arg_exists" {
+        return helpers.arg_exists;
+    }
     if symbol == "platform_path_separator" {
         return helpers.path_separator;
     }
@@ -2565,6 +2608,8 @@ struct PeHelperRvas {
     println: Option<u32>,
     exit_process: Option<u32>,
     process_id: Option<u32>,
+    arg_count: Option<u32>,
+    arg_exists: Option<u32>,
     path_separator: Option<u32>,
     platform_os: Option<u32>,
     platform_arch: Option<u32>,
@@ -4597,6 +4642,66 @@ fn emit_process_id_helper(code: &mut Vec<u8>) {
     ]);
 }
 
+fn emit_arg_count_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28]);
+    emit_call_iat(code, layout, layout.get_command_line_iat);
+    code.extend_from_slice(&[
+        0x48, 0x89, 0xc2, // rdx = command line cursor
+        0x31, 0xc0, // rax = argument count
+        0x45, 0x31, 0xc0, // r8b = inside argument
+        0x45, 0x31, 0xc9, // r9b = inside quotes
+    ]);
+    let scan = code.len();
+    code.extend_from_slice(&[0x44, 0x8a, 0x12, 0x45, 0x84, 0xd2]);
+    let done = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, b'"']);
+    let quote = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x45, 0x84, 0xc9]);
+    let normal = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, b' ']);
+    let delimiter_space = emit_short_jump_placeholder(code, 0x74);
+    code.extend_from_slice(&[0x41, 0x80, 0xfa, 9]);
+    let delimiter_tab = emit_short_jump_placeholder(code, 0x74);
+    let normal_target = code.len();
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let already_in_argument = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0, 0x41, 0xb0, 1]);
+    let advance = code.len();
+    code.extend_from_slice(&[0x48, 0xff, 0xc2]);
+    emit_short_jump_back(code, scan);
+    let quote_target = code.len();
+    code.extend_from_slice(&[0x41, 0x80, 0xf1, 1, 0x45, 0x84, 0xc0]);
+    let quote_in_argument = emit_short_jump_placeholder(code, 0x75);
+    code.extend_from_slice(&[0x48, 0xff, 0xc0, 0x41, 0xb0, 1]);
+    emit_short_jump_back(code, advance);
+    let delimiter_target = code.len();
+    code.extend_from_slice(&[0x45, 0x31, 0xc0]);
+    emit_short_jump_back(code, advance);
+    let done_target = code.len();
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, done, done_target);
+    patch_short_jump(code, quote, quote_target);
+    patch_short_jump(code, normal, normal_target);
+    patch_short_jump(code, delimiter_space, delimiter_target);
+    patch_short_jump(code, delimiter_tab, delimiter_target);
+    patch_short_jump(code, already_in_argument, advance);
+    patch_short_jump(code, quote_in_argument, advance);
+}
+
+fn emit_arg_exists_helper(code: &mut Vec<u8>, layout: &Layout, arg_count: u32) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x28, 0x48, 0x89, 0x4c, 0x24, 0x20]);
+    emit_direct_call(code, layout.text_rva, arg_count);
+    code.extend_from_slice(&[0x48, 0x8b, 0x4c, 0x24, 0x20, 0x48, 0x85, 0xc9]);
+    let negative = emit_short_jump_placeholder(code, 0x78);
+    code.extend_from_slice(&[0x48, 0x39, 0xc1, 0x0f, 0x92, 0xc0, 0x0f, 0xb6, 0xc0]);
+    let finish = code.len();
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    let false_value = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x28, 0xc3]);
+    patch_short_jump(code, negative, false_value);
+    let _ = finish;
+}
+
 fn emit_path_separator_helper(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0xb8, b'\\', 0x00, 0x00, 0x00, 0xc3]);
 }
@@ -6372,6 +6477,9 @@ fn build_idata(layout: &Layout) -> Vec<u8> {
         imports.push(b"WriteFile\0".as_slice());
     }
     imports.push(b"ExitProcess\0".as_slice());
+    if layout.has_process_args {
+        imports.push(b"GetCommandLineA\0".as_slice());
+    }
     if layout.has_virtual_alloc {
         imports.push(b"VirtualAlloc\0".as_slice());
         imports.push(b"VirtualFree\0".as_slice());

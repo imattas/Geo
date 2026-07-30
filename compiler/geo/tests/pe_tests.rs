@@ -1624,6 +1624,26 @@ fn emits_direct_pe64_process_id_without_runtime_import() {
 }
 
 #[test]
+fn emits_direct_pe64_process_argument_count_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                if arg_exists(0) {
+                    return arg_count()
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"GetCommandLineA"));
+    assert!(contains_bytes(&pe, &[0x44, 0x8a, 0x12, 0x45, 0x84, 0xd2]));
+}
+
+#[test]
 fn emits_direct_pe64_platform_path_separator() {
     let pe = pe_for(
         r#"

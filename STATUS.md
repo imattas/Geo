@@ -423,3 +423,5 @@ That gives the native backends the source-text operations needed for compiler-sh
 - Native ELF64 entry now preserves the initial Linux process stack and exposes
   compiler-owned `std.process.arg_count`, `arg`, `arg_exists`, and `arg_or`
   accessors directly from `argc`/`argv` without a C runtime.
+- Native PE64 now imports `GetCommandLineA` and provides quote-aware
+  `std.process.arg_count` and `arg_exists` helpers without a C runtime.
