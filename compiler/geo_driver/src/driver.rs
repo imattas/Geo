@@ -343,6 +343,18 @@ fn compile_config(
 }
 
 fn default_output_path(input: &Path, target: &Target) -> PathBuf {
+    if input.is_dir() {
+        let name = input
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("geo");
+        let suffix = if target.executable_extension.is_empty() {
+            "-out"
+        } else {
+            "-out.exe"
+        };
+        return input.with_file_name(format!("{name}{suffix}"));
+    }
     if target.executable_extension.is_empty() {
         input.with_extension("")
     } else {

@@ -78,6 +78,11 @@ Acceptance criteria:
 
 Progress: `compiler/geo_syntax` now owns the AST, token model, lexer, parser, and canonical formatter, `compiler/geo_ir` owns the typed machine-independent IR, `compiler/geo_semantic` owns resolution, type checking, borrow checking, and runtime symbol metadata, `compiler/geo_codegen` owns AST-to-IR lowering, `compiler/geo_backend` owns target definitions, x86-64 assembly, ELF/COFF object writers, and ELF/PE executable emission, and `compiler/geo_driver` owns CLI and compile orchestration. Lexer/parser token spans now flow through `compiler/geo_source` into rendered diagnostics. `compiler/geo` remains the compatibility/library shell and binary entry point.
 
+Package directories are now accepted by the driver. The resolver discovers
+`main.geo`, resolves relative imports from the package root, rejects import
+cycles, and native builds can consume the merged multi-file program on Linux
+and Windows.
+
 The compiler driver now exposes `dump-tokens`, `dump-ast`, and `dump-ir` for
 inspecting each owned frontend and lowering stage directly from the CLI. Parsed
 functions also retain their source span, expression spans, top-level statement

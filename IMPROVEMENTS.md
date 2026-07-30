@@ -16,6 +16,10 @@ External assembler/linker tools are allowed only as temporary build-tool steps. 
 
 Current state: syntax, IR, semantic analysis, lowering, target backends/object writers, and driver orchestration are owned by dedicated compiler crates. `compiler/geo` remains the compatibility/library shell and binary entry point; diagnostics and source loading remain dedicated crates.
 
+Package inputs now behave like real compiler packages: passing a directory
+selects `main.geo`, resolves sibling modules, and produces a deterministic
+`<package>-out` default executable name when no output path is supplied.
+
 Recommended split:
 
 - `compiler/geo_cli`: command-line entry point and user-facing commands.

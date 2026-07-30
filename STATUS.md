@@ -89,6 +89,10 @@ Win32 standard-error handle on PE64.
 
 The compiler crate is the default workspace member, so root-level `cargo run -- ...` runs the `geo` compiler.
 
+Package directories are now valid compiler inputs: `main.geo` is discovered as
+the package entry, relative imports are resolved from that directory, and the
+directory can be checked, assembled, or built directly.
+
 ## Verified Commands
 
 These commands were run successfully after the repository restructure:

@@ -1,6 +1,8 @@
+use geo::driver::{compile_to_asm, CompileConfig};
 use geo::lexer::lex;
 use geo::lower::lower;
 use geo::parser::parse;
+use geo::target::Target;
 use geo::typecheck::check;
 use geo::x86_64::emit_nasm;
 
@@ -564,6 +566,18 @@ fn emits_calls_and_stack_locals() {
     assert!(asm.contains("call add"));
     assert!(asm.contains("mov rdi"));
     assert!(asm.contains("mov rsi"));
+}
+
+#[test]
+fn compiles_a_package_directory_through_its_main_entry() {
+    let config = CompileConfig {
+        target: Target::parse("x86_64-linux").unwrap(),
+        runtime_entry: false,
+    };
+    let asm = compile_to_asm(&workspace_path("examples/modules"), &config).unwrap();
+
+    assert!(asm.contains("add:"));
+    assert!(asm.contains("call add"));
 }
 
 #[test]

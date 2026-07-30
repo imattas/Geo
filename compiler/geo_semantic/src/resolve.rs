@@ -7,13 +7,29 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub fn load_package_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
-    let root = path.parent().unwrap_or_else(|| Path::new("."));
+    let entry = package_entry(path)?;
+    let root = entry.parent().unwrap_or_else(|| Path::new("."));
     let mut ctx = ResolveCtx {
         root: root.to_path_buf(),
         visiting: HashSet::new(),
         visited: HashSet::new(),
     };
-    ctx.load_file(path)
+    ctx.load_file(&entry)
+}
+
+fn package_entry(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
+    if path.is_dir() {
+        let entry = path.join("main.geo");
+        if !entry.is_file() {
+            return Err(vec![Diagnostic::error(format!(
+                "package '{}' has no main.geo entry",
+                path.display()
+            ))]);
+        }
+        return Ok(entry);
+    }
+
+    Ok(path.to_path_buf())
 }
 
 struct ResolveCtx {
