@@ -191,6 +191,21 @@ fn emits_direct_elf64_recursive_directory_runtime() {
     assert_eq!(&executable[0..4], b"\x7fELF");
 }
 
+#[test]
+fn emits_direct_elf64_recursive_directory_removal_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return remove_dir_all("/tmp/geo-remove-dir-all")
+            }
+        "#,
+    );
+
+    assert_eq!(&executable[0..4], b"\x7fELF");
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn executes_direct_elf64_process_argument_count() {
@@ -246,6 +261,42 @@ fn executes_direct_elf64_recursive_directory_creation() {
     let _ = std::fs::remove_dir_all(&root);
     assert_eq!(status.code(), Some(0));
     assert!(nested_exists);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_recursive_directory_removal() {
+    let root = std::env::temp_dir().join(format!("geo-remove-dir-all-{}", std::process::id()));
+    let nested = root.join("cache").join("objects");
+    std::fs::create_dir_all(&nested).expect("failed to create recursive removal fixture");
+    std::fs::write(nested.join("artifact.txt"), b"geo")
+        .expect("failed to write recursive removal fixture");
+    let source = format!(
+        r#"
+            import std.io
+
+            fn main() -> int {{
+                return remove_dir_all("{}")
+            }}
+        "#,
+        root.to_string_lossy().replace('\\', "\\\\")
+    );
+    let executable = executable_for(&source);
+    let path = executable_path("recursive-removal");
+    write_executable(
+        &path,
+        executable,
+        "failed to write recursive removal fixture",
+    );
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute recursive removal fixture");
+    let root_exists = root.exists();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(status.code(), Some(0));
+    assert!(!root_exists);
 }
 
 #[cfg(target_os = "linux")]

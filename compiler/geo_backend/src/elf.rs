@@ -398,6 +398,85 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "create_dir" => emit_create_dir_runtime(&mut code),
             "create_dir_all" => emit_create_dir_all_runtime(&mut code),
             "remove_dir" => emit_remove_dir_runtime(&mut code),
+            "remove_dir_all" => {
+                let count_offset = if let Some(symbol) = symbols.get("dir_entry_count") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_dir_entry_count_runtime(&mut code);
+                    symbols.insert("dir_entry_count".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let name_offset = if let Some(symbol) = symbols.get("dir_entry_name") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_dir_entry_name_runtime(&mut code);
+                    symbols.insert("dir_entry_name".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let concat_offset = if let Some(symbol) = symbols.get("string_concat") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_string_concat_runtime(&mut code);
+                    symbols.insert("string_concat".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let free_offset = if let Some(symbol) = symbols.get("string_free") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_free_runtime(&mut code);
+                    symbols.insert("string_free".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let path_offset = if let Some(symbol) = symbols.get("dir_entry_path") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_dir_entry_path_runtime(&mut code, name_offset, concat_offset, free_offset);
+                    symbols.insert("dir_entry_path".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let is_dir_offset = if let Some(symbol) = symbols.get("file_is_dir") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_file_stat_runtime(&mut code, FileStatKind::Directory);
+                    symbols.insert("file_is_dir".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let remove_file_offset = if let Some(symbol) = symbols.get("remove_file") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_remove_file_runtime(&mut code);
+                    symbols.insert("remove_file".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let remove_dir_offset = if let Some(symbol) = symbols.get("remove_dir") {
+                    (*symbol - runtime_base) as usize
+                } else {
+                    let offset = code.len();
+                    emit_remove_dir_runtime(&mut code);
+                    symbols.insert("remove_dir".to_string(), runtime_base + offset as u64);
+                    offset
+                };
+                let self_offset = code.len();
+                emit_remove_dir_all_runtime(
+                    &mut code,
+                    count_offset,
+                    path_offset,
+                    is_dir_offset,
+                    remove_file_offset,
+                    remove_dir_offset,
+                    free_offset,
+                    self_offset,
+                );
+                symbols.insert(name.to_string(), runtime_base + self_offset as u64);
+                continue;
+            }
             "file_open" => emit_file_open_runtime(&mut code, 0),
             "file_open_write" => emit_file_open_runtime(&mut code, 0x241),
             "file_open_append" => emit_file_open_runtime(&mut code, 0x441),
@@ -3146,6 +3225,71 @@ fn emit_create_dir_all_runtime(code: &mut Vec<u8>) {
 
 fn emit_remove_dir_runtime(code: &mut Vec<u8>) {
     emit_directory_runtime(code, 84, false);
+}
+
+fn emit_remove_dir_all_runtime(
+    code: &mut Vec<u8>,
+    count_offset: usize,
+    path_offset: usize,
+    is_dir_offset: usize,
+    remove_file_offset: usize,
+    remove_dir_offset: usize,
+    free_offset: usize,
+    self_offset: usize,
+) {
+    // Recursively remove children using compiler-owned directory and file helpers.
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x48]);
+    code.extend_from_slice(&[0x48, 0x89, 0x3c, 0x24]);
+    code.extend_from_slice(&[0x48, 0x85, 0xff]);
+    let invalid_path = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0xf7]);
+    emit_internal_call(code, count_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x08, 0x31, 0xc0]);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x10]);
+
+    let child_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x3b, 0x44, 0x24, 0x08]);
+    let children_done = emit_near_jump_placeholder(code, 0x0f, 0x83);
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24, 0x48, 0x8b, 0x74, 0x24, 0x10]);
+    emit_internal_call(code, path_offset);
+    code.extend_from_slice(&[0x48, 0x89, 0x44, 0x24, 0x18, 0x48, 0x85, 0xc0]);
+    let child_path_failed = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x48, 0x89, 0xc7]);
+    emit_internal_call(code, is_dir_offset);
+    code.extend_from_slice(&[0x85, 0xc0]);
+    let child_is_dir = emit_near_jump_placeholder(code, 0x0f, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x18]);
+    emit_internal_call(code, remove_file_offset);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x20]);
+    let file_to_release = emit_near_unconditional_placeholder(code);
+
+    let directory_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x18]);
+    emit_internal_call(code, self_offset);
+    code.extend_from_slice(&[0x89, 0x44, 0x24, 0x20]);
+
+    let release_child = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x7c, 0x24, 0x18]);
+    emit_internal_call(code, free_offset);
+    code.extend_from_slice(&[0x83, 0x7c, 0x24, 0x20, 0x00]);
+    let child_failed = emit_near_jump_placeholder(code, 0x0f, 0x85);
+    code.extend_from_slice(&[0x48, 0xff, 0x44, 0x24, 0x10]);
+    emit_short_jump_back(code, child_loop);
+
+    let root_target = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x3c, 0x24]);
+    emit_internal_call(code, remove_dir_offset);
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x48, 0xc3]);
+
+    let failure = code.len();
+    code.extend_from_slice(&[0xb8, 1, 0x00, 0x00, 0x00, 0x48, 0x83, 0xc4, 0x48, 0xc3]);
+
+    patch_near_jump(code, invalid_path, failure);
+    patch_near_jump(code, children_done, root_target);
+    patch_near_jump(code, child_path_failed, failure);
+    patch_near_jump(code, child_is_dir, directory_target);
+    patch_near_jump(code, file_to_release, release_child);
+    patch_near_jump(code, child_failed, failure);
 }
 
 fn emit_directory_runtime(code: &mut Vec<u8>, syscall: u32, create: bool) {
