@@ -3085,7 +3085,7 @@ fn emit_create_dir_all_runtime(code: &mut Vec<u8>) {
     code.extend_from_slice(&[
         0x41, 0x8a, 0x04, 0x09, 0x41, 0x88, 0x04, 0x08, 0x48, 0xff, 0xc1,
     ]);
-    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    code.extend_from_slice(&[0x84, 0xc0]);
     let copy_done = emit_near_jump_placeholder(code, 0x0f, 0x84);
     emit_near_jump_back(code, copy_loop);
 
