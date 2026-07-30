@@ -48,9 +48,11 @@ fn lower_function(program: &Program, function: &crate::ast::Function) -> IrFunct
         runtime_symbols: runtime_symbols(program),
         function_params: function_params(program),
         function_returns: function_returns(program),
+        return_type: function.return_type.clone(),
         next_value: 0,
         next_label: 0,
         next_string: 0,
+        next_buffer: 0,
         loop_stack: Vec::new(),
         instructions: Vec::new(),
     };
@@ -64,27 +66,48 @@ fn lower_function(program: &Program, function: &crate::ast::Function) -> IrFunct
         .filter(|_| function.return_type != Type::Unit)
     {
         ctx.lower_stmts(prefix);
-        let value = ctx.lower_expr(expr);
-        ctx.instructions.push(Instruction::Return { value });
+        if ctx.is_aggregate_type(&function.return_type) {
+            let values = ctx.lower_aggregate_expression(expr, &function.return_type);
+            ctx.instructions
+                .push(Instruction::ReturnAggregate { values });
+        } else {
+            let value = ctx.lower_expr(expr);
+            ctx.instructions.push(Instruction::Return { value });
+        }
     } else {
         ctx.lower_stmts(&function.body);
     }
-    if !matches!(ctx.instructions.last(), Some(Instruction::Return { .. })) {
-        let value = ctx.fresh();
-        ctx.instructions.push(Instruction::Const {
-            dst: value,
-            value: 0,
-        });
-        ctx.instructions.push(Instruction::Return { value });
+    if !matches!(
+        ctx.instructions.last(),
+        Some(Instruction::Return { .. } | Instruction::ReturnAggregate { .. })
+    ) {
+        if ctx.is_aggregate_type(&function.return_type) {
+            let values = (0..ctx.aggregate_leaf_count(&function.return_type))
+                .map(|_| ctx.lower_const_scalar(0))
+                .collect();
+            ctx.instructions
+                .push(Instruction::ReturnAggregate { values });
+        } else {
+            let value = ctx.fresh();
+            ctx.instructions.push(Instruction::Const {
+                dst: value,
+                value: 0,
+            });
+            ctx.instructions.push(Instruction::Return { value });
+        }
     }
 
+    let mut params = function
+        .params
+        .iter()
+        .flat_map(|param| ctx.abi_param_slots(&param.name, &param.ty))
+        .collect::<Vec<_>>();
+    if ctx.is_aggregate_type(&function.return_type) {
+        params.insert(0, "__geo_return_ptr".to_string());
+    }
     IrFunction {
         name: function.name.clone(),
-        params: function
-            .params
-            .iter()
-            .flat_map(|param| ctx.abi_param_slots(&param.name, &param.ty))
-            .collect(),
+        params,
         instructions: ctx.instructions,
     }
 }
@@ -101,9 +124,11 @@ struct LowerCtx {
     runtime_symbols: HashMap<String, String>,
     function_params: HashMap<String, Vec<Type>>,
     function_returns: HashMap<String, Type>,
+    return_type: Type,
     next_value: usize,
     next_label: usize,
     next_string: usize,
+    next_buffer: usize,
     loop_stack: Vec<(String, String)>,
     instructions: Vec<Instruction>,
 }
@@ -207,6 +232,20 @@ impl LowerCtx {
     fn lower_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Return(expr) => {
+                let return_type = self.return_type.clone();
+                if self.is_aggregate_type(&return_type) {
+                    let values = expr
+                        .as_ref()
+                        .map(|expr| self.lower_aggregate_expression(expr, &return_type))
+                        .unwrap_or_else(|| {
+                            (0..self.aggregate_leaf_count(&return_type))
+                                .map(|_| self.lower_const_scalar(0))
+                                .collect()
+                        });
+                    self.instructions
+                        .push(Instruction::ReturnAggregate { values });
+                    return;
+                }
                 let value = if let Some(expr) = expr {
                     self.lower_expr(expr)
                 } else {
@@ -1042,6 +1081,11 @@ impl LowerCtx {
     }
 
     fn lower_aggregate_into(&mut self, prefix: &str, ty: &Type, value: &Expr) {
+        if matches!(value, Expr::Call { .. }) && self.is_aggregate_type(ty) {
+            let values = self.lower_aggregate_expression(value, ty);
+            self.store_aggregate_values(prefix, ty, values);
+            return;
+        }
         match ty {
             Type::Named(name) if self.structs.contains_key(name) => {
                 self.lower_struct_into(prefix, name, value)
@@ -1067,6 +1111,72 @@ impl LowerCtx {
             return self.lower_array_argument(value, element_ty, *length);
         }
         vec![self.lower_expr(value)]
+    }
+
+    fn lower_aggregate_expression(&mut self, value: &Expr, ty: &Type) -> Vec<ValueId> {
+        if let Expr::Call { name, args } = value {
+            let expected_params = self.function_params.get(name).cloned();
+            let args = args
+                .iter()
+                .enumerate()
+                .flat_map(|(index, arg)| {
+                    expected_params
+                        .as_ref()
+                        .and_then(|params| params.get(index))
+                        .map(|param_ty| self.lower_call_argument(arg, param_ty))
+                        .unwrap_or_else(|| vec![self.lower_expr(arg)])
+                })
+                .collect();
+            let function = self
+                .runtime_symbols
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            let dst = (0..self.aggregate_leaf_count(ty))
+                .map(|_| self.fresh())
+                .collect::<Vec<_>>();
+            let buffer = self.next_buffer;
+            self.next_buffer += 1;
+            self.instructions.push(Instruction::CallAggregate {
+                dst: dst.clone(),
+                function,
+                args,
+                buffer,
+            });
+            return dst;
+        }
+        self.lower_call_argument(value, ty)
+    }
+
+    fn store_aggregate_values(&mut self, prefix: &str, ty: &Type, values: Vec<ValueId>) {
+        let slots = self.aggregate_leaf_slots(prefix, ty);
+        assert_eq!(slots.len(), values.len(), "aggregate value width mismatch");
+        for (local, value) in slots.into_iter().zip(values) {
+            self.instructions.push(Instruction::Store { local, value });
+        }
+    }
+
+    fn aggregate_leaf_slots(&self, prefix: &str, ty: &Type) -> Vec<String> {
+        match ty {
+            Type::Named(name) if self.structs.contains_key(name) => self
+                .struct_fields(name)
+                .iter()
+                .flat_map(|field| {
+                    self.aggregate_leaf_slots(&format!("{prefix}.{}", field.name), &field.ty)
+                })
+                .collect(),
+            Type::ArrayFixed(element_ty, length) => (0..*length)
+                .flat_map(|index| {
+                    self.aggregate_leaf_slots(&format!("{prefix}[{index}]"), element_ty)
+                })
+                .collect(),
+            Type::Array(_) => panic!("unsized array requires a fixed length"),
+            _ => vec![prefix.to_string()],
+        }
+    }
+
+    fn aggregate_leaf_count(&self, ty: &Type) -> usize {
+        self.aggregate_leaf_slots("__geo_aggregate", ty).len()
     }
 
     fn lower_struct_argument(&mut self, value: &Expr, ty: &Type) -> Vec<ValueId> {

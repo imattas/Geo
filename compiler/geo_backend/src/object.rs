@@ -450,12 +450,42 @@ fn emit_function_text(
                 emit_load_rax(bytes, frame.value_offset(*value));
                 bytes.extend_from_slice(&[0xc9, 0xc3]);
             }
+            Instruction::CallAggregate {
+                dst,
+                function,
+                args,
+                buffer,
+            } => {
+                let stack_arg_bytes = emit_aggregate_call_args(bytes, abi, &frame, args, *buffer);
+                let call_offset = bytes.len() as u64;
+                bytes.push(0xe8);
+                bytes.extend_from_slice(&0_i32.to_le_bytes());
+                emit_stack_dealloc(bytes, stack_arg_bytes);
+                relocations.push(TextRelocation {
+                    offset: call_offset + 1,
+                    symbol: function.clone(),
+                    kind: RelocationKind::Plt32,
+                });
+                let base = frame.aggregate_buffer(*buffer);
+                for (index, value) in dst.iter().enumerate() {
+                    emit_load_rax(bytes, base + index as u32 * 8);
+                    emit_store_rax(bytes, frame.value_offset(*value));
+                }
+            }
+            Instruction::ReturnAggregate { values } => {
+                emit_load_rax(bytes, frame.local_offset("__geo_return_ptr"));
+                for (index, value) in values.iter().enumerate() {
+                    emit_load_r10(bytes, frame.value_offset(*value));
+                    emit_store_r10_at_rax(bytes, index as i32 * -8);
+                }
+                bytes.extend_from_slice(&[0xc9, 0xc3]);
+            }
         }
     }
 
     if !matches!(
         function.instructions.last(),
-        Some(Instruction::Return { .. })
+        Some(Instruction::Return { .. } | Instruction::ReturnAggregate { .. })
     ) {
         bytes.extend_from_slice(&[0xb8, 0, 0, 0, 0, 0xc9, 0xc3]);
     }
@@ -481,6 +511,7 @@ enum ShiftOp {
 struct FrameLayout {
     value_offsets: HashMap<crate::ir::ValueId, u32>,
     local_offsets: HashMap<String, u32>,
+    aggregate_buffers: HashMap<usize, u32>,
     stack_size: u32,
 }
 
@@ -522,6 +553,8 @@ impl FrameLayout {
                 | Instruction::JumpIfZero { .. }
                 | Instruction::Label { .. }
                 | Instruction::Call { .. }
+                | Instruction::CallAggregate { .. }
+                | Instruction::ReturnAggregate { .. }
                 | Instruction::Return { .. } => {}
             }
         }
@@ -540,10 +573,22 @@ impl FrameLayout {
             next_offset += 8;
         }
 
+        let mut aggregate_buffers = HashMap::new();
+        for instruction in &function.instructions {
+            if let Instruction::CallAggregate { dst, buffer, .. } = instruction {
+                aggregate_buffers.entry(*buffer).or_insert_with(|| {
+                    let offset = next_offset;
+                    next_offset += dst.len() as u32 * 8;
+                    offset
+                });
+            }
+        }
+
         let used = next_offset.saturating_sub(8);
         Self {
             value_offsets,
             local_offsets,
+            aggregate_buffers,
             stack_size: align_to(used, 16),
         }
     }
@@ -554,6 +599,13 @@ impl FrameLayout {
 
     fn local_offset(&self, local: &str) -> u32 {
         *self.local_offsets.get(local).expect("local stack slot")
+    }
+
+    fn aggregate_buffer(&self, buffer: usize) -> u32 {
+        *self
+            .aggregate_buffers
+            .get(&buffer)
+            .expect("aggregate return buffer")
     }
 }
 
@@ -573,6 +625,11 @@ fn collect_instruction_values(
             update_max_value(max_value, *dst);
             for arg in args {
                 update_max_value(max_value, *arg);
+            }
+        }
+        Instruction::CallAggregate { dst, args, .. } => {
+            for value in dst.iter().chain(args) {
+                update_max_value(max_value, *value);
             }
         }
         Instruction::And { dst, left, right }
@@ -595,6 +652,11 @@ fn collect_instruction_values(
         | Instruction::Store { value: index, .. }
         | Instruction::JumpIfZero { value: index, .. }
         | Instruction::Return { value: index } => update_max_value(max_value, *index),
+        Instruction::ReturnAggregate { values } => {
+            for value in values {
+                update_max_value(max_value, *value);
+            }
+        }
         Instruction::StoreDeref { pointer, value, .. } => {
             update_max_value(max_value, *pointer);
             update_max_value(max_value, *value);
@@ -785,6 +847,17 @@ fn emit_deref_store(bytes: &mut Vec<u8>, width: u8) {
     }
 }
 
+fn emit_store_r10_at_rax(bytes: &mut Vec<u8>, offset: i32) {
+    if offset == 0 {
+        bytes.extend_from_slice(&[0x4c, 0x89, 0x10]);
+    } else if (-128..=127).contains(&offset) {
+        bytes.extend_from_slice(&[0x4c, 0x89, 0x50, offset as i8 as u8]);
+    } else {
+        bytes.extend_from_slice(&[0x4c, 0x89, 0x90]);
+        bytes.extend_from_slice(&offset.to_le_bytes());
+    }
+}
+
 fn emit_load_rax_from_incoming_arg(bytes: &mut Vec<u8>, offset: u32) {
     bytes.extend_from_slice(&[0x48, 0x8b]);
     emit_positive_rbp_operand(bytes, 0, offset);
@@ -824,6 +897,46 @@ fn emit_call_args(
     emit_stack_alloc(bytes, shadow_space);
 
     (stack_args as u32 * 8) + padding + shadow_space
+}
+
+fn emit_aggregate_call_args(
+    bytes: &mut Vec<u8>,
+    abi: TargetAbi,
+    frame: &FrameLayout,
+    args: &[crate::ir::ValueId],
+    buffer: usize,
+) -> u32 {
+    let register_count = abi.argument_register_count();
+    for (index, arg) in args
+        .iter()
+        .take(register_count.saturating_sub(1))
+        .enumerate()
+    {
+        emit_load_arg_register(bytes, abi, index + 1, frame.value_offset(*arg));
+    }
+
+    let stack_args = (args.len() + 1).saturating_sub(register_count);
+    let padding = if stack_args % 2 == 1 { 8 } else { 0 };
+    if padding > 0 {
+        emit_stack_alloc(bytes, padding);
+    }
+    for arg in args.iter().skip(register_count.saturating_sub(1)).rev() {
+        emit_load_rax(bytes, frame.value_offset(*arg));
+        bytes.push(0x50);
+    }
+    let shadow_space = abi.call_shadow_space();
+    emit_stack_alloc(bytes, shadow_space);
+    emit_lea_rax_local(bytes, frame.aggregate_buffer(buffer));
+    emit_move_rax_to_arg_zero(bytes, abi);
+
+    (stack_args as u32 * 8) + padding + shadow_space
+}
+
+fn emit_move_rax_to_arg_zero(bytes: &mut Vec<u8>, abi: TargetAbi) {
+    match abi {
+        TargetAbi::SystemV => bytes.extend_from_slice(&[0x48, 0x89, 0xc7]),
+        TargetAbi::Win64 => bytes.extend_from_slice(&[0x48, 0x89, 0xc1]),
+    }
 }
 
 fn emit_parameter_spills(

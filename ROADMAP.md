@@ -403,7 +403,10 @@ Acceptance criteria:
   PE64 calls.
 - Fixed-array metadata is now explicit in the type system as `[T; N]`, with
   parser, formatter, semantic length checks, and native parameter flattening;
-  aggregate returns remain a separate ABI design item.
+  aggregate returns now use the same compiler-owned ABI workstream.
+- Aggregate struct and fixed-array returns now use a hidden caller-owned
+  return buffer represented explicitly in IR and emitted directly by the
+  ELF64 and PE64 writers.
 - The Linux ELF64 writer now preserves the initial process stack and implements
   native `std.process` argument accessors. The PE64 writer now provides
   quote-aware `arg_count`, `arg_exists`, owned `arg` token extraction, and

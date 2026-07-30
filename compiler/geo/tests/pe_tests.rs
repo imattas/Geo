@@ -1723,6 +1723,35 @@ fn executes_direct_pe64_fixed_array_argument() {
     assert_eq!(status.code(), Some(42));
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_struct_return() {
+    let executable = pe_for(include_str!("../../../examples/v1/aggregate_return.geo"));
+    let path =
+        std::env::temp_dir().join(format!("geo-aggregate-return-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write aggregate return fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute aggregate return fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(42));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_fixed_array_return() {
+    let executable = pe_for(include_str!("../../../examples/v1/array_return.geo"));
+    let path = std::env::temp_dir().join(format!("geo-array-return-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write array return fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute array return fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(42));
+}
+
 #[test]
 fn emits_direct_pe64_platform_path_separator() {
     let pe = pe_for(

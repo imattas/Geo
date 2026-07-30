@@ -79,6 +79,25 @@ fn lowers_fixed_array_arguments_as_flattened_abi_values() {
 }
 
 #[test]
+fn lowers_struct_returns_through_hidden_return_buffer() {
+    let asm = asm_for(include_str!("../../../examples/v1/aggregate_return.geo"));
+
+    assert!(asm.contains("make_pair:"));
+    assert!(asm.contains("call make_pair"));
+    assert!(asm.contains("mov [rax], r10"));
+    assert!(asm.contains("mov [rax - 8], r10"));
+}
+
+#[test]
+fn lowers_fixed_array_returns_through_hidden_return_buffer() {
+    let asm = asm_for(include_str!("../../../examples/v1/array_return.geo"));
+
+    assert!(asm.contains("make_values:"));
+    assert!(asm.contains("call make_values"));
+    assert!(asm.contains("mov [rax - 8], r10"));
+}
+
+#[test]
 fn emits_assembly_for_function_tail_expression_return() {
     let asm = asm_for("fn main() -> int { 42 }");
 

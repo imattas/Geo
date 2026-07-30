@@ -245,6 +245,47 @@ fn executes_direct_elf64_fixed_array_argument() {
     assert_eq!(status.code(), Some(42));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_struct_return() {
+    let executable = executable_for(include_str!("../../../examples/v1/aggregate_return.geo"));
+    let path = std::env::temp_dir().join(format!("geo-aggregate-return-{}", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write aggregate return fixture");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("failed to stat aggregate return fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions)
+        .expect("failed to make aggregate return executable");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute aggregate return fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(42));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_fixed_array_return() {
+    let executable = executable_for(include_str!("../../../examples/v1/array_return.geo"));
+    let path = std::env::temp_dir().join(format!("geo-array-return-{}", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write array return fixture");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("failed to stat array return fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).expect("failed to make array return executable");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute array return fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(42));
+}
+
 #[test]
 fn emits_direct_elf64_memory_alloc_runtime() {
     let executable = executable_for(

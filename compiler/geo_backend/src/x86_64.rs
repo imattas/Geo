@@ -46,6 +46,11 @@ fn emit_external_declarations(program: &IrProgram, out: &mut String) {
                 Instruction::Call { function, .. } if !defined.contains(function.as_str()) => {
                     externs.insert(function.as_str());
                 }
+                Instruction::CallAggregate { function, .. }
+                    if !defined.contains(function.as_str()) =>
+                {
+                    externs.insert(function.as_str());
+                }
                 Instruction::BoundsCheck { .. } => {
                     externs.insert("__geo_bounds_check");
                 }
@@ -65,6 +70,7 @@ fn emit_external_declarations(program: &IrProgram, out: &mut String) {
 struct FunctionLayout {
     value_slots: HashMap<ValueId, i32>,
     local_slots: HashMap<String, i32>,
+    aggregate_buffers: HashMap<usize, i32>,
     frame_size: i32,
 }
 
@@ -276,6 +282,59 @@ fn emit_function(function: &IrFunction, target: &Target, runtime_entry: bool, ou
                 let dst = slot(&layout, *dst);
                 out.push_str(&format!("    mov [rbp - {dst}], rax\n"));
             }
+            Instruction::CallAggregate {
+                dst,
+                function,
+                args,
+                buffer,
+            } => {
+                let total_args = args.len() + 1;
+                let stack_arg_count = total_args.saturating_sub(arg_regs.len());
+                for index in (arg_regs.len()..total_args).rev() {
+                    let arg = slot(&layout, args[index - 1]);
+                    out.push_str(&format!("    push qword [rbp - {arg}]\n"));
+                }
+                if target.abi == Abi::WindowsX64 {
+                    out.push_str("    sub rsp, 32\n");
+                }
+                let buffer = layout.aggregate_buffer(*buffer);
+                out.push_str(&format!("    lea {}, [rbp - {buffer}]\n", arg_regs[0]));
+                for (index, arg) in args
+                    .iter()
+                    .take(arg_regs.len().saturating_sub(1))
+                    .enumerate()
+                {
+                    let arg = slot(&layout, *arg);
+                    out.push_str(&format!("    mov {}, [rbp - {arg}]\n", arg_regs[index + 1]));
+                }
+                out.push_str(&format!("    call {function}\n"));
+                let cleanup =
+                    stack_arg_count * 8 + if target.abi == Abi::WindowsX64 { 32 } else { 0 };
+                if cleanup > 0 {
+                    out.push_str(&format!("    add rsp, {cleanup}\n"));
+                }
+                for (index, dst) in dst.iter().enumerate() {
+                    let dst = slot(&layout, *dst);
+                    let offset = buffer + index as i32 * 8;
+                    out.push_str(&format!("    mov rax, [rbp - {offset}]\n"));
+                    out.push_str(&format!("    mov [rbp - {dst}], rax\n"));
+                }
+            }
+            Instruction::ReturnAggregate { values } => {
+                let pointer = local_slot(&layout, "__geo_return_ptr");
+                out.push_str(&format!("    mov rax, [rbp - {pointer}]\n"));
+                for (index, value) in values.iter().enumerate() {
+                    let value = slot(&layout, *value);
+                    let offset = index as i32 * -8;
+                    out.push_str(&format!("    mov r10, [rbp - {value}]\n"));
+                    if offset == 0 {
+                        out.push_str("    mov [rax], r10\n");
+                    } else {
+                        out.push_str(&format!("    mov [rax - {}], r10\n", -offset));
+                    }
+                }
+                out.push_str("    mov rsp, rbp\n    pop rbp\n    ret\n");
+            }
             Instruction::Return { value } => {
                 let value = slot(&layout, *value);
                 out.push_str(&format!("    mov rax, [rbp - {value}]\n"));
@@ -343,6 +402,17 @@ fn build_layout(function: &IrFunction) -> FunctionLayout {
         }
     }
 
+    let mut aggregate_buffers = HashMap::new();
+    for instruction in &function.instructions {
+        if let Instruction::CallAggregate { dst, buffer, .. } = instruction {
+            aggregate_buffers.entry(*buffer).or_insert_with(|| {
+                let offset = next_offset;
+                next_offset += dst.len() as i32 * 8;
+                offset
+            });
+        }
+    }
+
     let used = next_offset - 8;
     let frame_size = if used == 0 {
         0
@@ -353,7 +423,17 @@ fn build_layout(function: &IrFunction) -> FunctionLayout {
     FunctionLayout {
         value_slots,
         local_slots,
+        aggregate_buffers,
         frame_size,
+    }
+}
+
+impl FunctionLayout {
+    fn aggregate_buffer(&self, buffer: usize) -> i32 {
+        *self
+            .aggregate_buffers
+            .get(&buffer)
+            .expect("aggregate return buffer")
     }
 }
 
@@ -379,12 +459,14 @@ fn defined_values(instruction: &Instruction) -> Vec<ValueId> {
         | Instruction::BitNot { dst, .. }
         | Instruction::Cmp { dst, .. }
         | Instruction::Call { dst, .. } => vec![*dst],
+        Instruction::CallAggregate { dst, .. } => dst.clone(),
         Instruction::Store { .. }
         | Instruction::StoreDeref { .. }
         | Instruction::BoundsCheck { .. }
         | Instruction::Jump { .. }
         | Instruction::JumpIfZero { .. }
         | Instruction::Label { .. }
+        | Instruction::ReturnAggregate { .. }
         | Instruction::Return { .. } => Vec::new(),
     }
 }

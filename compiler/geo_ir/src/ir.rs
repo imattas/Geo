@@ -135,6 +135,15 @@ pub enum Instruction {
         function: String,
         args: Vec<ValueId>,
     },
+    CallAggregate {
+        dst: Vec<ValueId>,
+        function: String,
+        args: Vec<ValueId>,
+        buffer: usize,
+    },
+    ReturnAggregate {
+        values: Vec<ValueId>,
+    },
     Return {
         value: ValueId,
     },
