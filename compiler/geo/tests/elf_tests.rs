@@ -4,6 +4,15 @@ use geo::lower::lower;
 use geo::parser::parse;
 use geo::typecheck::check;
 
+#[cfg(target_os = "linux")]
+fn executable_path(name: &str) -> std::path::PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock should be after Unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("geo-{name}-{}-{nonce}", std::process::id()))
+}
+
 fn executable_for(source: &str) -> Vec<u8> {
     let tokens = lex(source).unwrap();
     let program = parse(&tokens).unwrap();
@@ -147,7 +156,7 @@ fn executes_direct_elf64_process_argument_count() {
             }
         "#,
     );
-    let path = std::env::temp_dir().join(format!("geo-arg-count-{}", std::process::id()));
+    let path = executable_path("arg-count");
     std::fs::write(&path, executable).expect("failed to write ELF argument fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat ELF argument fixture")
@@ -168,7 +177,7 @@ fn executes_direct_elf64_process_argument_count() {
 #[test]
 fn executes_direct_elf64_self_hosting_mini_parser() {
     let executable = executable_for(include_str!("../../../examples/v1/mini_parser.geo"));
-    let path = std::env::temp_dir().join(format!("geo-mini-parser-{}", std::process::id()));
+    let path = executable_path("mini-parser");
     std::fs::write(&path, executable).expect("failed to write ELF parser fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat ELF parser fixture")
@@ -188,7 +197,7 @@ fn executes_direct_elf64_self_hosting_mini_parser() {
 #[test]
 fn executes_direct_elf64_dynamic_fixed_array_places() {
     let executable = executable_for(include_str!("../../../examples/v1/dynamic_array.geo"));
-    let path = std::env::temp_dir().join(format!("geo-dynamic-array-{}", std::process::id()));
+    let path = executable_path("dynamic-array");
     std::fs::write(&path, executable).expect("failed to write dynamic array fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat dynamic array fixture")
@@ -208,7 +217,7 @@ fn executes_direct_elf64_dynamic_fixed_array_places() {
 #[test]
 fn executes_direct_elf64_struct_argument() {
     let executable = executable_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
-    let path = std::env::temp_dir().join(format!("geo-aggregate-argument-{}", std::process::id()));
+    let path = executable_path("aggregate-argument");
     std::fs::write(&path, executable).expect("failed to write aggregate argument fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat aggregate argument fixture")
@@ -229,7 +238,7 @@ fn executes_direct_elf64_struct_argument() {
 #[test]
 fn executes_direct_elf64_fixed_array_argument() {
     let executable = executable_for(include_str!("../../../examples/v1/array_argument.geo"));
-    let path = std::env::temp_dir().join(format!("geo-array-argument-{}", std::process::id()));
+    let path = executable_path("array-argument");
     std::fs::write(&path, executable).expect("failed to write array argument fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat array argument fixture")
@@ -249,7 +258,7 @@ fn executes_direct_elf64_fixed_array_argument() {
 #[test]
 fn executes_direct_elf64_struct_return() {
     let executable = executable_for(include_str!("../../../examples/v1/aggregate_return.geo"));
-    let path = std::env::temp_dir().join(format!("geo-aggregate-return-{}", std::process::id()));
+    let path = executable_path("aggregate-return");
     std::fs::write(&path, executable).expect("failed to write aggregate return fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat aggregate return fixture")
@@ -270,7 +279,7 @@ fn executes_direct_elf64_struct_return() {
 #[test]
 fn executes_direct_elf64_fixed_array_return() {
     let executable = executable_for(include_str!("../../../examples/v1/array_return.geo"));
-    let path = std::env::temp_dir().join(format!("geo-array-return-{}", std::process::id()));
+    let path = executable_path("array-return");
     std::fs::write(&path, executable).expect("failed to write array return fixture");
     let mut permissions = std::fs::metadata(&path)
         .expect("failed to stat array return fixture")
