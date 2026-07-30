@@ -292,3 +292,5 @@ Do not start with the full compiler rewrite. First make Geo capable of writing c
   refactor cannot silently replace native compilation with a host tool shim.
 - Continue adding executable self-hosting fixtures for lexer, parser,
   diagnostics, and file-system workflows on both native targets.
+- Keep `library/std` declarations synchronized with the runtime ABI so the
+  public source surface reflects implemented native operations.

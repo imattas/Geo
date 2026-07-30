@@ -340,6 +340,9 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
 - Direct Linux and Windows `remove_dir_all` now recursively enumerate and remove files and child directories through compiler-emitted native helpers; both target execution paths are covered by CI and Windows-host tests.
 - The from-scratch xtask gate now verifies the required lexer, parser, semantic, lowering, and native ELF/PE/object-writer sources exist in addition to rejecting external compiler-backend dependencies.
 - The full workspace gate and hosted Ubuntu/Windows CI pass after the PE64 recursive-removal relocation fix.
+- The public `std.fs` source surface now documents the native file metadata,
+  truncation, empty-file, and directory-existence operations already owned by
+  both executable backends.
 - Direct native `rename_file` support now uses Linux `rename` and Win32 `MoveFileA`, with cross-platform source/destination cleanup fixtures.
 - Direct native `copy_file` support now uses a compiler-emitted chunked Linux
   `open`/`read`/`write` path and Win32 `CopyFileA`, with ELF64, PE64, and CI
