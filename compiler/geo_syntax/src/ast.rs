@@ -47,12 +47,14 @@ pub struct StructDecl {
     pub name: String,
     pub fields: Vec<Field>,
     pub is_public: bool,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Field {
     pub name: String,
     pub ty: Type,
+    pub is_public: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

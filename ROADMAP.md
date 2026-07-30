@@ -93,6 +93,10 @@ Public aliases, constants, structs, and enums now participate in the same
 qualified import rewrite, while private qualified types and constants remain
 unresolved at the import boundary.
 
+Struct fields now support explicit `pub` visibility. Private imported fields are
+rejected during type checking, while same-module access and legacy modules keep
+working. Aggregate layout remains independent of visibility.
+
 The compiler driver now exposes `dump-tokens`, `dump-ast`, and `dump-ir` for
 inspecting each owned frontend and lowering stage directly from the CLI. Parsed
 functions also retain their source span, expression spans, top-level statement

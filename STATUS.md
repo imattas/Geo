@@ -101,6 +101,10 @@ source compatibility.
 
 The same boundary now covers `pub const`, `pub type`, `pub struct`, and
 `pub enum` declarations, including qualified imported type and constant use.
+Struct fields now use the same explicit syntax: `pub value: T` exports a field,
+while an unmarked field is private in explicitly annotated modules. Field
+provenance is tracked through semantic checking, and legacy unannotated modules
+continue to expose their fields for compatibility.
 
 ## Verified Commands
 

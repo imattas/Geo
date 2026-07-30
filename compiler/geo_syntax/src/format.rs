@@ -100,7 +100,13 @@ impl Formatter {
             self.line(&format!("struct {} {{", structure.name));
             self.indent += 1;
             for field in &structure.fields {
-                self.line(&format!("{}: {}", field.name, format_type(&field.ty)));
+                let visibility = if field.is_public { "pub " } else { "" };
+                self.line(&format!(
+                    "{}{}: {}",
+                    visibility,
+                    field.name,
+                    format_type(&field.ty)
+                ));
             }
             self.indent -= 1;
             self.line("}");

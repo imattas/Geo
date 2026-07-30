@@ -144,10 +144,15 @@ impl<'a> Parser<'a> {
             if self.at(&TokenKind::RightBrace) {
                 break;
             }
+            let is_public = self.matches(&TokenKind::Pub);
             let name = self.expect_ident()?;
             self.expect(&TokenKind::Colon, "expected ':'")?;
             let ty = self.parse_type()?;
-            fields.push(Field { name, ty });
+            fields.push(Field {
+                name,
+                ty,
+                is_public,
+            });
             if !self.matches(&TokenKind::Comma) {
                 self.consume_semicolons();
             }
@@ -157,6 +162,7 @@ impl<'a> Parser<'a> {
             name,
             fields,
             is_public,
+            source_path: None,
         })
     }
 

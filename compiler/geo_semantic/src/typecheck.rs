@@ -260,7 +260,10 @@ struct Callable {
 struct Local {
     ty: Type,
     mutable: bool,
+    module_path: Option<PathBuf>,
 }
+
+const MODULE_CONTEXT_LOCAL: &str = "__geo_current_module";
 
 fn struct_map<'a>(structs: &'a [StructDecl]) -> HashMap<&'a str, &'a StructDecl> {
     structs
@@ -332,9 +335,11 @@ fn expand_program_type_aliases(
                     .map(|field| crate::ast::Field {
                         name: field.name.clone(),
                         ty: expand_type_alias(&field.ty, aliases, &mut Vec::new(), diagnostics),
+                        is_public: field.is_public,
                     })
                     .collect(),
                 is_public: decl.is_public,
+                source_path: decl.source_path.clone(),
             })
             .collect(),
         enums: program.enums.clone(),
@@ -647,6 +652,14 @@ fn check_function<'a>(
 ) {
     let diagnostic_start = diagnostics.len();
     let mut locals = const_locals(consts);
+    locals.insert(
+        MODULE_CONTEXT_LOCAL,
+        Local {
+            ty: Type::Unit,
+            mutable: false,
+            module_path: function.source_path.clone(),
+        },
+    );
     for param in &function.params {
         if locals
             .insert(
@@ -654,6 +667,7 @@ fn check_function<'a>(
                 Local {
                     ty: param.ty.clone(),
                     mutable: true,
+                    module_path: None,
                 },
             )
             .is_some()
@@ -718,6 +732,7 @@ fn const_locals<'a>(consts: &'a [ConstDecl]) -> HashMap<&'a str, Local> {
                 Local {
                     ty: decl.ty.clone(),
                     mutable: false,
+                    module_path: None,
                 },
             )
         })
@@ -982,6 +997,7 @@ fn check_stmts<'a>(
                         Local {
                             ty: local_ty,
                             mutable: *mutable,
+                            module_path: None,
                         },
                     )
                     .is_some()
@@ -1251,6 +1267,7 @@ fn check_stmts<'a>(
                     Local {
                         ty: loop_ty,
                         mutable: false,
+                        module_path: None,
                     },
                 );
                 check_stmts(
@@ -1630,6 +1647,14 @@ fn expr_type<'a>(
                     )));
                     continue;
                 };
+                let current_module = locals
+                    .get(MODULE_CONTEXT_LOCAL)
+                    .and_then(|local| local.module_path.as_ref());
+                if !field.is_public && struct_decl.source_path.as_ref() != current_module {
+                    diagnostics.push(Diagnostic::error(format!(
+                        "field '{field_name}' on struct '{name}' is private"
+                    )));
+                }
                 let actual = expr_type(
                     field_expr,
                     Some(&field.ty),
@@ -1849,11 +1874,25 @@ fn expr_type<'a>(
                 .fields
                 .iter()
                 .find(|field| field.name == *name)
-                .map(|field| field.ty.clone())
+                .and_then(|field| {
+                    let current_module = locals
+                        .get(MODULE_CONTEXT_LOCAL)
+                        .and_then(|local| local.module_path.as_ref());
+                    if !field.is_public && struct_decl.source_path.as_ref() != current_module {
+                        diagnostics.push(Diagnostic::error(format!(
+                            "field '{name}' on struct '{struct_name}' is private"
+                        )));
+                        None
+                    } else {
+                        Some(field.ty.clone())
+                    }
+                })
                 .or_else(|| {
-                    diagnostics.push(Diagnostic::error(format!(
-                        "unknown field '{name}' on struct '{struct_name}'"
-                    )));
+                    if !struct_decl.fields.iter().any(|field| field.name == *name) {
+                        diagnostics.push(Diagnostic::error(format!(
+                            "unknown field '{name}' on struct '{struct_name}'"
+                        )));
+                    }
                     None
                 })
         }
@@ -1941,6 +1980,7 @@ fn check_block_expr_stmt<'a>(
                     Local {
                         ty: local_ty,
                         mutable: *mutable,
+                        module_path: None,
                     },
                 )
                 .is_some()

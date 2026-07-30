@@ -55,6 +55,22 @@ fn parses_public_type_and_data_declarations() {
 }
 
 #[test]
+fn parses_public_struct_fields() {
+    let source = r#"
+        pub struct User {
+            pub name: str
+            age: int
+        }
+    "#;
+    let tokens = lex(source).unwrap();
+    let program = parse(&tokens).unwrap();
+
+    assert!(program.structs[0].is_public);
+    assert!(program.structs[0].fields[0].is_public);
+    assert!(!program.structs[0].fields[1].is_public);
+}
+
+#[test]
 fn parses_top_level_const_declaration() {
     let program = parse_source("const LIMIT: int = 42 fn main() -> int { return LIMIT }");
 

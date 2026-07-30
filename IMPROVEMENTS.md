@@ -27,6 +27,9 @@ Legacy modules with no visibility annotations continue to export their callable
 declarations implicitly so existing packages remain source-compatible.
 Extend the same explicit export model to public aliases, constants, structs, and
 enums; these declarations now have native multi-file coverage.
+Extend it to struct fields with `pub field: Type`; field visibility is now
+preserved by the AST and enforced for imported aggregate access without changing
+native layout.
 
 Recommended split:
 

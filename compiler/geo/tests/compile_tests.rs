@@ -626,6 +626,20 @@ fn rejects_private_imported_types() {
 }
 
 #[test]
+fn rejects_private_imported_struct_fields() {
+    let config = CompileConfig {
+        target: Target::parse("x86_64-linux").unwrap(),
+        runtime_entry: false,
+    };
+    let diagnostics = compile_to_asm(&workspace_path("examples/modules_private_fields"), &config)
+        .expect_err("private imported fields must not be readable");
+
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("field 'secret' on struct 'Data' is private")));
+}
+
+#[test]
 fn emits_data_for_string_literal_calls() {
     let source = r#"
         import std.io

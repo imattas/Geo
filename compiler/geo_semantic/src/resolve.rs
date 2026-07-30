@@ -69,6 +69,9 @@ impl ResolveCtx {
             }
             for structure in &mut program.structs {
                 structure.is_public = true;
+                for field in &mut structure.fields {
+                    field.is_public = true;
+                }
             }
             for enumeration in &mut program.enums {
                 enumeration.is_public = true;
@@ -114,6 +117,9 @@ fn parse_source(source: &SourceFile) -> Result<Program, Vec<Diagnostic>> {
     }
     for function in &mut program.externs {
         function.source_path = Some(source.path.clone());
+    }
+    for structure in &mut program.structs {
+        structure.source_path = Some(source.path.clone());
     }
     Ok(program)
 }
