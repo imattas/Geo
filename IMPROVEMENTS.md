@@ -237,6 +237,8 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Complete allocation lifetime semantics by extending the header-backed `alloc`/`free`/`realloc` contract to every compiler-owned allocation helper, with double-free and invalid-pointer diagnostics where the language can expose them.
 - Array truncation, indexed insertion/removal, swap-based removal, and first/last pop are now native on both targets; finish generic copy/resize next so compiler-owned buffers can mutate without private helpers.
 - Preserve pointee width through IR dereference/store lowering so `u8` buffers do not accidentally read or overwrite adjacent bytes.
+- Lower fixed-size array copies recursively through scalar slots, including
+  arrays nested in structs, before adding runtime-backed aggregate passing.
 
 ## Tooling Improvements
 

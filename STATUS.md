@@ -417,3 +417,6 @@ That gives the native backends the source-text operations needed for compiler-sh
 - Temporary mutable reborrows restore the parent at statement end.
 - Nested-scope cleanup restores suspended parent borrows after child bindings
   are released, with regression coverage for both accepted and rejected cases.
+- Fixed-size array values can now be copied during lowering, including arrays
+  nested inside copied structs, by expanding each element into the existing
+  scalar-slot IR instead of aborting.

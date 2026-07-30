@@ -1068,7 +1068,29 @@ impl LowerCtx {
                     self.lower_aggregate_into(&slot, element_ty, element);
                 }
             }
+            Expr::Var(_) | Expr::Field { .. } | Expr::Index { .. } => {
+                let source = self
+                    .aggregate_place(value)
+                    .unwrap_or_else(|| panic!("unsupported array aggregate source"));
+                self.copy_array_slots(prefix, element_ty, &source);
+            }
             _ => panic!("unsupported array aggregate source"),
+        }
+    }
+
+    fn copy_array_slots(&mut self, target_prefix: &str, element_ty: &Type, source_prefix: &str) {
+        let length = self
+            .array_lengths
+            .get(source_prefix)
+            .copied()
+            .unwrap_or_else(|| panic!("unknown fixed array length for '{source_prefix}'"));
+        self.array_lengths.insert(target_prefix.to_string(), length);
+        for index in 0..length {
+            self.copy_aggregate_slot(
+                &format!("{target_prefix}[{index}]"),
+                element_ty,
+                &format!("{source_prefix}[{index}]"),
+            );
         }
     }
 
@@ -1083,8 +1105,8 @@ impl LowerCtx {
                     );
                 }
             }
-            Type::Array(_) => {
-                panic!("copying array aggregate values requires runtime-backed arrays")
+            Type::Array(element_ty) => {
+                self.copy_array_slots(target_slot, element_ty, source_slot);
             }
             _ => {
                 let value = self.fresh();

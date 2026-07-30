@@ -731,6 +731,60 @@ fn lowers_struct_and_array_literals_to_scalar_slots() {
 }
 
 #[test]
+fn lowers_array_copies_to_scalar_slots() {
+    let ir = lower_source(
+        r#"
+            fn main() -> int {
+                let source: [int] = [4, 2]
+                let copied: [int] = source
+                return copied[0] + copied[1]
+            }
+        "#,
+    );
+
+    let function = &ir.functions[0];
+    assert!(function
+        .instructions
+        .iter()
+        .any(|ins| matches!(ins, Instruction::Load { local, .. } if local == "source[0]")));
+    assert!(function
+        .instructions
+        .iter()
+        .any(|ins| matches!(ins, Instruction::Store { local, .. } if local == "copied[0]")));
+    assert!(function
+        .instructions
+        .iter()
+        .any(|ins| matches!(ins, Instruction::Store { local, .. } if local == "copied[1]")));
+}
+
+#[test]
+fn lowers_nested_array_copies_inside_structs() {
+    let ir = lower_source(
+        r#"
+            struct Buffer {
+                values: [int]
+            }
+
+            fn main() -> int {
+                let first: Buffer = Buffer { values: [7, 5] }
+                let second: Buffer = first
+                return second.values[0] + second.values[1]
+            }
+        "#,
+    );
+
+    let function = &ir.functions[0];
+    assert!(function
+        .instructions
+        .iter()
+        .any(|ins| matches!(ins, Instruction::Load { local, .. } if local == "first.values[0]")));
+    assert!(function
+        .instructions
+        .iter()
+        .any(|ins| matches!(ins, Instruction::Store { local, .. } if local == "second.values[1]")));
+}
+
+#[test]
 fn lowers_field_and_index_assignment_places_to_scalar_slots() {
     let ir = lower_source(
         r#"

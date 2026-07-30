@@ -389,6 +389,9 @@ Acceptance criteria:
 - Byte-array resize growth, shrink, fill, capacity failure, and release are covered by direct ELF64 and PE64 execution.
 - Direct `std.mem.alloc`/`free`/`realloc`/`alloc_copy` lifetime is covered by Linux execution and Windows PE64 compilation fixtures. `string_clone`, `string_from_byte`, `string_concat`, non-null `string_slice` results, path-based `read_file` results, handle-based `file_read_to_string` results, and `read_line` results now share the lifetime header through `string_free`.
 - Native byte-array algorithms are covered by direct ELF64 and PE64 builds, including first/last access, fill, reverse, index search, last-index search, contains, and count.
+- Fixed-size aggregate array copies now lower element-by-element, including
+  arrays nested in copied structs; continue extending this representation to
+  runtime-backed collection values and aggregate function arguments.
 
 ## Phase 10: Distribution
 
