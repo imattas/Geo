@@ -1694,6 +1694,21 @@ fn executes_direct_pe64_dynamic_fixed_array_places() {
     assert_eq!(status.code(), Some(5));
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn executes_direct_pe64_struct_argument() {
+    let executable = pe_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
+    let path =
+        std::env::temp_dir().join(format!("geo-aggregate-argument-{}.exe", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write aggregate argument fixture");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute aggregate argument fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(42));
+}
+
 #[test]
 fn emits_direct_pe64_platform_path_separator() {
     let pe = pe_for(

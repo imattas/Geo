@@ -46,6 +46,7 @@ fn lower_function(program: &Program, function: &crate::ast::Function) -> IrFunct
             .collect(),
         array_lengths: HashMap::new(),
         runtime_symbols: runtime_symbols(program),
+        function_params: function_params(program),
         function_returns: function_returns(program),
         next_value: 0,
         next_label: 0,
@@ -79,7 +80,7 @@ fn lower_function(program: &Program, function: &crate::ast::Function) -> IrFunct
         params: function
             .params
             .iter()
-            .map(|param| param.name.clone())
+            .flat_map(|param| ctx.abi_param_slots(&param.name, &param.ty))
             .collect(),
         instructions: ctx.instructions,
     }
@@ -95,6 +96,7 @@ struct LowerCtx {
     const_types: HashMap<String, Type>,
     array_lengths: HashMap<String, usize>,
     runtime_symbols: HashMap<String, String>,
+    function_params: HashMap<String, Vec<Type>>,
     function_returns: HashMap<String, Type>,
     next_value: usize,
     next_label: usize,
@@ -804,7 +806,18 @@ impl LowerCtx {
                 self.lower_expr(value)
             }
             Expr::Call { name, args } => {
-                let args = args.iter().map(|arg| self.lower_expr(arg)).collect();
+                let expected_params = self.function_params.get(name).cloned();
+                let args = args
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, arg)| {
+                        expected_params
+                            .as_ref()
+                            .and_then(|params| params.get(index))
+                            .map(|ty| self.lower_call_argument(arg, ty))
+                            .unwrap_or_else(|| vec![self.lower_expr(arg)])
+                    })
+                    .collect();
                 let dst = self.fresh();
                 let function = self
                     .runtime_symbols
@@ -1039,6 +1052,97 @@ impl LowerCtx {
                 });
             }
         }
+    }
+
+    fn lower_call_argument(&mut self, value: &Expr, ty: &Type) -> Vec<ValueId> {
+        if !self.is_struct_type(ty) {
+            return vec![self.lower_expr(value)];
+        }
+
+        self.lower_struct_argument(value, ty)
+    }
+
+    fn lower_struct_argument(&mut self, value: &Expr, ty: &Type) -> Vec<ValueId> {
+        let Type::Named(name) = ty else {
+            return vec![self.lower_expr(value)];
+        };
+        let fields = self.struct_fields(name);
+        match value {
+            Expr::Struct {
+                name: literal_name,
+                fields: values,
+            } => {
+                assert_eq!(
+                    name, literal_name,
+                    "type checker should validate struct names"
+                );
+                fields
+                    .iter()
+                    .flat_map(|field| {
+                        let field_value = values
+                            .iter()
+                            .find(|(field_name, _)| field_name == &field.name)
+                            .unwrap_or_else(|| {
+                                panic!("type checker should validate field '{}'", field.name)
+                            })
+                            .1
+                            .clone();
+                        self.lower_call_argument(&field_value, &field.ty)
+                    })
+                    .collect()
+            }
+            Expr::Var(_) | Expr::Field { .. } | Expr::Index { .. } => {
+                let source = self
+                    .aggregate_place(value)
+                    .unwrap_or_else(|| panic!("unsupported aggregate call argument"));
+                self.flatten_struct_loads(&source, name)
+            }
+            _ => panic!("unsupported aggregate call argument"),
+        }
+    }
+
+    fn flatten_struct_loads(&mut self, prefix: &str, name: &str) -> Vec<ValueId> {
+        self.struct_fields(name)
+            .iter()
+            .flat_map(|field| {
+                let slot = format!("{prefix}.{}", field.name);
+                if let Type::Named(nested) = &field.ty {
+                    if self.structs.contains_key(nested) {
+                        return self.flatten_struct_loads(&slot, nested);
+                    }
+                }
+                let value = self.fresh();
+                self.instructions.push(Instruction::Load {
+                    dst: value,
+                    local: slot,
+                });
+                vec![value]
+            })
+            .collect()
+    }
+
+    fn abi_param_slots(&self, name: &str, ty: &Type) -> Vec<String> {
+        if let Type::Named(struct_name) = ty {
+            if self.structs.contains_key(struct_name) {
+                return self.abi_struct_slots(name, struct_name);
+            }
+        }
+        vec![name.to_string()]
+    }
+
+    fn abi_struct_slots(&self, prefix: &str, name: &str) -> Vec<String> {
+        self.struct_fields(name)
+            .iter()
+            .flat_map(|field| {
+                let slot = format!("{prefix}.{}", field.name);
+                if let Type::Named(nested) = &field.ty {
+                    if self.structs.contains_key(nested) {
+                        return self.abi_struct_slots(&slot, nested);
+                    }
+                }
+                vec![slot]
+            })
+            .collect()
     }
 
     fn lower_struct_into(&mut self, prefix: &str, name: &str, value: &Expr) {
@@ -1397,6 +1501,10 @@ impl LowerCtx {
         }
     }
 
+    fn is_struct_type(&self, ty: &Type) -> bool {
+        matches!(ty, Type::Named(name) if self.structs.contains_key(name))
+    }
+
     fn pointer_deref_width(&self, expr: &Expr) -> u8 {
         match self.expr_type(expr) {
             Some(Type::Pointer(inner)) | Some(Type::Reference { inner, .. }) => {
@@ -1608,6 +1716,41 @@ fn runtime_symbols(program: &Program) -> HashMap<String, String> {
         }
     }
     symbols
+}
+
+fn function_params(program: &Program) -> HashMap<String, Vec<Type>> {
+    let mut params = HashMap::new();
+    for import in &program.imports {
+        if let Ok(functions) = runtime::functions_for_import(&import.path) {
+            for function in functions {
+                params.insert(
+                    function.name,
+                    function.params.into_iter().map(|param| param.ty).collect(),
+                );
+            }
+        }
+    }
+    for extern_function in &program.externs {
+        params.insert(
+            extern_function.name.clone(),
+            extern_function
+                .params
+                .iter()
+                .map(|param| param.ty.clone())
+                .collect(),
+        );
+    }
+    for function in &program.functions {
+        params.insert(
+            function.name.clone(),
+            function
+                .params
+                .iter()
+                .map(|param| param.ty.clone())
+                .collect(),
+        );
+    }
+    params
 }
 
 fn function_returns(program: &Program) -> HashMap<String, Type> {

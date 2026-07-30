@@ -204,6 +204,27 @@ fn executes_direct_elf64_dynamic_fixed_array_places() {
     assert_eq!(status.code(), Some(5));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_struct_argument() {
+    let executable = executable_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
+    let path = std::env::temp_dir().join(format!("geo-aggregate-argument-{}", std::process::id()));
+    std::fs::write(&path, executable).expect("failed to write aggregate argument fixture");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("failed to stat aggregate argument fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions)
+        .expect("failed to make aggregate argument executable");
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute aggregate argument fixture");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(status.code(), Some(42));
+}
+
 #[test]
 fn emits_direct_elf64_memory_alloc_runtime() {
     let executable = executable_for(

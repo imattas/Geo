@@ -62,6 +62,15 @@ fn lowers_dynamic_fixed_array_struct_places() {
 }
 
 #[test]
+fn lowers_struct_arguments_as_flattened_abi_values() {
+    let asm = asm_for(include_str!("../../../examples/v1/aggregate_argument.geo"));
+
+    assert!(asm.contains("read_value:"));
+    assert!(asm.contains("mov [rbp - "));
+    assert!(asm.contains("call read_value"));
+}
+
+#[test]
 fn emits_assembly_for_function_tail_expression_return() {
     let asm = asm_for("fn main() -> int { 42 }");
 

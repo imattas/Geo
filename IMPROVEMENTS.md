@@ -242,6 +242,9 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Dynamic fixed-size array places now lower through compiler-emitted bounds
   checks and branch selection, including struct-field reads, writes, and
   compound assignments on ELF64 and PE64.
+- Flatten struct parameters and by-value struct arguments recursively into
+  scalar native ABI slots so ordinary multi-function programs can pass and
+  inspect aggregates without a C runtime or external linker.
 - Keep process argument access target-specific: Linux uses preserved
   `argc`/`argv`, while Windows uses a dedicated quoted-command-line parser
   rather than assuming a C runtime entry signature. The PE parser now also

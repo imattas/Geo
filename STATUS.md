@@ -407,6 +407,9 @@ Existing implementation plans cover the original v0.1 path, v1 phases, clean syn
   compiler-emitted bounds checks and branch-selected scalar slots, including
   `tokens[index].field` reads, writes, and compound assignments on ELF64 and
   PE64. `examples/v1/dynamic_array.geo` is the direct execution fixture.
+- Struct arguments are now flattened into their scalar field slots at the
+  compiler-owned native ABI boundary, including nested structs; direct ELF64
+  and PE64 fixtures pass a `Token` by value and read it inside a callee.
 - Direct handle file operations currently cover open/read-mode selection, truncate-write, append, write, flush, read-to-string, seek, and close; richer truncation controls and metadata remain open.
 - Direct allocation lifetime coverage now includes compiler-owned `alloc`/`alloc_copy` headers, Linux `munmap`, Windows `VirtualFree`, payload-preserving `realloc`, and two-platform `alloc`/`free`/`realloc`/`alloc_copy` fixtures. `string_clone`, `string_from_byte`, `string_concat`, non-null `string_slice` results, path-based `read_file` results, handle-based `file_read_to_string` results, and `read_line` results now use the same header and have direct free fixtures.
 - Windows-host PE64 execution validation now covers hello, allocation-backed strings, file reads, UTF-8 conversion, and byte/typed array runtime and mutation fixtures, including push, set, extend, copy, and resize. Broader PE64 runtime coverage and richer failure-path validation remain open.

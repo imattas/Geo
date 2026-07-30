@@ -398,6 +398,9 @@ Acceptance criteria:
 - Dynamic indexes into fixed-size aggregate locals now use compiler-emitted
   bounds checks and branch-selected scalar slots, including nested struct-field
   places and compound assignment on both native executable writers.
+- Struct parameters and struct call arguments now flatten recursively into
+  scalar ABI values, preserving field order across compiler-owned ELF64 and
+  PE64 calls; fixed-array parameter metadata remains a separate design item.
 - The Linux ELF64 writer now preserves the initial process stack and implements
   native `std.process` argument accessors. The PE64 writer now provides
   quote-aware `arg_count`, `arg_exists`, owned `arg` token extraction, and
