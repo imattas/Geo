@@ -396,6 +396,7 @@ fn build_runtime_text(image: &ObjectImage) -> RuntimeText {
             "remove_file" => emit_remove_file_runtime(&mut code),
             "rename_file" => emit_rename_file_runtime(&mut code),
             "create_dir" => emit_create_dir_runtime(&mut code),
+            "create_dir_all" => emit_create_dir_all_runtime(&mut code),
             "remove_dir" => emit_remove_dir_runtime(&mut code),
             "file_open" => emit_file_open_runtime(&mut code, 0),
             "file_open_write" => emit_file_open_runtime(&mut code, 0x241),
@@ -1358,6 +1359,13 @@ fn emit_near_unconditional_placeholder(code: &mut Vec<u8>) -> usize {
     let displacement = code.len();
     code.extend_from_slice(&[0, 0, 0, 0]);
     displacement
+}
+
+fn emit_near_jump_back(code: &mut Vec<u8>, target: usize) {
+    code.push(0xe9);
+    let displacement = code.len();
+    code.extend_from_slice(&[0, 0, 0, 0]);
+    patch_near_jump(code, displacement, target);
 }
 
 fn emit_internal_call(code: &mut Vec<u8>, target: usize) {
@@ -3061,6 +3069,77 @@ fn emit_rename_file_runtime(code: &mut Vec<u8>) {
 
 fn emit_create_dir_runtime(code: &mut Vec<u8>) {
     emit_directory_runtime(code, 83, true);
+}
+
+fn emit_create_dir_all_runtime(code: &mut Vec<u8>) {
+    // Build and create each POSIX path prefix in a bounded stack buffer.
+    // Linux mkdir returns -EEXIST for prefixes that are already present.
+    code.extend_from_slice(&[0x48, 0x81, 0xec, 0x10, 0x10, 0x00, 0x00]);
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xf9, 0x49, 0x89, 0xe0, 0x49, 0x81, 0xc0, 0x10, 0x00, 0x00, 0x00,
+    ]);
+    code.extend_from_slice(&[0x48, 0x31, 0xc9]);
+    let copy_loop = code.len();
+    code.extend_from_slice(&[0x48, 0x81, 0xf9, 0xf0, 0x0f, 0x00, 0x00]);
+    let too_long = emit_near_jump_placeholder(code, 0x0f, 0x83);
+    code.extend_from_slice(&[
+        0x41, 0x8a, 0x04, 0x09, 0x41, 0x88, 0x04, 0x08, 0x48, 0xff, 0xc1,
+    ]);
+    code.extend_from_slice(&[0x45, 0x84, 0xc0]);
+    let copy_done = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    emit_near_jump_back(code, copy_loop);
+
+    let scan_start = code.len();
+    code.extend_from_slice(&[0x4d, 0x89, 0xc1]);
+    let scan_loop = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x01, 0x84, 0xc0]);
+    let final_path = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[0x3c, b'/']);
+    let not_separator = emit_near_jump_placeholder(code, 0x0f, 0x85);
+    code.extend_from_slice(&[0x4d, 0x39, 0xc1]);
+    let leading_separator = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    code.extend_from_slice(&[
+        0x41, 0xc6, 0x01, 0x00, 0x4c, 0x89, 0xcf, 0xbe, 0xed, 0x01, 0x00, 0x00,
+    ]);
+    code.extend_from_slice(&[0xb8, 83, 0x00, 0x00, 0x00, 0x0f, 0x05, 0x48, 0x85, 0xc0]);
+    let prefix_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xef]);
+    let prefix_exists = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    let prefix_restore = code.len();
+    code.extend_from_slice(&[0x41, 0xc6, 0x01, b'/']);
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back(code, scan_loop);
+
+    let leading_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back(code, scan_loop);
+
+    let not_separator_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc1]);
+    emit_near_jump_back(code, scan_loop);
+
+    let final_target = code.len();
+    code.extend_from_slice(&[0x4c, 0x89, 0xcf, 0xbe, 0xed, 0x01, 0x00, 0x00]);
+    code.extend_from_slice(&[0xb8, 83, 0x00, 0x00, 0x00, 0x0f, 0x05, 0x48, 0x85, 0xc0]);
+    let final_failed = emit_near_jump_placeholder(code, 0x0f, 0x88);
+    code.extend_from_slice(&[0x48, 0x83, 0xf8, 0xef]);
+    let final_exists = emit_near_jump_placeholder(code, 0x0f, 0x84);
+    let success = code.len();
+    code.extend_from_slice(&[0x48, 0x81, 0xc4, 0x10, 0x10, 0x00, 0x00, 0x31, 0xc0, 0xc3]);
+    let failure = code.len();
+    code.extend_from_slice(&[
+        0x48, 0x81, 0xc4, 0x10, 0x10, 0x00, 0x00, 0xb8, 1, 0x00, 0x00, 0x00, 0xc3,
+    ]);
+
+    patch_near_jump(code, too_long, failure);
+    patch_near_jump(code, copy_done, scan_start);
+    patch_near_jump(code, final_path, final_target);
+    patch_near_jump(code, not_separator, not_separator_target);
+    patch_near_jump(code, leading_separator, leading_target);
+    patch_near_jump(code, prefix_failed, failure);
+    patch_near_jump(code, prefix_exists, prefix_restore);
+    patch_near_jump(code, final_failed, failure);
+    patch_near_jump(code, final_exists, success);
 }
 
 fn emit_remove_dir_runtime(code: &mut Vec<u8>) {

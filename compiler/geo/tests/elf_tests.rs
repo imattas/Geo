@@ -176,6 +176,21 @@ fn emits_direct_elf64_process_argument_runtime() {
     ));
 }
 
+#[test]
+fn emits_direct_elf64_recursive_directory_runtime() {
+    let executable = executable_for(
+        r#"
+            import std.io
+
+            fn main() -> int {
+                return create_dir_all("/tmp/geo-create-dir-all")
+            }
+        "#,
+    );
+
+    assert_eq!(&executable[0..4], b"\x7fELF");
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn executes_direct_elf64_process_argument_count() {
@@ -197,6 +212,40 @@ fn executes_direct_elf64_process_argument_count() {
         .expect("failed to execute ELF argument fixture");
     let _ = std::fs::remove_file(&path);
     assert_eq!(status.code(), Some(2));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn executes_direct_elf64_recursive_directory_creation() {
+    let root = std::env::temp_dir().join(format!("geo-create-dir-all-{}", std::process::id()));
+    let nested = root.join("cache").join("objects");
+    let _ = std::fs::remove_dir_all(&root);
+    let source = format!(
+        r#"
+            import std.io
+
+            fn main() -> int {{
+                return create_dir_all("{}")
+            }}
+        "#,
+        nested.to_string_lossy().replace('\\', "\\\\")
+    );
+    let executable = executable_for(&source);
+    let path = executable_path("recursive-directory");
+    write_executable(
+        &path,
+        executable,
+        "failed to write recursive directory fixture",
+    );
+
+    let status = std::process::Command::new(&path)
+        .status()
+        .expect("failed to execute recursive directory fixture");
+    let nested_exists = nested.is_dir();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(status.code(), Some(0));
+    assert!(nested_exists);
 }
 
 #[cfg(target_os = "linux")]

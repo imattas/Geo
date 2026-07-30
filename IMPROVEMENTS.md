@@ -225,6 +225,7 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
 - Keep `examples/v1` in the direct executable-writer regression suite so self-hosting examples cannot silently regress to a non-native build path.
 - Move generated `.exe` and `.asm` artifacts out of the repository root and into `target/`.
 - Add native runtime coverage for recursive directory mutation and the remaining directory APIs. Basic `create_dir`/`remove_dir` mutation, `rename_file`, `copy_file`, file timestamp queries, `dir_entry_count`, `dir_entry_name`, `dir_entry_path`, `process_id`, `platform_path_separator`, owned platform strings, `path_is_absolute`, `path_file_name`, `path_parent`, `path_extension`, `path_stem`, `path_without_extension`, and `path_with_extension` now have direct two-target coverage.
+- Linux `create_dir_all` now creates POSIX path prefixes natively with bounded input handling; implement the equivalent Windows helper and recursive removal next.
 - Add native runtime coverage for string comparison, substring, Unicode, formatting, and conversion APIs.
 - Keep backend tests focused on executable behavior as well as instruction encodings; ordering predicates previously exposed a flag-preservation bug this way.
 - Add native suffix matching and substring index/count operations next.
