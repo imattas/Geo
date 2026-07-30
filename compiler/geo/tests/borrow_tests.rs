@@ -137,3 +137,36 @@ fn rejects_borrow_return_escape() {
     let err = borrow_check(source).unwrap_err();
     assert!(err[0].message.contains("borrow of 'x' escapes"));
 }
+
+#[test]
+fn accepts_temporary_borrow_after_call_returns() {
+    let source = r#"
+        fn inspect(value: &int) {
+        }
+
+        fn main() -> int {
+            var x: int = 1
+            inspect(&x)
+            x = 2
+            return x
+        }
+    "#;
+
+    borrow_check(source).unwrap();
+}
+
+#[test]
+fn rejects_reference_local_return_escape() {
+    let source = r#"
+        fn main() -> &int {
+            let x: int = 1
+            let borrowed: &int = &x
+            return borrowed
+        }
+    "#;
+
+    let err = borrow_check(source).unwrap_err();
+    assert!(err[0]
+        .message
+        .contains("borrow of 'x' escapes through reference 'borrowed'"));
+}

@@ -216,6 +216,11 @@ Semantic type and borrow diagnostics now render the originating module's file,
 line, and top-level statement range across imported modules. The next diagnostic
 refinement is to carry the narrower expression span.
 
+The borrow checker now distinguishes statement-scoped temporary borrows from
+borrows retained by named reference locals. Calls such as `inspect(&value)` no
+longer keep a borrow alive after the call, while `let view: &T = &value` retains
+the borrow and indirect returns through `view` are rejected as escaping.
+
 The PE64 writer relocates `.rdata` and `.idata` after emitted text grows, and
 the native Windows array smoke set covers typed mutation, search, growth,
 copying, and cleanup end to end.

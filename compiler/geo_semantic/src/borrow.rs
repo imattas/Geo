@@ -22,6 +22,7 @@ fn check_function(function: &Function, diagnostics: &mut Vec<Diagnostic>) {
         locals: HashMap::new(),
         moved: HashSet::new(),
         borrows: HashMap::new(),
+        reference_origins: HashMap::new(),
         diagnostics,
     };
 
@@ -67,6 +68,7 @@ struct BorrowCtx<'a> {
     locals: HashMap<String, Type>,
     moved: HashSet<String>,
     borrows: HashMap<String, BorrowState>,
+    reference_origins: HashMap<String, String>,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
@@ -74,12 +76,15 @@ struct BorrowCtx<'a> {
 struct BorrowState {
     shared: usize,
     mutable: bool,
+    temporary_shared: usize,
+    temporary_mutable: bool,
 }
 
 impl BorrowCtx<'_> {
     fn check_stmts(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             self.check_stmt(stmt);
+            self.expire_temporary_borrows();
         }
     }
 
@@ -102,6 +107,12 @@ impl BorrowCtx<'_> {
                     .clone()
                     .or_else(|| self.infer_expr_type(value))
                     .unwrap_or(Type::Int);
+                if matches!(ty, Type::Reference { .. }) {
+                    self.promote_temporary_borrows();
+                    if let Some(source) = borrowed_source(value) {
+                        self.reference_origins.insert(name.clone(), source);
+                    }
+                }
                 self.locals.insert(name.clone(), ty);
                 self.moved.remove(name);
             }
@@ -366,12 +377,14 @@ impl BorrowCtx<'_> {
                 )));
             }
             state.mutable = true;
+            state.temporary_mutable = true;
         } else if state.mutable {
             self.diagnostics.push(Diagnostic::error(format!(
                 "cannot borrow '{name}' while it is mutably borrowed"
             )));
         } else {
             state.shared += 1;
+            state.temporary_shared += 1;
         }
     }
 
@@ -385,6 +398,31 @@ impl BorrowCtx<'_> {
                 self.diagnostics
                     .push(Diagnostic::error(format!("borrow of '{name}' escapes")));
             }
+        } else if let Expr::Var(name) = expr {
+            if let Some(source) = self.reference_origins.get(name) {
+                self.diagnostics.push(Diagnostic::error(format!(
+                    "borrow of '{source}' escapes through reference '{name}'"
+                )));
+            }
+        }
+    }
+
+    fn expire_temporary_borrows(&mut self) {
+        self.borrows.retain(|_, state| {
+            state.shared = state.shared.saturating_sub(state.temporary_shared);
+            state.temporary_shared = 0;
+            if state.temporary_mutable {
+                state.mutable = false;
+                state.temporary_mutable = false;
+            }
+            state.shared > 0 || state.mutable
+        });
+    }
+
+    fn promote_temporary_borrows(&mut self) {
+        for state in self.borrows.values_mut() {
+            state.temporary_shared = 0;
+            state.temporary_mutable = false;
         }
     }
 
@@ -405,7 +443,23 @@ impl BorrowCtx<'_> {
                 .first()
                 .and_then(|value| self.infer_expr_type(value))
                 .map(|ty| Type::Array(Box::new(ty))),
-            Expr::Unary { expr, .. } => self.infer_expr_type(expr),
+            Expr::Unary { op, expr } => match op {
+                UnaryOp::AddressOf => self.infer_expr_type(expr).map(|inner| Type::Reference {
+                    mutable: false,
+                    inner: Box::new(inner),
+                }),
+                UnaryOp::MutableAddressOf => {
+                    self.infer_expr_type(expr).map(|inner| Type::Reference {
+                        mutable: true,
+                        inner: Box::new(inner),
+                    })
+                }
+                UnaryOp::Deref => self.infer_expr_type(expr).and_then(|ty| match ty {
+                    Type::Reference { inner, .. } => Some(*inner),
+                    _ => None,
+                }),
+                UnaryOp::Neg | UnaryOp::Not | UnaryOp::BitNot => self.infer_expr_type(expr),
+            },
             Expr::Cast { ty, .. } => Some(ty.clone()),
             Expr::SizeOf(_) => Some(Type::Usize),
             Expr::AlignOf(_) => Some(Type::Usize),
@@ -427,6 +481,16 @@ fn borrowed_local(expr: &Expr) -> Option<String> {
         Expr::Var(name) => Some(name.clone()),
         Expr::Field { base, .. } | Expr::Index { base, .. } => borrowed_local(base),
         _ => None,
+    }
+}
+
+fn borrowed_source(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Unary {
+            op: UnaryOp::AddressOf | UnaryOp::MutableAddressOf,
+            expr,
+        } => borrowed_local(expr),
+        _ => borrowed_local(expr),
     }
 }
 

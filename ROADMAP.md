@@ -228,6 +228,11 @@ Deliverables:
 - `unsafe` blocks for raw pointer operations.
 - Diagnostics for use-after-move and conflicting borrows.
 
+Progress: the borrow checker now models temporary statement borrows separately
+from borrows retained by reference locals, and records reference origins so
+returning a local reference to stack data is rejected indirectly as well as
+through a direct `&value` return.
+
 Acceptance criteria:
 
 - Safe v1 examples pass borrow checking.

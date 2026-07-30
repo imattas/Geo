@@ -157,6 +157,9 @@ fn main() {
 - Keep ownership lexical for v1.
 - Enforce move checking for owned `str`, arrays, and structs.
 - Allow many immutable borrows or one mutable borrow.
+- Expire temporary borrows at statement boundaries while retaining borrows held
+  by named references.
+- Track reference origins so indirect returns cannot hide stack-borrow escapes.
 - Require `unsafe` for raw pointer dereference, pointer arithmetic, extern calls where needed, and unchecked indexing.
 - Keep runtime/platform internals as the primary place for unsafe code.
 
