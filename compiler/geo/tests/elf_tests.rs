@@ -13,6 +13,20 @@ fn executable_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("geo-{name}-{}-{nonce}", std::process::id()))
 }
 
+#[cfg(target_os = "linux")]
+fn write_executable(path: &std::path::Path, executable: Vec<u8>, label: &str) {
+    let staging = path.with_extension("geo.tmp");
+    std::fs::write(&staging, executable).expect(label);
+    let mut permissions = std::fs::metadata(&staging)
+        .expect("failed to stat ELF staging fixture")
+        .permissions();
+    use std::os::unix::fs::PermissionsExt;
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&staging, permissions)
+        .expect("failed to make ELF staging fixture executable");
+    std::fs::rename(staging, path).expect("failed to publish ELF fixture");
+}
+
 fn executable_for(source: &str) -> Vec<u8> {
     let tokens = lex(source).unwrap();
     let program = parse(&tokens).unwrap();
@@ -239,13 +253,7 @@ fn executes_direct_elf64_struct_argument() {
 fn executes_direct_elf64_fixed_array_argument() {
     let executable = executable_for(include_str!("../../../examples/v1/array_argument.geo"));
     let path = executable_path("array-argument");
-    std::fs::write(&path, executable).expect("failed to write array argument fixture");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("failed to stat array argument fixture")
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).expect("failed to make array argument executable");
+    write_executable(&path, executable, "failed to write array argument fixture");
 
     let status = std::process::Command::new(&path)
         .status()
