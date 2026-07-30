@@ -115,6 +115,8 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                     | "path_stem"
                     | "path_without_extension"
                     | "path_with_extension"
+                    | "arg"
+                    | "arg_or"
             )
         });
     let needs_file_read = image.relocations.iter().any(|relocation| {
@@ -169,10 +171,12 @@ fn emit_compiled_pe64_console(program: &IrProgram) -> Option<Vec<u8>> {
                 | "dir_entry_path"
         )
     });
-    let needs_process_args = image
-        .relocations
-        .iter()
-        .any(|relocation| matches!(relocation.symbol.as_str(), "arg_count" | "arg_exists"));
+    let needs_process_args = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "arg_count" | "arg" | "arg_exists" | "arg_or"
+        )
+    });
     let mut layout = Layout::new(
         image.rodata.len() as u32,
         needs_console_helpers,
@@ -1303,10 +1307,12 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         .relocations
         .iter()
         .any(|relocation| relocation.symbol == "process_id");
-    let needs_process_args = image
-        .relocations
-        .iter()
-        .any(|relocation| matches!(relocation.symbol.as_str(), "arg_count" | "arg_exists"));
+    let needs_process_args = image.relocations.iter().any(|relocation| {
+        matches!(
+            relocation.symbol.as_str(),
+            "arg_count" | "arg" | "arg_exists" | "arg_or"
+        )
+    });
     let needs_path_separator = image
         .relocations
         .iter()
@@ -1916,10 +1922,27 @@ fn build_compiled_text(layout: &Layout, image: &ObjectImage) -> Option<Vec<u8>> 
         if image
             .relocations
             .iter()
+            .any(|relocation| matches!(relocation.symbol.as_str(), "arg" | "arg_or"))
+        {
+            helpers.arg = Some(layout.text_rva + code.len() as u32);
+            emit_arg_helper(&mut code, layout);
+        }
+        if image
+            .relocations
+            .iter()
             .any(|relocation| relocation.symbol == "arg_exists")
         {
             helpers.arg_exists = Some(layout.text_rva + code.len() as u32);
             emit_arg_exists_helper(&mut code, layout, helpers.arg_count.unwrap());
+        }
+        if image
+            .relocations
+            .iter()
+            .any(|relocation| relocation.symbol == "arg_or")
+        {
+            let arg = helpers.arg?;
+            helpers.arg_or = Some(layout.text_rva + code.len() as u32);
+            emit_arg_or_helper(&mut code, layout, arg);
         }
     }
     if needs_path_separator {
@@ -2398,8 +2421,14 @@ fn compiled_symbol_rva(
     if symbol == "arg_count" {
         return helpers.arg_count;
     }
+    if symbol == "arg" {
+        return helpers.arg;
+    }
     if symbol == "arg_exists" {
         return helpers.arg_exists;
+    }
+    if symbol == "arg_or" {
+        return helpers.arg_or;
     }
     if symbol == "platform_path_separator" {
         return helpers.path_separator;
@@ -2609,7 +2638,9 @@ struct PeHelperRvas {
     exit_process: Option<u32>,
     process_id: Option<u32>,
     arg_count: Option<u32>,
+    arg: Option<u32>,
     arg_exists: Option<u32>,
+    arg_or: Option<u32>,
     path_separator: Option<u32>,
     platform_os: Option<u32>,
     platform_arch: Option<u32>,
@@ -4686,6 +4717,117 @@ fn emit_arg_count_helper(code: &mut Vec<u8>, layout: &Layout) {
     patch_short_jump(code, delimiter_tab, delimiter_target);
     patch_short_jump(code, already_in_argument, advance);
     patch_short_jump(code, quote_in_argument, advance);
+}
+
+fn emit_arg_helper(code: &mut Vec<u8>, layout: &Layout) {
+    code.extend_from_slice(&[0x48, 0x83, 0xec, 0x58, 0x48, 0x89, 0x4c, 0x24, 0x20]);
+    emit_call_iat(code, layout, layout.get_command_line_iat);
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xc0, // r8 = command line cursor
+        0x45, 0x31, 0xc9, // r9 = current argument index
+        0x4d, 0x31, 0xd2, // r10 = token start
+        0x4d, 0x31, 0xdb, // r11 = token length
+        0xc6, 0x44, 0x24, 0x28, 0, 0xc6, 0x44, 0x24, 0x30, 0,
+    ]);
+    let scan = code.len();
+    code.extend_from_slice(&[0x41, 0x8a, 0x00, 0x84, 0xc0]);
+    let end = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x3c, b'"']);
+    let quote = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x80, 0x7c, 0x24, 0x30, 0]);
+    let normal = emit_near_conditional_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x3c, b' ']);
+    let delimiter_space = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[0x3c, 9]);
+    let delimiter_tab = emit_near_conditional_placeholder(code, 0x84);
+    let normal_target = code.len();
+    code.extend_from_slice(&[0x80, 0x7c, 0x24, 0x28, 0]);
+    let normal_existing = emit_near_conditional_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x4d, 0x8d, 0x10, 0xc6, 0x44, 0x24, 0x28, 1]);
+    let normal_continue = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc3, 0x49, 0xff, 0xc0]);
+    let normal_loop = emit_near_unconditional_placeholder_pe(code);
+
+    let quote_target = code.len();
+    code.extend_from_slice(&[0x80, 0x7c, 0x24, 0x28, 0]);
+    let quote_existing = emit_near_conditional_placeholder(code, 0x85);
+    let quote_close_target = code.len();
+    code.extend_from_slice(&[0x80, 0x74, 0x24, 0x30, 1, 0x49, 0xff, 0xc0]);
+    let quote_close_loop = emit_near_unconditional_placeholder_pe(code);
+    code.extend_from_slice(&[0x4d, 0x8d, 0x50, 1, 0xc6, 0x44, 0x24, 0x28, 1]);
+    code.extend_from_slice(&[0x80, 0x74, 0x24, 0x30, 1, 0x49, 0xff, 0xc0]);
+    let quote_loop = emit_near_unconditional_placeholder_pe(code);
+
+    let delimiter_target = code.len();
+    code.extend_from_slice(&[0x80, 0x7c, 0x24, 0x28, 0]);
+    let delimiter_empty = emit_near_conditional_placeholder(code, 0x84);
+    let finish_from_delimiter = emit_near_unconditional_placeholder_pe(code);
+    let advance_target = code.len();
+    code.extend_from_slice(&[0x49, 0xff, 0xc0]);
+    let advance_loop = emit_near_unconditional_placeholder_pe(code);
+
+    let end_target = code.len();
+    code.extend_from_slice(&[0x80, 0x7c, 0x24, 0x28, 0]);
+    let empty_end = emit_near_conditional_placeholder(code, 0x84);
+    let finish_from_end = emit_near_unconditional_placeholder_pe(code);
+
+    let finish = code.len();
+    code.extend_from_slice(&[0x48, 0x8b, 0x54, 0x24, 0x20, 0x49, 0x39, 0xd1]);
+    let next_argument = emit_near_conditional_placeholder(code, 0x85);
+    code.extend_from_slice(&[
+        0x4c, 0x89, 0x54, 0x24, 0x38, // save token start
+        0x4c, 0x89, 0x5c, 0x24, 0x40, // save token length
+        0x4c, 0x89, 0xda, 0x48, 0x83, 0xc2, 9, 0x31, 0xc9, 0x41, 0xb8, 0x00, 0x30, 0x00, 0x00,
+        0x41, 0xb9, 4, 0x00, 0x00, 0x00,
+    ]);
+    emit_call_iat(code, layout, layout.virtual_alloc_iat);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let allocation_failed = emit_near_conditional_placeholder(code, 0x84);
+    code.extend_from_slice(&[
+        0x49, 0x89, 0xc2, 0x4c, 0x8b, 0x5c, 0x24, 0x40, 0x4c, 0x89, 0xda, 0x48, 0x83, 0xc2, 9,
+        0x49, 0x89, 0x12, 0x48, 0x8b, 0x74, 0x24, 0x38, 0x49, 0x8d, 0x7a, 8, 0x4c, 0x89, 0xd9,
+        0xf3, 0xa4, 0xc6, 0x07, 0, 0x49, 0x8d, 0x42, 8, 0x48, 0x83, 0xc4, 0x58, 0xc3,
+    ]);
+    let failure = code.len();
+    code.extend_from_slice(&[0x31, 0xc0, 0x48, 0x83, 0xc4, 0x58, 0xc3]);
+    let next_target = code.len();
+    code.extend_from_slice(&[
+        0x49, 0xff, 0xc1, 0x45, 0x31, 0xdb, 0xc6, 0x44, 0x24, 0x28, 0,
+    ]);
+    let next_loop = emit_near_unconditional_placeholder_pe(code);
+
+    patch_near_conditional(code, end, end_target);
+    patch_near_conditional(code, quote, quote_target);
+    patch_near_conditional(code, normal, normal_target);
+    patch_near_conditional(code, delimiter_space, delimiter_target);
+    patch_near_conditional(code, delimiter_tab, delimiter_target);
+    patch_near_conditional(code, normal_existing, normal_continue);
+    patch_near_conditional(code, quote_existing, quote_close_target);
+    patch_near_conditional(code, delimiter_empty, advance_target);
+    patch_near_conditional(code, empty_end, failure);
+    patch_near_conditional(code, next_argument, next_target);
+    patch_near_conditional(code, allocation_failed, failure);
+    patch_near_jump(code, normal_loop, scan);
+    patch_near_jump(code, quote_loop, scan);
+    patch_near_jump(code, quote_close_loop, scan);
+    patch_near_jump(code, advance_loop, scan);
+    patch_near_jump(code, next_loop, advance_target);
+    patch_near_jump(code, finish_from_delimiter, finish);
+    patch_near_jump(code, finish_from_end, finish);
+}
+
+fn emit_arg_or_helper(code: &mut Vec<u8>, layout: &Layout, arg: u32) {
+    code.extend_from_slice(&[
+        0x48, 0x83, 0xec, 0x38, 0x48, 0x89, 0x54, 0x24, 0x20, 0x48, 0x89, 0x4c, 0x24, 0x28, 0x48,
+        0x8b, 0x4c, 0x24, 0x28,
+    ]);
+    emit_direct_call(code, layout.text_rva, arg);
+    code.extend_from_slice(&[0x48, 0x85, 0xc0]);
+    let found = emit_near_conditional_placeholder(code, 0x85);
+    code.extend_from_slice(&[0x48, 0x8b, 0x44, 0x24, 0x20]);
+    let done = code.len();
+    code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x38, 0xc3]);
+    patch_near_conditional(code, found, done);
 }
 
 fn emit_arg_exists_helper(code: &mut Vec<u8>, layout: &Layout, arg_count: u32) {

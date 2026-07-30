@@ -394,8 +394,9 @@ Acceptance criteria:
   runtime-backed collection values and aggregate function arguments.
 - The Linux ELF64 writer now preserves the initial process stack and implements
   native `std.process` argument accessors. The PE64 writer now provides
-  quote-aware `arg_count` and `arg_exists` through `GetCommandLineA`; add
-  owned Windows token extraction for `arg` and `arg_or` next.
+  quote-aware `arg_count`, `arg_exists`, owned `arg` token extraction, and
+  `arg_or` fallback values now lower directly from `GetCommandLineA` and
+  `VirtualAlloc`; expand escaped-quote edge cases next.
 
 ## Phase 10: Distribution
 

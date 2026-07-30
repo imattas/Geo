@@ -1644,6 +1644,29 @@ fn emits_direct_pe64_process_argument_count_helpers() {
 }
 
 #[test]
+fn emits_direct_pe64_owned_process_argument_helpers() {
+    let pe = pe_for(
+        r#"
+            import std.process
+
+            fn main() -> int {
+                let first: string = arg(0)
+                let fallback: string = arg_or(9, "fallback")
+                if first == fallback {
+                    return 1
+                }
+                return 0
+            }
+        "#,
+    );
+
+    assert_eq!(&pe[0..2], b"MZ");
+    assert!(contains_bytes(&pe, b"GetCommandLineA"));
+    assert!(contains_bytes(&pe, b"VirtualAlloc"));
+    assert!(contains_bytes(&pe, &[0xf3, 0xa4, 0xc6, 0x07, 0x00]));
+}
+
+#[test]
 fn emits_direct_pe64_platform_path_separator() {
     let pe = pe_for(
         r#"

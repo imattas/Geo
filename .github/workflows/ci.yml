@@ -587,6 +587,7 @@ jobs:
           cargo run --locked --quiet -- build examples/platform_strings_exit.geo --target x86_64-windows -o target/ci-smoke-platform-strings.exe
           cargo run --locked --quiet -- build examples/path_absolute_exit.geo --target x86_64-windows -o target/ci-smoke-path-absolute.exe
           cargo run --locked --quiet -- build examples/path_file_name_exit.geo --target x86_64-windows -o target/ci-smoke-path-file-name.exe
+          cargo run --locked --quiet -- build examples/process_args_exit.geo --target x86_64-windows -o target/ci-smoke-process-args.exe
 
       - name: Execute native PE64 smoke fixtures
         shell: pwsh
@@ -708,4 +709,8 @@ jobs:
           $pathFileNameStatus = $LASTEXITCODE
           Write-Host "path-file-name status=$pathFileNameStatus"
           if ($pathFileNameStatus -ne 0) { exit 1 }
+          & target/ci-smoke-process-args.exe alpha
+          $processArgsStatus = $LASTEXITCODE
+          Write-Host "process-args status=$processArgsStatus"
+          if ($processArgsStatus -ne 0) { exit 1 }
           exit 0

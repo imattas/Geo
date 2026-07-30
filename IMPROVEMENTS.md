@@ -241,8 +241,9 @@ Reason: self-hosting examples need IO, strings, arrays, and diagnostics more tha
   arrays nested in structs, before adding runtime-backed aggregate passing.
 - Keep process argument access target-specific: Linux uses preserved
   `argc`/`argv`, while Windows uses a dedicated quoted-command-line parser
-  rather than assuming a C runtime entry signature. Extend the PE parser with
-  owned token extraction after its count/existence foundation.
+  rather than assuming a C runtime entry signature. The PE parser now also
+  returns owned `arg` tokens and `arg_or` fallbacks; extend it with complete
+  escaped-quote and backslash handling next.
 
 ## Tooling Improvements
 
