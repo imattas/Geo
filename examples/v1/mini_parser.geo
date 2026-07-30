@@ -1,5 +1,11 @@
 import std.string
 
+struct FunctionNode {
+    name_kind: int
+    return_kind: int
+    literal_value: int
+}
+
 fn is_space(byte: int) -> bool {
     return byte == 32 || byte == 9 || byte == 10 || byte == 13
 }
@@ -56,6 +62,9 @@ fn parse_number(source: &string, start: usize, expected: int) -> int {
 
 fn parse_function(source: &string) -> bool {
     var cursor: int = 0
+    var name_kind: int = 0
+    var return_kind: int = 0
+    var literal_value: int = 0
 
     cursor = parse_word(source, skip_space(source, cursor as usize), "fn")
     if cursor < 0 {
@@ -65,6 +74,7 @@ fn parse_function(source: &string) -> bool {
     if cursor < 0 {
         return false
     }
+    name_kind = 1
     cursor = parse_byte(source, skip_space(source, cursor as usize), 40)
     if cursor < 0 {
         return false
@@ -81,6 +91,7 @@ fn parse_function(source: &string) -> bool {
     if cursor < 0 {
         return false
     }
+    return_kind = 1
     cursor = parse_byte(source, skip_space(source, cursor as usize), 123)
     if cursor < 0 {
         return false
@@ -93,11 +104,20 @@ fn parse_function(source: &string) -> bool {
     if cursor < 0 {
         return false
     }
+    literal_value = 42
     cursor = parse_byte(source, skip_space(source, cursor as usize), 125)
     if cursor < 0 {
         return false
     }
+    let node: FunctionNode = FunctionNode {
+        name_kind: name_kind
+        return_kind: return_kind
+        literal_value: literal_value
+    }
     return skip_space(source, cursor as usize) == string_len(*source)
+        && node.name_kind == 1
+        && node.return_kind == 1
+        && node.literal_value == 42
 }
 
 fn main() -> int {

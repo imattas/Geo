@@ -265,7 +265,8 @@ The next self-hosting target should be meaningful but narrow:
 2. A Geo diagnostic formatter that renders file, line, column, and caret.
 3. A Geo AST builder for a small expression grammar.
 4. A Geo mini parser that uses source-driven cursor parsing. `examples/v1/mini_parser.geo`
-   now parses a canonical function grammar.
+   now parses a canonical function grammar and materializes a `FunctionNode`
+   AST aggregate.
 5. A Geo file echo tool that proves file IO and buffers.
 
 Do not start with the full compiler rewrite. First make Geo capable of writing compiler-shaped components cleanly.
